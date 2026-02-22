@@ -12,6 +12,7 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
 import { getFirstRoundTeams, CURRENT_DRAFT_YEAR } from "../config/draft-data.js";
+import { getEmailForUserId, isAdminEmail, isAdminUserId } from "../lib/clerk-email.js";
 import {
   adminDashboardPage,
   officialPicksEditorFragment,
@@ -34,9 +35,6 @@ function getAdminEmails(): string[] {
     .filter(Boolean);
 }
 
-function isAdminEmail(email: string): boolean {
-  return getAdminEmails().includes(email.toLowerCase());
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -209,13 +207,13 @@ async function syncFromESPN(appId: number, year: number): Promise<{ synced: numb
 // ─── Controller ───────────────────────────────────────────────────────────────
 
 export const adminController = new Elysia({ prefix: "/admin" })
-  .onBeforeHandle((ctx: any) => {
+  .onBeforeHandle(async (ctx: any) => {
     const authResult = authGuard(ctx);
     if (authResult) return authResult;
 
     const auth = ctx.auth();
-    const email = auth?.sessionClaims?.email ?? "";
-    if (!isAdminEmail(email)) {
+    const userId = String(auth?.userId ?? "");
+    if (!await isAdminUserId(userId)) {
       ctx.set.status = 403;
       ctx.set.headers["Content-Type"] = "text/html";
       return `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:500px;margin:80px auto;padding:20px;text-align:center">

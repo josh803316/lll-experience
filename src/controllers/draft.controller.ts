@@ -11,6 +11,7 @@ import {
   CURRENT_DRAFT_YEAR,
   type RankingSource,
 } from "../config/draft-data.js";
+import { isAdminUserId } from "../lib/clerk-email.js";
 import {
   draftLayout,
   picksTableFragment,
@@ -141,9 +142,7 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
 
     // Check admin status for nav link
-    const userEmail = auth.sessionClaims?.email ?? "";
-    const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean);
-    const isAdmin = adminEmails.includes(userEmail.toLowerCase());
+    const isAdmin = await isAdminUserId(String(auth.userId));
 
     ctx.set.headers["Content-Type"] = "text/html";
     return draftLayout(picks, draftable, draftStarted, year, availableYears, clerkKey, isAdmin);
