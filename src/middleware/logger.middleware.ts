@@ -54,10 +54,7 @@ export function useLogger(app: Elysia) {
 
   app.use(
     logger.into({
-      autoLogging: {
-        ignore: () => false,
-        getPath: (req) => new URL(req.url).pathname,
-      },
+      autoLogging: true,
       customProps: (ctx: InferContext<typeof app>) => {
         const req = ctx.request;
         return {

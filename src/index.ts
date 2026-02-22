@@ -60,8 +60,13 @@ const app = baseApp
     }
   })
 
-  .listen(PORT);
+;
 
-console.log(`LLL Experience running at http://localhost:${PORT}`);
+// Only start a local HTTP server when not running on Vercel.
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT);
+  console.log(`LLL Experience running at http://localhost:${PORT}`);
+}
 
 export type App = typeof app;
+export default app;
