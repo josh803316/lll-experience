@@ -1,12 +1,19 @@
-import { getDB } from "./index.ts";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import { apps } from "./schema.ts";
 import { eq } from "drizzle-orm";
 
-const db = getDB();
+const DIRECT_URL = process.env.DIRECT_URL;
+if (!DIRECT_URL) {
+  console.error("DIRECT_URL environment variable is required for seeding");
+  process.exit(1);
+}
+
+const client = postgres(DIRECT_URL, { max: 1 });
+const db = drizzle(client);
 
 console.log("Seeding database...");
 
-// Upsert the NFL Draft app
 const existing = await db.select().from(apps).where(eq(apps.slug, "nfl-draft")).limit(1);
 
 if (existing.length === 0) {
@@ -23,4 +30,4 @@ if (existing.length === 0) {
 }
 
 console.log("Seed complete.");
-process.exit(0);
+await client.end();
