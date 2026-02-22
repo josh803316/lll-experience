@@ -1,15 +1,15 @@
 import { Elysia, t } from "elysia";
-import { authGuard } from "../guards/auth-guard.ts";
-import { getDB } from "../db/index.ts";
-import { draftPicks, apps, users } from "../db/schema.ts";
+import { authGuard } from "../guards/auth-guard.js";
+import { getDB } from "../db/index.js";
+import { draftPicks, apps, users } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
-import { UsersModel } from "../models/users.model.ts";
+import { UsersModel } from "../models/users.model.js";
 import {
   draftLayout,
   picksListFragment,
   emptyPickSlot,
   type Pick,
-} from "../views/templates.ts";
+} from "../views/templates.js";
 
 const usersModel = new UsersModel();
 

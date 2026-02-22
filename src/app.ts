@@ -3,14 +3,14 @@ import { swagger } from "@elysiajs/swagger";
 import { cors } from "@elysiajs/cors";
 import { clerkPlugin } from "elysia-clerk";
 
-import { draftController } from "./controllers/draft.controller.ts";
-import { authGuard } from "./guards/auth-guard.ts";
-import { useLogger } from "./middleware/logger.middleware.ts";
-import { isProtectedRoute } from "./config/route-protection.ts";
-import { getDB } from "./db/index.ts";
-import { apps } from "./db/schema.ts";
+import { draftController } from "./controllers/draft.controller.js";
+import { authGuard } from "./guards/auth-guard.js";
+import { useLogger } from "./middleware/logger.middleware.js";
+import { isProtectedRoute } from "./config/route-protection.js";
+import { getDB } from "./db/index.js";
+import { apps } from "./db/schema.js";
 import { eq } from "drizzle-orm";
-import { landingPage, appsPage } from "./views/templates.ts";
+import { landingPage, appsPage } from "./views/templates.js";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;

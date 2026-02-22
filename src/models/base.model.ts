@@ -1,4 +1,4 @@
-import type { Database } from "../db/index.ts";
+import type { Database } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 

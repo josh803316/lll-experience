@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { apps } from "./schema.ts";
+import { apps } from "./schema.js";
 import { eq } from "drizzle-orm";
 
 const DIRECT_URL = process.env.DIRECT_URL;

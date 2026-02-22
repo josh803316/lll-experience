@@ -1,6 +1,6 @@
-import { BaseModel } from "./base.model.ts";
-import { users } from "../db/schema.ts";
-import type { Database } from "../db/index.ts";
+import { BaseModel } from "./base.model.js";
+import { users } from "../db/schema.js";
+import type { Database } from "../db/index.js";
 import { eq } from "drizzle-orm";
 
 export interface User {
