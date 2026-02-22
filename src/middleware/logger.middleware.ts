@@ -54,16 +54,24 @@ export function useLogger(app: Elysia) {
 
   app.use(
     logger.into({
-      autoLogging: true,
-      customProps: (ctx: InferContext<typeof app>) => ({
-        body: ctx.body,
-        params: ctx.params,
-        query: ctx.query,
-        request: {
-          method: ctx.request.method,
-          url: ctx.request.url,
-        },
-      }),
+      autoLogging: {
+        ignore: () => false,
+        getPath: (req) => new URL(req.url).pathname,
+      },
+      customProps: (ctx: InferContext<typeof app>) => {
+        const req = ctx.request;
+        return {
+          body: ctx.body,
+          params: ctx.params,
+          query: ctx.query,
+          request: {
+            method: req?.method,
+            url: req?.url,
+            referrer: req?.headers?.get?.("Referer") ?? null,
+            headers: req?.headers,
+          },
+        };
+      },
     })
   );
 
