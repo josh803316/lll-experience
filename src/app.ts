@@ -61,6 +61,8 @@ const app = baseApp
     return appsPage(activeApps, CLERK_KEY);
   })
 
+  .get("/nfl-draft", ({ redirect }) => redirect("/draft"))
+
   .use(draftController)
 
   .onError(({ error, code, request }) => {

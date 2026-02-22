@@ -1,17 +1,33 @@
 import { Elysia, t } from "elysia";
 import { authGuard } from "../guards/auth-guard.js";
 import { getDB } from "../db/index.js";
-import { draftPicks, apps, users } from "../db/schema.js";
-import { eq, and } from "drizzle-orm";
+import { draftPicks, apps, users, draftablePlayers, draftSettings, officialDraftResults } from "../db/schema.js";
+import { eq, and, sql } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
 import {
+  getFirstRoundTeams,
+  getTeamNeeds,
+  CURRENT_DRAFT_YEAR,
+} from "../config/draft-data.js";
+import {
   draftLayout,
-  picksListFragment,
-  emptyPickSlot,
+  picksTableFragment,
+  draftablePlayersFragment,
+  leaderboardPage,
+  submittedMocksPage,
+  resultsPage,
   type Pick,
+  type DraftablePlayer,
 } from "../views/templates.js";
 
 const usersModel = new UsersModel();
+const TOTAL_PICKS = 32;
+
+function parseYear(param: string | undefined): number | null {
+  if (param == null) return null;
+  const y = Number(param);
+  return Number.isInteger(y) && y >= 2020 && y <= 2040 ? y : null;
+}
 
 async function getOrCreateUser(auth: any) {
   const db = getDB();
@@ -29,45 +45,144 @@ async function getApp(slug: string) {
   return result[0] ?? null;
 }
 
-async function getUserPicks(userId: number, appId: number): Promise<Pick[]> {
+async function getAvailableYears(appId: number): Promise<number[]> {
+  const db = getDB();
+  const fromPicks = await db.selectDistinct({ year: draftPicks.year }).from(draftPicks).where(eq(draftPicks.appId, appId));
+  const fromSettings = await db.selectDistinct({ year: draftSettings.year }).from(draftSettings).where(eq(draftSettings.appId, appId));
+  const set = new Set<number>([CURRENT_DRAFT_YEAR]);
+  fromPicks.forEach((r) => set.add(r.year));
+  fromSettings.forEach((r) => set.add(r.year));
+  return Array.from(set).sort((a, b) => b - a);
+}
+
+async function getDraftStarted(appId: number, year: number): Promise<boolean> {
+  const db = getDB();
+  const row = await db
+    .select()
+    .from(draftSettings)
+    .where(and(eq(draftSettings.appId, appId), eq(draftSettings.year, year)))
+    .limit(1);
+  return row[0]?.draftStartedAt != null;
+}
+
+async function getUserPicks(userId: number, appId: number, year: number): Promise<Pick[]> {
+  const db = getDB();
+  const rows = await db
+    .select()
+    .from(draftPicks)
+    .where(and(eq(draftPicks.userId, userId), eq(draftPicks.appId, appId), eq(draftPicks.year, year)))
+    .orderBy(draftPicks.pickNumber);
+  return rows as Pick[];
+}
+
+async function getDraftablePlayers(appId: number, year: number): Promise<DraftablePlayer[]> {
   const db = getDB();
   return db
     .select()
-    .from(draftPicks)
-    .where(and(eq(draftPicks.userId, userId), eq(draftPicks.appId, appId)))
-    .orderBy(draftPicks.pickNumber) as Promise<Pick[]>;
+    .from(draftablePlayers)
+    .where(and(eq(draftablePlayers.appId, appId), eq(draftablePlayers.year, year)))
+    .orderBy(draftablePlayers.rank) as Promise<DraftablePlayer[]>;
+}
+
+/** Scoring: 3 = exact slot, 2 = 1 spot away, 1 = 2 spots away. Double-score pick multiplies points for that slot. */
+function computeScore(
+  picks: Pick[],
+  officialByPick: Map<number, string | null>,
+  doubleScorePickSet: Set<number>
+): number {
+  const officialByPlayer = new Map<string, number>();
+  officialByPick.forEach((name, pickNum) => {
+    if (name) officialByPlayer.set(normalizeName(name), pickNum);
+  });
+
+  let score = 0;
+  for (const p of picks) {
+    if (!p.playerName) continue;
+    const officialPickNum = officialByPlayer.get(normalizeName(p.playerName));
+    if (officialPickNum == null) continue;
+    const diff = Math.abs(p.pickNumber - officialPickNum);
+    const base = diff === 0 ? 3 : diff === 1 ? 2 : diff === 2 ? 1 : 0;
+    const mult = doubleScorePickSet.has(p.pickNumber) ? 2 : 1;
+    score += base * mult;
+  }
+  return score;
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export const draftController = new Elysia({ prefix: "/draft" })
-  .onBeforeHandle(authGuard)
+  .onBeforeHandle((ctx) => {
+    const path = new URL(ctx.request.url).pathname;
+    if (path.startsWith("/draft/admin/")) return;
+    return authGuard(ctx);
+  })
 
-  // GET /draft — main page
-  .get("/", async (ctx: any) => {
+  // GET /draft — redirect to current year
+  .get("/", ({ redirect }) => redirect(`/draft/${CURRENT_DRAFT_YEAR}`))
+
+  // GET /draft/:year — main page
+  .get("/:year", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
     const auth = ctx.auth();
     const user = await getOrCreateUser(auth);
     const app = await getApp("nfl-draft");
-    const picks = app ? await getUserPicks(user.id, app.id) : [];
+    const picks = app ? await getUserPicks(user.id, app.id, year) : [];
+    const draftable = app ? await getDraftablePlayers(app.id, year) : [];
+    const draftStarted = app ? await getDraftStarted(app.id, year) : false;
+    const availableYears = app ? await getAvailableYears(app.id) : [];
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
 
     ctx.set.headers["Content-Type"] = "text/html";
-    return draftLayout(picks, clerkKey);
+    return draftLayout(picks, draftable, draftStarted, year, availableYears, clerkKey);
   })
 
-  // GET /draft/picks — picks fragment (HTMX)
-  .get("/picks", async (ctx: any) => {
+  // GET /draft/:year/picks
+  .get("/:year/picks", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
     const auth = ctx.auth();
     const user = await getOrCreateUser(auth);
     const app = await getApp("nfl-draft");
-    const picks = app ? await getUserPicks(user.id, app.id) : [];
+    const picks = app ? await getUserPicks(user.id, app.id, year) : [];
+    const draftLocked = app ? await getDraftStarted(app.id, year) : false;
 
     ctx.set.headers["Content-Type"] = "text/html";
-    return picksListFragment(picks);
+    return picksTableFragment(picks, draftLocked, year);
   })
 
-  // POST /draft/picks — upsert reordered picks
+  // GET /draft/:year/players
+  .get("/:year/players", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const app = await getApp("nfl-draft");
+    const draftable = app ? await getDraftablePlayers(app.id, year) : [];
+    const positionFilter = (ctx.query?.position as string) || "OVR";
+
+    ctx.set.headers["Content-Type"] = "text/html";
+    return draftablePlayersFragment(draftable, positionFilter);
+  })
+
+  // POST /draft/:year/picks
   .post(
-    "/picks",
+    "/:year/picks",
     async (ctx: any) => {
+      const year = parseYear(ctx.params?.year);
+      if (year == null) {
+        ctx.set.status = 404;
+        return "Not found";
+      }
       const auth = ctx.auth();
       const user = await getOrCreateUser(auth);
       const app = await getApp("nfl-draft");
@@ -77,48 +192,326 @@ export const draftController = new Elysia({ prefix: "/draft" })
       }
 
       const db = getDB();
-      let parsed: Array<{ pickNumber: number; id: string }> = [];
+      type PickPayload = { pickNumber: number; playerName?: string; position?: string; teamName?: string; doubleScorePick?: boolean };
+      let parsed: PickPayload[] = [];
       try {
-        parsed = JSON.parse(ctx.body.picks as string);
+        parsed = JSON.parse(ctx.body.picks as string) as PickPayload[];
       } catch {
         ctx.set.status = 400;
         return "Invalid picks payload";
       }
 
-      // Upsert each pick's new order
-      for (const { pickNumber, id } of parsed) {
-        await db
-          .update(draftPicks)
-          .set({ pickNumber, updatedAt: new Date() })
-          .where(and(eq(draftPicks.id, Number(id)), eq(draftPicks.userId, user.id)));
+      const draftStarted = await getDraftStarted(app.id, year);
+      if (draftStarted) {
+        ctx.set.status = 403;
+        return "Draft has started; picks are locked.";
       }
 
-      const picks = await getUserPicks(user.id, app.id);
+      const teams = getFirstRoundTeams(year);
+      const pickMap = new Map((await getUserPicks(user.id, app.id, year)).map((p) => [p.pickNumber, p]));
+
+      for (let num = 1; num <= TOTAL_PICKS; num++) {
+        const payload: PickPayload = parsed.find((p) => p.pickNumber === num) ?? { pickNumber: num };
+        const teamName = teams[num] ?? null;
+        const playerName = payload.playerName?.trim() || null;
+        const position = payload.position?.trim() || null;
+        const doubleScorePick = Boolean(payload.doubleScorePick);
+        const existing = pickMap.get(num);
+
+        if (existing) {
+          if (playerName) {
+            await db
+              .update(draftPicks)
+              .set({
+                playerName,
+                position,
+                teamName,
+                doubleScorePick,
+                updatedAt: new Date(),
+              })
+              .where(and(eq(draftPicks.id, existing.id), eq(draftPicks.userId, user.id)));
+          } else {
+            await db
+              .delete(draftPicks)
+              .where(and(eq(draftPicks.userId, user.id), eq(draftPicks.appId, app.id), eq(draftPicks.year, year), eq(draftPicks.pickNumber, num)));
+          }
+        } else if (playerName) {
+          await db.insert(draftPicks).values({
+            userId: user.id,
+            appId: app.id,
+            year,
+            pickNumber: num,
+            teamName,
+            playerName,
+            position,
+            doubleScorePick,
+          });
+        }
+      }
+
+      const picks = await getUserPicks(user.id, app.id, year);
       ctx.set.headers["Content-Type"] = "text/html";
-      return picksListFragment(picks);
+      return picksTableFragment(picks, false, year);
     },
     {
       body: t.Object({ picks: t.String() }),
     }
   )
 
-  // DELETE /draft/picks/:pickNumber — remove a single pick
+  // DELETE /draft/:year/picks/:pickNumber
   .delete(
-    "/picks/:pickNumber",
+    "/:year/picks/:pickNumber",
     async (ctx: any) => {
+      const year = parseYear(ctx.params?.year);
+      if (year == null) {
+        ctx.set.status = 404;
+        return "Not found";
+      }
       const auth = ctx.auth();
       const user = await getOrCreateUser(auth);
+      const app = await getApp("nfl-draft");
+      if (!app) {
+        ctx.set.status = 404;
+        return "App not found";
+      }
+      const draftStarted = await getDraftStarted(app.id, year);
+      if (draftStarted) {
+        ctx.set.status = 403;
+        return "Draft has started; picks are locked.";
+      }
       const db = getDB();
       const pickNumber = Number(ctx.params.pickNumber);
-
       await db
         .delete(draftPicks)
-        .where(and(eq(draftPicks.userId, user.id), eq(draftPicks.pickNumber, pickNumber)));
+        .where(and(eq(draftPicks.userId, user.id), eq(draftPicks.appId, app.id), eq(draftPicks.year, year), eq(draftPicks.pickNumber, pickNumber)));
 
+      const picks = await getUserPicks(user.id, app.id, year);
       ctx.set.headers["Content-Type"] = "text/html";
-      return emptyPickSlot(pickNumber);
+      return picksTableFragment(picks, false, year);
     },
     {
-      params: t.Object({ pickNumber: t.String() }),
+      params: t.Object({ year: t.String(), pickNumber: t.String() }),
     }
-  );
+  )
+
+  // GET /draft/:year/leaderboard
+  .get("/:year/leaderboard", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const auth = ctx.auth();
+    await getOrCreateUser(auth);
+    const app = await getApp("nfl-draft");
+    if (!app) {
+      ctx.set.status = 404;
+      return "App not found";
+    }
+
+    const db = getDB();
+    const draftStarted = await getDraftStarted(app.id, year);
+
+    const withCount = await db
+      .select({
+        userId: draftPicks.userId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(draftPicks)
+      .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
+      .groupBy(draftPicks.userId);
+    const completeUserIds = withCount.filter((r) => r.count === TOTAL_PICKS).map((r) => r.userId);
+
+    const officialRows = await db
+      .select()
+      .from(officialDraftResults)
+      .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)));
+    const officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
+
+    const leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }> = [];
+    for (const uid of completeUserIds) {
+      const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
+      if (!u) continue;
+      const picks = await getUserPicks(uid, app.id, year);
+      const doubleSet = new Set(picks.filter((p) => p.doubleScorePick).map((p) => p.pickNumber));
+      const score = computeScore(picks, officialResults, doubleSet);
+      leaderboard.push({
+        user: { id: u.id, firstName: u.firstName, lastName: u.lastName },
+        score,
+        picks,
+      });
+    }
+    leaderboard.sort((a, b) => b.score - a.score);
+
+    const availableYears = await getAvailableYears(app.id);
+    const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
+    ctx.set.headers["Content-Type"] = "text/html";
+    return leaderboardPage(leaderboard, draftStarted, year, availableYears, clerkKey);
+  })
+
+  // GET /draft/:year/submitted
+  .get("/:year/submitted", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const auth = ctx.auth();
+    await getOrCreateUser(auth);
+    const app = await getApp("nfl-draft");
+    if (!app) {
+      ctx.set.status = 404;
+      return "App not found";
+    }
+    const draftStarted = await getDraftStarted(app.id, year);
+
+    const db = getDB();
+    const withCount = await db
+      .select({ userId: draftPicks.userId, count: sql<number>`count(*)::int` })
+      .from(draftPicks)
+      .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
+      .groupBy(draftPicks.userId);
+    const completeUserIds = withCount.filter((r) => r.count === TOTAL_PICKS).map((r) => r.userId);
+
+    const entries: Array<{ user: { firstName: string | null; lastName: string | null }; picks: Pick[] }> = [];
+    for (const uid of completeUserIds) {
+      const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
+      if (!u) continue;
+      const picks = await getUserPicks(uid, app.id, year);
+      entries.push({
+        user: { firstName: u.firstName, lastName: u.lastName },
+        picks,
+      });
+    }
+
+    const availableYears = await getAvailableYears(app.id);
+    const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
+    ctx.set.headers["Content-Type"] = "text/html";
+    return submittedMocksPage(entries, draftStarted, year, availableYears, clerkKey);
+  })
+
+  // POST /draft/admin/start — body: { year? } default CURRENT_DRAFT_YEAR
+  .post(
+    "/admin/start",
+    async (ctx: any) => {
+      const secret = process.env.DRAFT_ADMIN_SECRET;
+      if (secret && ctx.request.headers.get("X-Admin-Secret") !== secret) {
+        ctx.set.status = 403;
+        return "Forbidden";
+      }
+      const app = await getApp("nfl-draft");
+      if (!app) {
+        ctx.set.status = 404;
+        return "App not found";
+      }
+      const year = Number((ctx.body as any)?.year) || CURRENT_DRAFT_YEAR;
+      const db = getDB();
+      const existing = await db
+        .select()
+        .from(draftSettings)
+        .where(and(eq(draftSettings.appId, app.id), eq(draftSettings.year, year)))
+        .limit(1);
+      if (existing.length > 0) {
+        await db
+          .update(draftSettings)
+          .set({ draftStartedAt: new Date() })
+          .where(and(eq(draftSettings.appId, app.id), eq(draftSettings.year, year)));
+      } else {
+        await db.insert(draftSettings).values({ appId: app.id, year, draftStartedAt: new Date() });
+      }
+      return { ok: true, year, message: "Draft started; picks are now locked and visible." };
+    },
+    { body: t.Object({ year: t.Optional(t.Number()) }) }
+  )
+
+  // POST /draft/admin/official-results — body: { year?, results }
+  .post(
+    "/admin/official-results",
+    async (ctx: any) => {
+      const secret = process.env.DRAFT_ADMIN_SECRET;
+      if (secret && ctx.request.headers.get("X-Admin-Secret") !== secret) {
+        ctx.set.status = 403;
+        return "Forbidden";
+      }
+      const app = await getApp("nfl-draft");
+      if (!app) {
+        ctx.set.status = 404;
+        return "App not found";
+      }
+      const year = Number((ctx.body as any)?.year) || CURRENT_DRAFT_YEAR;
+      const results = (ctx.body as any)?.results ?? [];
+      const db = getDB();
+      await db
+        .delete(officialDraftResults)
+        .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)));
+      if (results.length > 0) {
+        await db.insert(officialDraftResults).values(
+          results.map((r: { pickNumber: number; playerName?: string; teamName?: string }) => ({
+            appId: app!.id,
+            year,
+            pickNumber: r.pickNumber,
+            playerName: r.playerName ?? null,
+            teamName: r.teamName ?? null,
+          }))
+        );
+      }
+      return { ok: true, year, count: results.length };
+    },
+    {
+      body: t.Object({
+        year: t.Optional(t.Number()),
+        results: t.Array(t.Object({ pickNumber: t.Number(), playerName: t.Optional(t.String()), teamName: t.Optional(t.String()) })),
+      }),
+    }
+  )
+
+  // GET /draft/:year/results
+  .get("/:year/results", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const auth = ctx.auth();
+    await getOrCreateUser(auth);
+    const app = await getApp("nfl-draft");
+    if (!app) {
+      ctx.set.status = 404;
+      return "App not found";
+    }
+
+    const db = getDB();
+    const draftStarted = await getDraftStarted(app.id, year);
+    const officialRows = await db
+      .select()
+      .from(officialDraftResults)
+      .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)))
+      .orderBy(officialDraftResults.pickNumber);
+
+    const withCount = await db
+      .select({ userId: draftPicks.userId, count: sql<number>`count(*)::int` })
+      .from(draftPicks)
+      .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
+      .groupBy(draftPicks.userId);
+    const completeUserIds = withCount.filter((r) => r.count === TOTAL_PICKS).map((r) => r.userId);
+    const officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
+
+    const leaderboard: Array<{ user: { firstName: string | null; lastName: string | null }; score: number }> = [];
+    for (const uid of completeUserIds) {
+      const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
+      if (!u) continue;
+      const picks = await getUserPicks(uid, app.id, year);
+      const doubleSet = new Set(picks.filter((p) => p.doubleScorePick).map((p) => p.pickNumber));
+      const score = computeScore(picks, officialResults, doubleSet);
+      leaderboard.push({
+        user: { firstName: u.firstName, lastName: u.lastName },
+        score,
+      });
+    }
+    leaderboard.sort((a, b) => b.score - a.score);
+
+    const availableYears = await getAvailableYears(app.id);
+    const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
+    ctx.set.headers["Content-Type"] = "text/html";
+    return resultsPage(leaderboard, officialRows, draftStarted, year, availableYears, clerkKey);
+  });

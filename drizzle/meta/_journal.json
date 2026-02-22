@@ -8,6 +8,20 @@
       "when": 1771731571674,
       "tag": "0000_unusual_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771774136600,
+      "tag": "0001_flimsy_madrox",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771779196864,
+      "tag": "0002_blue_miss_america",
+      "breakpoints": true
     }
   ]
 }
