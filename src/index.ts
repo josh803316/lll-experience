@@ -15,6 +15,13 @@ import { landingPage, appsPage } from "./views/templates.ts";
 const PORT = Number(process.env.PORT ?? 3000);
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error)
+    return String((error as any).message);
+  return String(error);
+};
+
 const baseApp = new Elysia()
   .use(swagger({ path: "/docs" }))
   .use(cors());
@@ -30,6 +37,12 @@ const app = baseApp
     if (isProtectedRoute(path)) {
       return authGuard(ctx);
     }
+  })
+
+  // Log every incoming request for visibility in Vercel logs
+  .onRequest(({ request }) => {
+    const url = new URL(request.url);
+    console.log(`[REQUEST] ${request.method} ${url.pathname}`);
   })
 
   // Health check
@@ -51,13 +64,17 @@ const app = baseApp
 
   .use(draftController)
 
-  // 404 fallback
-  .onError(({ code, set }) => {
+  .onError(({ error, code, request }) => {
+    const url = new URL(request.url);
+    const msg = getErrorMessage(error);
     if (code === "NOT_FOUND") {
-      set.status = 404;
-      set.headers["Content-Type"] = "text/html";
-      return `<html><body><h1>404 — Not Found</h1><a href="/">Go home</a></body></html>`;
+      console.log(`[404] ${request.method} ${url.pathname}`);
+      return new Response(`<html><body><h1>404 — Not Found</h1><a href="/">Go home</a></body></html>`, {
+        status: 404,
+        headers: { "Content-Type": "text/html" },
+      });
     }
+    console.error(`[ERROR] ${request.method} ${url.pathname} - ${code} - ${msg}`);
   })
 
 ;

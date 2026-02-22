@@ -24,5 +24,11 @@
   "devDependencies": {
     "bun-types": "latest",
     "drizzle-kit": "^0.31.9"
+  },
+  "overrides": {
+    "@clerk/backend": "2.32.0"
+  },
+  "patchedDependencies": {
+    "@clerk/backend@2.32.0": "patches/@clerk%2Fbackend@2.32.0.patch"
   }
 }

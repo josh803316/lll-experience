@@ -4,4 +4,3 @@ node_modules/
 dist/
 *.tsbuildinfo
 .DS_Store
-bun.lock
