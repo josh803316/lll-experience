@@ -1,0 +1,43 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # semantic-release requires Node >=22.14.0 (Bun reports ~v20 for process.version)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Install release tooling — not in package.json to avoid needing GitHub Packages auth elsewhere
+      # GITHUB_TOKEN must be set here so Bun can expand ${GITHUB_TOKEN} in .npmrc
+      - name: Install release dependencies
+        run: bun add @josh803316/semantic-release-helper semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.BUN_AUTH_TOKEN }}
+
+      - name: Release
+        run: bunx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.BUN_AUTH_TOKEN }}
+          SEMANTIC_RELEASE_PACKAGE: lll-experience
