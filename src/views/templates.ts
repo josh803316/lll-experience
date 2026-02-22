@@ -284,7 +284,7 @@ export function picksTableFragment(
 export function draftablePlayersFragment(
   players: DraftablePlayer[],
   positionFilter: string,
-  source = "cbs"
+  source = "all"
 ): string {
   const filtered = positionFilter === "OVR" ? players : players.filter((p) => p.position === positionFilter);
   const items = filtered
@@ -300,6 +300,7 @@ export function draftablePlayersFragment(
     .join("");
 
   const sources = [
+    { key: "all",  label: "All",  url: "https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026" },
     { key: "cbs",  label: "CBS",  url: "https://www.cbssports.com/nfl/draft/prospect-rankings/" },
     { key: "pff",  label: "PFF",  url: "https://www.pff.com/news/draft-2026-nfl-draft-big-board" },
     { key: "espn", label: "ESPN", url: "https://www.espn.com/nfl/draft/bestavailable" },
@@ -379,7 +380,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
             <p class="text-xs text-gray-500 px-4 pb-1">Switch between CBS, PFF, ESPN, NFL.com, and Fox Sports rankings to compare. Hit Refresh to reload the latest data.</p>
             <div class="p-4">
               <div
-                hx-get="/draft/${year}/players"
+                hx-get="/draft/${year}/players?source=all"
                 hx-trigger="load"
                 hx-swap="outerHTML"
               >
@@ -528,7 +529,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       initPlayersSortable();
 
       function getCurrentSource() {
-        return document.getElementById('draftable-players-panel')?.dataset?.source || 'cbs';
+        return document.getElementById('draftable-players-panel')?.dataset?.source || 'all';
       }
       function getCurrentPos() {
         return document.getElementById('draftable-players-panel')?.dataset?.position || 'OVR';

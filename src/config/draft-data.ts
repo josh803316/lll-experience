@@ -295,7 +295,7 @@ export function getConsensusPlayers(year: number): Array<{ rank: number; playerN
   return [];
 }
 
-export type RankingSource = "cbs" | "espn" | "nfl" | "fox" | "pff";
+export type RankingSource = "cbs" | "espn" | "nfl" | "fox" | "pff" | "all";
 
 /**
  * Returns static rankings for ESPN / NFL.com / Fox Sports sources.
@@ -323,4 +323,51 @@ export function getStaticPlayersBySource(
     (p, i) => ({ ...p, rank: 51 + i })
   );
   return [...top50, ...cbsRest];
+}
+
+/**
+ * Compute a consensus ranking across all 5 sources using Reciprocal Rank Fusion (RRF).
+ *
+ * Score for each player = Σ 1 / (K + rank_in_source), summed over every source where
+ * the player appears. K=60 is the standard RRF constant; it limits the outsized influence
+ * of a single very-high ranking and ensures graceful handling of source disagreement.
+ *
+ * cbsPlayers is passed in separately so callers can supply the live DB list rather than
+ * the static fallback, keeping the consensus current after admin re-seeds.
+ */
+export function computeConsensusRanking(
+  cbsPlayers: Array<{ rank: number; playerName: string; school: string; position: string }>,
+  year: number
+): Array<{ rank: number; playerName: string; school: string; position: string }> {
+  const K = 60;
+
+  // Build the five source lists. CBS comes from the DB-supplied array; the rest are static
+  // but share the same player universe (top-50 source-specific, 51-200 CBS fallback).
+  const sourceLists = [
+    cbsPlayers,
+    getStaticPlayersBySource(year, "pff"),
+    getStaticPlayersBySource(year, "espn"),
+    getStaticPlayersBySource(year, "nfl"),
+    getStaticPlayersBySource(year, "fox"),
+  ];
+
+  const scores = new Map<string, { score: number; school: string; position: string }>();
+
+  for (const list of sourceLists) {
+    for (const p of list) {
+      if (!scores.has(p.playerName)) {
+        scores.set(p.playerName, { score: 0, school: p.school, position: p.position });
+      }
+      scores.get(p.playerName)!.score += 1 / (K + p.rank);
+    }
+  }
+
+  return Array.from(scores.entries())
+    .sort((a, b) => b[1].score - a[1].score)
+    .map(([playerName, { school, position }], i) => ({
+      rank: i + 1,
+      playerName,
+      school,
+      position,
+    }));
 }

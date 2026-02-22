@@ -8,6 +8,7 @@ import {
   getFirstRoundTeams,
   getTeamNeeds,
   getStaticPlayersBySource,
+  computeConsensusRanking,
   CURRENT_DRAFT_YEAR,
   type RankingSource,
 } from "../config/draft-data.js";
@@ -194,6 +195,10 @@ export const draftController = new Elysia({ prefix: "/draft" })
     if (source === "cbs") {
       const app = await getApp("nfl-draft");
       draftable = app ? await getDraftablePlayers(app.id, year) : [];
+    } else if (source === "all") {
+      const app = await getApp("nfl-draft");
+      const cbsPlayers = app ? await getDraftablePlayers(app.id, year) : [];
+      draftable = computeConsensusRanking(cbsPlayers, year) as DraftablePlayer[];
     } else {
       draftable = getStaticPlayersBySource(year, source) as DraftablePlayer[];
     }
