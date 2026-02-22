@@ -1,3 +1,14 @@
+// Surface any uncaught startup errors with full detail before Vercel swallows them
+process.on("uncaughtException", (err) => {
+  console.error("[UNCAUGHT EXCEPTION]", err?.message ?? String(err));
+  console.error(err?.stack ?? err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[UNHANDLED REJECTION]", reason);
+  process.exit(1);
+});
+
 import { Elysia } from "elysia";
 import { swagger } from "@elysiajs/swagger";
 import { cors } from "@elysiajs/cors";
@@ -11,6 +22,8 @@ import { getDB } from "./db/index.ts";
 import { apps } from "./db/schema.ts";
 import { eq } from "drizzle-orm";
 import { landingPage, appsPage } from "./views/templates.ts";
+
+console.log("[STARTUP] Initializing LLL Experience...");
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
@@ -28,8 +41,15 @@ const baseApp = new Elysia()
 
 useLogger(baseApp);
 
+console.log("[STARTUP] Loading Clerk plugin...");
+
 const app = baseApp
-  .use(clerkPlugin())
+  .use(
+    clerkPlugin({
+      publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+      secretKey: process.env.CLERK_SECRET_KEY,
+    } as any)
+  )
 
   // Protect routes that require auth
   .onBeforeHandle((ctx) => {
@@ -75,9 +95,9 @@ const app = baseApp
       });
     }
     console.error(`[ERROR] ${request.method} ${url.pathname} - ${code} - ${msg}`);
-  })
+  });
 
-;
+console.log("[STARTUP] App ready.");
 
 // Only start a local HTTP server when not running on Vercel.
 if (process.env.VERCEL !== "1") {
