@@ -58,6 +58,7 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
     .htmx-request.htmx-indicator { display: inline-block; }
     .htmx-added { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   </style>
   ${clerkPublishableKey ? `<script>
     window.__clerkToken = null;
@@ -300,15 +301,20 @@ export function draftablePlayersFragment(
 
   const sources = [
     { key: "cbs", label: "CBS" },
+    { key: "pff", label: "PFF" },
     { key: "espn", label: "ESPN" },
     { key: "nfl", label: "NFL" },
     { key: "fox", label: "Fox" },
   ];
 
   return `<div id="draftable-players-panel" class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden" data-source="${escapeHtml(source)}" data-position="${escapeHtml(positionFilter)}">
-  <div class="flex items-center gap-2 px-2 pt-2 pb-1 border-b border-gray-200 bg-gray-50">
+  <div class="flex items-center gap-2 px-2 pt-2 pb-1 border-b border-gray-200 bg-gray-50 flex-wrap">
     <span class="text-xs text-gray-500 shrink-0">Rankings:</span>
     ${sources.map((s) => `<button type="button" class="draft-source-filter px-2 py-0.5 rounded text-xs font-semibold ${s.key === source ? "bg-red-600 text-white" : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"}" data-source="${s.key}">${s.label}</button>`).join("")}
+    <button type="button" id="refresh-players-btn" title="Refresh player list" class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-500 border border-gray-300 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+      <svg id="refresh-icon" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+      Refresh
+    </button>
   </div>
   <div class="flex flex-wrap gap-1 p-2 border-b border-gray-200 bg-gray-50">
     <button type="button" class="draft-pos-filter px-2 py-1 rounded text-sm font-medium ${positionFilter === "OVR" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-300"}" data-pos="OVR">OVR</button>
@@ -348,7 +354,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
         <div class="lg:col-span-2">
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <h2 class="text-lg font-bold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">First round — your picks</h2>
-            <p class="text-xs text-gray-500 px-4 pb-1">Scoring: 3 pts exact, 2 pts ±1 spot, 1 pt ±2 spots. Double-score doubles that slot. Team needs from <a href="https://underdognetwork.com/football/news/2026-nfl-team-needs" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Underdog Network</a>. Look up rankings: <a href="https://www.cbssports.com/nfl/draft/prospect-rankings/" target="_blank" rel="noopener" class="text-blue-600 hover:underline">CBS Sports</a>.</p>
+            <p class="text-xs text-gray-500 px-4 pb-1">Scoring: 3 pts exact, 2 pts ±1 spot, 1 pt ±2 spots. Double-score doubles that slot. Team needs from <a href="https://underdognetwork.com/football/news/2026-nfl-team-needs" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Underdog Network</a>. Rankings: <a href="https://www.cbssports.com/nfl/draft/prospect-rankings/" target="_blank" rel="noopener" class="text-blue-600 hover:underline">CBS</a> · <a href="https://www.pff.com/news/draft-2026-nfl-draft-big-board" target="_blank" rel="noopener" class="text-blue-600 hover:underline">PFF</a> · <a href="https://www.espn.com/nfl/draft/bestavailable" target="_blank" rel="noopener" class="text-blue-600 hover:underline">ESPN</a> · <a href="https://www.nfl.com/draft/tracker/prospects" target="_blank" rel="noopener" class="text-blue-600 hover:underline">NFL.com</a></p>
             <div class="p-4">
               <div
                 hx-get="/draft/${year}/picks"
@@ -363,7 +369,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
         <div>
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <h2 class="text-lg font-bold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">Available players</h2>
-            <p class="text-xs text-gray-500 px-4 pb-1">Switch between CBS, ESPN, NFL.com, and Fox Sports rankings to compare.</p>
+            <p class="text-xs text-gray-500 px-4 pb-1">Switch between CBS, PFF, ESPN, NFL.com, and Fox Sports rankings to compare. Hit Refresh to reload the latest data.</p>
             <div class="p-4">
               <div
                 hx-get="/draft/${year}/players"
@@ -530,6 +536,15 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       document.querySelectorAll('.draft-source-filter').forEach(function(btn) {
         btn.onclick = function() { loadPlayers(getCurrentPos(), this.dataset.source); };
       });
+
+      var refreshBtn = document.getElementById('refresh-players-btn');
+      if (refreshBtn) {
+        refreshBtn.onclick = function() {
+          var icon = document.getElementById('refresh-icon');
+          if (icon) icon.style.animation = 'spin 0.8s linear infinite';
+          loadPlayers(getCurrentPos(), getCurrentSource());
+        };
+      }
     }
   });
 

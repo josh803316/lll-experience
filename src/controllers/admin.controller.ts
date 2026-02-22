@@ -11,7 +11,7 @@ import {
 } from "../db/schema.js";
 import { eq, and, sql } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
-import { getFirstRoundTeams, CURRENT_DRAFT_YEAR } from "../config/draft-data.js";
+import { getFirstRoundTeams, CURRENT_DRAFT_YEAR, CONSENSUS_PLAYERS_2026 } from "../config/draft-data.js";
 import { getEmailForUserId, isAdminEmail, isAdminUserId } from "../lib/clerk-email.js";
 import {
   adminDashboardPage,
@@ -213,6 +213,7 @@ export const adminController = new Elysia({ prefix: "/admin" })
 
     const auth = ctx.auth();
     const userId = String(auth?.userId ?? "");
+    console.log("[ADMIN] Checking admin access", { userId, sessionClaims: auth?.sessionClaims ?? null });
     if (!await isAdminUserId(userId)) {
       ctx.set.status = 403;
       ctx.set.headers["Content-Type"] = "text/html";
@@ -427,6 +428,36 @@ export const adminController = new Elysia({ prefix: "/admin" })
 
     ctx.set.headers["Content-Type"] = "text/html";
     return simulatorPicksFragment(userPicks, simPicks, year, score);
+  })
+
+  // POST /admin/draft/:year/refresh-players — upsert CBS consensus list from static data into DB
+  .post("/draft/:year/refresh-players", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) { ctx.set.status = 404; return "Not found"; }
+
+    const app = await getApp();
+    if (!app) { ctx.set.status = 404; return "App not found"; }
+
+    const players = year === 2026 ? CONSENSUS_PLAYERS_2026 : [];
+    if (players.length === 0) {
+      ctx.set.status = 400;
+      return { ok: false, error: `No static player data available for year ${year}` };
+    }
+
+    const db = getDB();
+    await db.delete(draftablePlayers).where(and(eq(draftablePlayers.appId, app.id), eq(draftablePlayers.year, year)));
+    await db.insert(draftablePlayers).values(
+      players.map((p) => ({
+        appId: app!.id,
+        year,
+        rank: p.rank,
+        playerName: p.playerName,
+        school: p.school,
+        position: p.position,
+      }))
+    );
+
+    return { ok: true, year, count: players.length, message: `Refreshed ${players.length} CBS players for ${year}` };
   })
 
   // DELETE /admin/draft/:year/simulator — reset simulation

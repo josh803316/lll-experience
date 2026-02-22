@@ -141,7 +141,11 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const availableYears = app ? await getAvailableYears(app.id) : [];
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
 
-    // Check admin status for nav link
+    // Check admin status for nav link (logging for admin debug)
+    console.log("[DRAFT] Clerk auth payload", {
+      userId: auth.userId,
+      sessionClaims: auth.sessionClaims ?? null,
+    });
     const isAdmin = await isAdminUserId(String(auth.userId));
 
     ctx.set.headers["Content-Type"] = "text/html";

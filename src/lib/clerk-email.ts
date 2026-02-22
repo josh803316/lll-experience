@@ -17,7 +17,11 @@ function getClerkClient() {
 }
 
 export async function getEmailForUserId(userId: string): Promise<string> {
-  if (cache.has(userId)) return cache.get(userId)!;
+  if (cache.has(userId)) {
+    const email = cache.get(userId)!;
+    console.log("[CLERK_EMAIL] getEmailForUserId (cached)", { userId, email });
+    return email;
+  }
   try {
     const user = await getClerkClient().users.getUser(userId);
     const email =
@@ -26,21 +30,40 @@ export async function getEmailForUserId(userId: string): Promise<string> {
       user.emailAddresses[0]?.emailAddress ??
       "";
     cache.set(userId, email);
+    console.log("[CLERK_EMAIL] getEmailForUserId (from API)", {
+      userId,
+      email,
+      primaryEmailId: user.primaryEmailAddressId,
+      allEmails: user.emailAddresses.map((e) => e.emailAddress),
+    });
     return email;
-  } catch {
+  } catch (err) {
+    console.warn("[CLERK_EMAIL] getEmailForUserId failed", { userId, err });
     return "";
   }
 }
 
-export function isAdminEmail(email: string): boolean {
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+function getAdminEmailsList(): string[] {
+  return (process.env.ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
-  return !!email && adminEmails.includes(email.toLowerCase());
+}
+
+export function isAdminEmail(email: string): boolean {
+  const adminEmails = getAdminEmailsList();
+  const result = !!email && adminEmails.includes(email.toLowerCase());
+  console.log("[CLERK_EMAIL] isAdminEmail", {
+    email: email || "(empty)",
+    adminEmails,
+    result,
+  });
+  return result;
 }
 
 export async function isAdminUserId(userId: string): Promise<boolean> {
   const email = await getEmailForUserId(userId);
-  return isAdminEmail(email);
+  const result = isAdminEmail(email);
+  console.log("[CLERK_EMAIL] isAdminUserId", { userId, email: email || "(empty)", result });
+  return result;
 }
