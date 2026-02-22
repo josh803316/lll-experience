@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_ENV=development bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "lint": "tsc --noEmit",
+    "lint": "bunx tsc --noEmit",
     "db:generate": "drizzle-kit generate --schema=./src/db/schema.ts --dialect=postgresql",
     "db:studio": "drizzle-kit studio --dialect=postgresql",
     "db:migrate": "bun run src/db/migrate.ts",
