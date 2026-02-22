@@ -9,7 +9,7 @@ let appPromise: Promise<{ fetch: (req: Request) => Response | Promise<Response> 
 
 async function getApp() {
   if (!appPromise) {
-    appPromise = import("./src/app.ts").then((m) => m.default);
+    appPromise = import("./src/app.js").then((m) => m.default);
   }
   return appPromise;
 }
