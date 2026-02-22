@@ -85,24 +85,21 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
 export function landingPage(clerkPublishableKey?: string): string {
   const content = `
   <div class="flex flex-col items-center justify-center min-h-screen px-4">
-    <div class="text-center max-w-2xl">
-      <h1 class="text-5xl font-bold text-gray-900 mb-4">LLL Experience</h1>
-      <p class="text-xl text-gray-600 mb-10">Your friend group's home for predictions, picks, and competition.</p>
-      <div id="clerk-auth">
-        <button
-          onclick="window.Clerk?.openSignIn()"
-          class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-lg text-lg transition-colors"
-        >
-          Sign In to Get Started
-        </button>
-      </div>
+    <div class="text-center mb-8">
+      <h1 class="text-5xl font-bold text-gray-900 mb-3">LLL Experience</h1>
+      <p class="text-xl text-gray-600">Your friend group's home for predictions, picks, and competition.</p>
     </div>
+    <div id="sign-in-root"></div>
   </div>
   <script>
     window.addEventListener('load', async () => {
       await window.Clerk?.load();
-      if (window.Clerk?.user) {
+      const clerk = window.Clerk;
+      if (!clerk) return;
+      if (clerk.user) {
         window.location.href = '/apps';
+      } else {
+        clerk.mountSignIn(document.getElementById('sign-in-root'));
       }
     });
   </script>`;
