@@ -300,21 +300,28 @@ export function draftablePlayersFragment(
     .join("");
 
   const sources = [
-    { key: "cbs", label: "CBS" },
-    { key: "pff", label: "PFF" },
-    { key: "espn", label: "ESPN" },
-    { key: "nfl", label: "NFL" },
-    { key: "fox", label: "Fox" },
+    { key: "cbs",  label: "CBS",  url: "https://www.cbssports.com/nfl/draft/prospect-rankings/" },
+    { key: "pff",  label: "PFF",  url: "https://www.pff.com/news/draft-2026-nfl-draft-big-board" },
+    { key: "espn", label: "ESPN", url: "https://www.espn.com/nfl/draft/bestavailable" },
+    { key: "nfl",  label: "NFL",  url: "https://www.nfl.com/news/daniel-jeremiah-s-top-50-2026-nfl-draft-prospect-rankings-1-0" },
+    { key: "fox",  label: "Fox",  url: "https://www.foxsports.com/articles/nfl/2026-nfl-draft-big-board-top-prospects-rankings" },
   ];
+  const activeSource = sources.find((s) => s.key === source) ?? sources[0];
 
   return `<div id="draftable-players-panel" class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden" data-source="${escapeHtml(source)}" data-position="${escapeHtml(positionFilter)}">
   <div class="flex items-center gap-2 px-2 pt-2 pb-1 border-b border-gray-200 bg-gray-50 flex-wrap">
     <span class="text-xs text-gray-500 shrink-0">Rankings:</span>
     ${sources.map((s) => `<button type="button" class="draft-source-filter px-2 py-0.5 rounded text-xs font-semibold ${s.key === source ? "bg-red-600 text-white" : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"}" data-source="${s.key}">${s.label}</button>`).join("")}
-    <button type="button" id="refresh-players-btn" title="Refresh player list" class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-500 border border-gray-300 hover:bg-gray-100 hover:text-gray-700 transition-colors">
-      <svg id="refresh-icon" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-      Refresh
-    </button>
+    <div class="ml-auto flex items-center gap-1">
+      <a href="${escapeHtml(activeSource.url)}" target="_blank" rel="noopener" title="Open ${escapeHtml(activeSource.label)} rankings in a new tab" class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-white text-blue-600 border border-gray-300 hover:bg-blue-50 hover:border-blue-300 transition-colors">
+        Source
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+      </a>
+      <button type="button" id="refresh-players-btn" title="Refresh player list" class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-white text-gray-500 border border-gray-300 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+        <svg id="refresh-icon" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        Refresh
+      </button>
+    </div>
   </div>
   <div class="flex flex-wrap gap-1 p-2 border-b border-gray-200 bg-gray-50">
     <button type="button" class="draft-pos-filter px-2 py-1 rounded text-sm font-medium ${positionFilter === "OVR" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-300"}" data-pos="OVR">OVR</button>
