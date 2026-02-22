@@ -1,3 +1,5 @@
+import { ESPN_PLAYERS_2026_TOP50, NFL_PLAYERS_2026_TOP50, FOX_PLAYERS_2026_TOP50 } from "./rankings.js";
+
 /** 2026 first-round draft order (pick number → team). Source: typical 2026 projections. */
 export const FIRST_ROUND_TEAMS_2026: Record<number, string> = {
   1: "Las Vegas Raiders",
@@ -291,4 +293,32 @@ export function getTeamNeeds(year: number): Record<number, string> {
 export function getConsensusPlayers(year: number): Array<{ rank: number; playerName: string; school: string; position: string }> {
   if (year === 2026) return CONSENSUS_PLAYERS_2026;
   return [];
+}
+
+export type RankingSource = "cbs" | "espn" | "nfl" | "fox";
+
+/**
+ * Returns static rankings for ESPN / NFL.com / Fox Sports sources.
+ * Top-50 are source-specific; ranks 51–200 fall back to the CBS list.
+ * "cbs" is not handled here — the caller should use DB data (seeded from CONSENSUS_PLAYERS_2026).
+ */
+export function getStaticPlayersBySource(
+  year: number,
+  source: RankingSource
+): Array<{ rank: number; playerName: string; school: string; position: string }> {
+  if (year !== 2026) return [];
+  if (source === "cbs") return CONSENSUS_PLAYERS_2026;
+
+  const top50 =
+    source === "espn"
+      ? ESPN_PLAYERS_2026_TOP50
+      : source === "nfl"
+      ? NFL_PLAYERS_2026_TOP50
+      : FOX_PLAYERS_2026_TOP50;
+
+  const top50Names = new Set(top50.map((p) => p.playerName));
+  const cbsRest = CONSENSUS_PLAYERS_2026.filter((p) => !top50Names.has(p.playerName)).map(
+    (p, i) => ({ ...p, rank: 51 + i })
+  );
+  return [...top50, ...cbsRest];
 }

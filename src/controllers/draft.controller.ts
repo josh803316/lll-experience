@@ -7,7 +7,9 @@ import { UsersModel } from "../models/users.model.js";
 import {
   getFirstRoundTeams,
   getTeamNeeds,
+  getStaticPlayersBySource,
   CURRENT_DRAFT_YEAR,
+  type RankingSource,
 } from "../config/draft-data.js";
 import {
   draftLayout,
@@ -138,8 +140,13 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const availableYears = app ? await getAvailableYears(app.id) : [];
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
 
+    // Check admin status for nav link
+    const userEmail = auth.sessionClaims?.email ?? "";
+    const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+    const isAdmin = adminEmails.includes(userEmail.toLowerCase());
+
     ctx.set.headers["Content-Type"] = "text/html";
-    return draftLayout(picks, draftable, draftStarted, year, availableYears, clerkKey);
+    return draftLayout(picks, draftable, draftStarted, year, availableYears, clerkKey, isAdmin);
   })
 
   // GET /draft/:year/picks
@@ -155,8 +162,19 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const picks = app ? await getUserPicks(user.id, app.id, year) : [];
     const draftLocked = app ? await getDraftStarted(app.id, year) : false;
 
+    // When the draft is live, include official picks for the realtime column
+    let officialPicksMap: Map<number, { playerName: string | null }> | undefined;
+    if (draftLocked && app) {
+      const db = getDB();
+      const official = await db
+        .select()
+        .from(officialDraftResults)
+        .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)));
+      officialPicksMap = new Map(official.map((r) => [r.pickNumber, { playerName: r.playerName }]));
+    }
+
     ctx.set.headers["Content-Type"] = "text/html";
-    return picksTableFragment(picks, draftLocked, year);
+    return picksTableFragment(picks, draftLocked, year, officialPicksMap);
   })
 
   // GET /draft/:year/players
@@ -166,12 +184,19 @@ export const draftController = new Elysia({ prefix: "/draft" })
       ctx.set.status = 404;
       return "Not found";
     }
-    const app = await getApp("nfl-draft");
-    const draftable = app ? await getDraftablePlayers(app.id, year) : [];
     const positionFilter = (ctx.query?.position as string) || "OVR";
+    const source = ((ctx.query?.source as string) || "cbs") as RankingSource;
+
+    let draftable: DraftablePlayer[];
+    if (source === "cbs") {
+      const app = await getApp("nfl-draft");
+      draftable = app ? await getDraftablePlayers(app.id, year) : [];
+    } else {
+      draftable = getStaticPlayersBySource(year, source) as DraftablePlayer[];
+    }
 
     ctx.set.headers["Content-Type"] = "text/html";
-    return draftablePlayersFragment(draftable, positionFilter);
+    return draftablePlayersFragment(draftable, positionFilter, source);
   })
 
   // POST /draft/:year/picks

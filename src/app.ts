@@ -4,6 +4,7 @@ import { cors } from "@elysiajs/cors";
 import { clerkPlugin } from "elysia-clerk";
 
 import { draftController } from "./controllers/draft.controller.js";
+import { adminController } from "./controllers/admin.controller.js";
 import { authGuard } from "./guards/auth-guard.js";
 import { useLogger } from "./middleware/logger.middleware.js";
 import { isProtectedRoute } from "./config/route-protection.js";
@@ -64,6 +65,7 @@ const app = baseApp
   .get("/nfl-draft", ({ redirect }) => redirect("/draft"))
 
   .use(draftController)
+  .use(adminController)
 
   .onError(({ error, code, request }) => {
     const url = new URL(request.url);
