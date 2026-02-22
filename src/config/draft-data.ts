@@ -1,75 +1,75 @@
 import { ESPN_PLAYERS_2026_TOP50, NFL_PLAYERS_2026_TOP50, FOX_PLAYERS_2026_TOP50, PFF_PLAYERS_2026_TOP50 } from "./rankings.js";
 
-/** 2026 first-round draft order (pick number → team). Source: typical 2026 projections. */
+/** 2026 first-round draft order (pick number → team). Source: ESPN & NFL Operations (includes traded picks). */
 export const FIRST_ROUND_TEAMS_2026: Record<number, string> = {
   1: "Las Vegas Raiders",
   2: "New York Jets",
   3: "Arizona Cardinals",
   4: "Tennessee Titans",
-  5: "New England Patriots",
-  6: "Denver Broncos",
-  7: "Carolina Panthers",
-  8: "New York Giants",
-  9: "Tampa Bay Buccaneers",
-  10: "Washington Commanders",
-  11: "Chicago Bears",
-  12: "Minnesota Vikings",
-  13: "Green Bay Packers",
-  14: "Jacksonville Jaguars",
-  15: "Indianapolis Colts",
-  16: "Seattle Seahawks",
-  17: "Los Angeles Rams",
-  18: "Pittsburgh Steelers",
-  19: "Atlanta Falcons",
-  20: "Cleveland Browns",
-  21: "Miami Dolphins",
-  22: "Philadelphia Eagles",
-  23: "Buffalo Bills",
-  24: "Detroit Lions",
-  25: "Houston Texans",
-  26: "Baltimore Ravens",
+  5: "New York Giants",
+  6: "Cleveland Browns",
+  7: "Washington Commanders",
+  8: "New Orleans Saints",
+  9: "Kansas City Chiefs",
+  10: "Cincinnati Bengals",
+  11: "Miami Dolphins",
+  12: "Dallas Cowboys",
+  13: "Los Angeles Rams",
+  14: "Baltimore Ravens",
+  15: "Tampa Bay Buccaneers",
+  16: "New York Jets",
+  17: "Detroit Lions",
+  18: "Minnesota Vikings",
+  19: "Carolina Panthers",
+  20: "Dallas Cowboys",
+  21: "Pittsburgh Steelers",
+  22: "Los Angeles Chargers",
+  23: "Philadelphia Eagles",
+  24: "Cleveland Browns",
+  25: "Chicago Bears",
+  26: "Buffalo Bills",
   27: "San Francisco 49ers",
-  28: "Dallas Cowboys",
-  29: "Kansas City Chiefs",
-  30: "Cincinnati Bengals",
-  31: "New Orleans Saints",
-  32: "Los Angeles Chargers",
+  28: "Houston Texans",
+  29: "Los Angeles Rams",
+  30: "Denver Broncos",
+  31: "New England Patriots",
+  32: "Seattle Seahawks",
 };
 
-/** 2026 team needs (pick number → concise needs). Source: Underdog Network 2026 NFL Team Needs. */
+/** 2026 team needs (pick number → concise needs). Remapped to match corrected draft order. */
 export const TEAM_NEEDS_2026: Record<number, string> = {
-  1: "QB, LG, LB, DT, C, RT, WR, EDGE",
-  2: "QB, OG, DT, EDGE, CB",
-  3: "QB, RT, RB, FS, LB, DT, RG",
-  4: "EDGE, WR, RG, CB",
-  5: "EDGE, FS, RT, C, TE, NT",
-  6: "DT, LB, TE, RB, Slot WR",
-  7: "C, LB, FS, EDGE, Slot CB, DT",
-  8: "RT, RG, WR, CB, LB, DT",
-  9: "EDGE, DT, TE, LB, X WR, CB",
-  10: "WR, EDGE, LB, Slot WR, LG",
-  11: "CB, EDGE, DT, FS, SS, LB",
-  12: "QB, FS, CB, LB, Slot WR",
-  13: "DT, LB, CB, LT, RG",
-  14: "LB, CB, FS, DT, RB",
-  15: "QB, RT, EDGE, SS, WR, LB",
-  16: "CB, EDGE, RB, FS, RG",
-  17: "CB, FS, WR, RT, C",
-  18: "QB, LG, CB, WR, DT",
-  19: "DT, LB, TE, QB, WR, CB",
-  20: "QB, RT, RG, LG, C, Slot CB, WR, LB",
-  21: "QB, EDGE, WR, CB, Slot CB, RG",
-  22: "RG, CB, TE, RT, LG, FS",
-  23: "EDGE, LG, C, WR, DT, Slot CB, LB",
-  24: "EDGE, DT, LB, Slot CB, LT, C/RG",
-  25: "RG, DT, RB, SS, RT, C",
-  26: "DT, C, EDGE, FS, WR, TE, CB",
-  27: "WR, LG, DT, C, CB",
-  28: "CB, WR, EDGE, RB, LB, FS",
-  29: "CB, FS, RB, EDGE, X WR",
-  30: "DT, FS, RG, CB, LB, EDGE",
-  31: "LG, DT, EDGE, WR, Slot CB, LB, RB",
-  32: "EDGE, LG, C, RG, DT, FS",
+  1: "QB, LG, LB, DT, C, RT, WR, EDGE",       // Las Vegas Raiders
+  2: "QB, OG, DT, EDGE, CB",                    // New York Jets
+  3: "QB, RT, RB, FS, LB, DT, RG",              // Arizona Cardinals
+  4: "EDGE, WR, RG, CB",                        // Tennessee Titans
+  5: "RT, RG, WR, CB, LB, DT",                 // New York Giants
+  6: "QB, RT, RG, LG, C, Slot CB, WR, LB",     // Cleveland Browns
+  7: "WR, EDGE, LB, Slot WR, LG",              // Washington Commanders
+  8: "LG, DT, EDGE, WR, Slot CB, LB, RB",      // New Orleans Saints
+  9: "CB, FS, RB, EDGE, X WR",                 // Kansas City Chiefs
+  10: "DT, FS, RG, CB, LB, EDGE",              // Cincinnati Bengals
+  11: "QB, EDGE, WR, CB, Slot CB, RG",          // Miami Dolphins
+  12: "CB, WR, EDGE, RB, LB, FS",              // Dallas Cowboys
+  13: "CB, FS, WR, RT, C",                      // Los Angeles Rams
+  14: "DT, C, EDGE, FS, WR, TE, CB",           // Baltimore Ravens
+  15: "EDGE, DT, TE, LB, X WR, CB",            // Tampa Bay Buccaneers
+  16: "QB, OG, DT, EDGE, CB",                   // New York Jets (via Indianapolis Colts)
+  17: "EDGE, DT, LB, Slot CB, LT, C/RG",       // Detroit Lions
+  18: "QB, FS, CB, LB, Slot WR",               // Minnesota Vikings
+  19: "C, LB, FS, EDGE, Slot CB, DT",          // Carolina Panthers
+  20: "CB, WR, EDGE, RB, LB, FS",              // Dallas Cowboys (via Green Bay Packers)
+  21: "QB, LG, CB, WR, DT",                    // Pittsburgh Steelers
+  22: "EDGE, LG, C, RG, DT, FS",              // Los Angeles Chargers
+  23: "RG, CB, TE, RT, LG, FS",               // Philadelphia Eagles
+  24: "QB, RT, RG, LG, C, Slot CB, WR, LB",   // Cleveland Browns (via Jacksonville Jaguars)
+  25: "CB, EDGE, DT, FS, SS, LB",             // Chicago Bears
+  26: "EDGE, LG, C, WR, DT, Slot CB, LB",     // Buffalo Bills
+  27: "WR, LG, DT, C, CB",                    // San Francisco 49ers
+  28: "RG, DT, RB, SS, RT, C",               // Houston Texans
+  29: "CB, FS, WR, RT, C",                    // Los Angeles Rams (2nd pick)
+  30: "DT, LB, TE, RB, Slot WR",             // Denver Broncos
+  31: "EDGE, FS, RT, C, TE, NT",             // New England Patriots
+  32: "CB, EDGE, RB, FS, RG",               // Seattle Seahawks
 };
 
 /** Consensus 2026 draftable players (rank, name, school, position). Top 200 from CBS Sports 2026 prospect rankings. */
