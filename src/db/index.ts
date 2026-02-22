@@ -7,7 +7,7 @@ export type Database = ReturnType<typeof createDB>;
 let db: Database | null = null;
 
 export const createDB = () => {
-  const databaseUrl = process.env.DATABASE_URL ?? process.env.DIRECT_URL;
+  const databaseUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL or DIRECT_URL environment variable is required");
   }
