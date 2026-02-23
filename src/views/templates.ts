@@ -59,6 +59,16 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
     .htmx-added { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .draft-player-chip {
+      background-color: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 6px;
+      padding: 4px 8px;
+      color: #15803d;
+      font-size: 0.875rem;
+      font-weight: 600;
+      max-width: 100%;
+    }
   </style>
   ${clerkPublishableKey ? `<script>
     window.__clerkToken = null;
@@ -184,9 +194,9 @@ function pickTableRow(
 ): string {
   const hasPlayer = pick?.playerName;
   const slotContent = draftLocked
-    ? (hasPlayer ? `<div class="draft-player-chip draft-chip-readonly" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="text-xs text-gray-500">${escapeHtml(pick!.position)}</span>` : ""}</div>` : "<span class=\"text-gray-400 italic\">—</span>")
+    ? (hasPlayer ? `<div class="draft-player-chip flex items-center gap-1 draft-chip-readonly" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="text-xs opacity-70">${escapeHtml(pick!.position)}</span>` : ""}</div>` : "<span class=\"text-gray-400 italic\">—</span>")
     : (hasPlayer
-      ? `<div class="draft-player-chip" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="chip-pos text-xs text-gray-500">${escapeHtml(pick!.position)}</span>` : ""} <button type="button" class="draft-clear-slot ml-1 text-gray-400 hover:text-red-500" title="Clear">×</button></div>`
+      ? `<div class="draft-player-chip flex items-center gap-1" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="chip-pos text-xs opacity-70">${escapeHtml(pick!.position)}</span>` : ""} <button type="button" class="draft-clear-slot ml-1 opacity-40 hover:opacity-100" title="Clear">×</button></div>`
       : `<span class="lg:hidden text-xs text-gray-300 italic pointer-events-none select-none">tap to assign</span>`);
 
   // Score badge: +N shown in number cell when we have a confirmed score
@@ -562,37 +572,41 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   }
 
   function initMobileSlots() {
+    // Ensure slot containers have minimum height as a visual target
     document.querySelectorAll('#picks-table-body .draft-slot-container.draft-slot-droppable').forEach(function(slotEl) {
       slotEl.style.minHeight = '3rem';
-      slotEl.onclick = function(e) {
-        // Let clear-button clicks fall through to the global handler
-        if (e.target && (e.target.classList.contains('draft-clear-slot') || e.target.closest && e.target.closest('.draft-clear-slot'))) return;
+    });
+    // Attach click to the entire row so any tap on the row registers
+    document.querySelectorAll('#picks-table-body .draft-pick-row').forEach(function(rowEl) {
+      rowEl.onclick = function(e) {
+        if (e.target && (e.target.classList.contains('draft-clear-slot') || (e.target.closest && e.target.closest('.draft-clear-slot')))) return;
+        if (e.target && (e.target.type === 'checkbox' || (e.target.closest && e.target.closest('input[type="checkbox"]')))) return;
+        var slotEl = rowEl.querySelector('.draft-slot-container.draft-slot-droppable');
+        if (!slotEl) return;
         if (!mobileSelectedPlayer) {
-          // No player selected: tap empty slot → go to Players tab to pick one
           if (!slotEl.querySelector('.draft-player-chip')) switchTab('players');
           return;
         }
-        // Assign selected player to this slot
         var pickNum = slotEl.getAttribute('data-pick-number');
         while (slotEl.firstChild) slotEl.removeChild(slotEl.firstChild);
         var chip = document.createElement('div');
-        chip.className = 'draft-player-chip flex items-center gap-1 flex-wrap py-0.5';
+        chip.className = 'draft-player-chip flex items-center gap-1';
         chip.setAttribute('data-player-name', mobileSelectedPlayer.playerName);
         chip.setAttribute('data-position', mobileSelectedPlayer.position || '');
         chip.setAttribute('data-pick-number', pickNum || '');
         var nameSpan = document.createElement('span');
-        nameSpan.className = 'chip-name text-sm font-medium';
+        nameSpan.className = 'chip-name';
         nameSpan.textContent = mobileSelectedPlayer.playerName;
         chip.appendChild(nameSpan);
         if (mobileSelectedPlayer.position) {
           var posSpan = document.createElement('span');
-          posSpan.className = 'chip-pos text-xs text-gray-500';
+          posSpan.className = 'chip-pos text-xs opacity-70';
           posSpan.textContent = mobileSelectedPlayer.position;
           chip.appendChild(posSpan);
         }
         var clearBtn = document.createElement('button');
         clearBtn.type = 'button';
-        clearBtn.className = 'draft-clear-slot ml-1 text-gray-400 hover:text-red-500 text-base leading-none';
+        clearBtn.className = 'draft-clear-slot ml-1 opacity-40 hover:opacity-100 text-base leading-none';
         clearBtn.title = 'Clear';
         clearBtn.textContent = '×';
         chip.appendChild(clearBtn);
