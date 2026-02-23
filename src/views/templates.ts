@@ -781,25 +781,25 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     var cbs = document.querySelectorAll('.draft-double-score');
     // Enforce: if any is already checked, disable all others
     var checkedCb = null;
-    cbs.forEach(function(cb) { if ((cb as HTMLInputElement).checked) checkedCb = cb; });
+    cbs.forEach(function(cb) { if (cb.checked) checkedCb = cb; });
     if (checkedCb) {
       cbs.forEach(function(cb) {
-        if (cb !== checkedCb) (cb as HTMLInputElement).disabled = true;
+        if (cb !== checkedCb) cb.disabled = true;
       });
     }
     // Attach change handler for mutual exclusion
     cbs.forEach(function(cb) {
-      (cb as HTMLInputElement).onchange = function() {
+      cb.onchange = function() {
         var allCbs = document.querySelectorAll('.draft-double-score');
-        if ((cb as HTMLInputElement).checked) {
+        if (cb.checked) {
           allCbs.forEach(function(other) {
             if (other !== cb) {
-              (other as HTMLInputElement).checked = false;
-              (other as HTMLInputElement).disabled = true;
+              other.checked = false;
+              other.disabled = true;
             }
           });
         } else {
-          allCbs.forEach(function(other) { (other as HTMLInputElement).disabled = false; });
+          allCbs.forEach(function(other) { other.disabled = false; });
         }
       };
     });
