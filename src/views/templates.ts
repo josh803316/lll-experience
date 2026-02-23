@@ -342,6 +342,7 @@ export function draftablePlayersFragment(
 
   const sources = [
     { key: "all",  label: "All",  url: "https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026" },
+    { key: "avg",  label: "Avg",  url: "https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026" },
     { key: "cbs",  label: "CBS",  url: "https://www.cbssports.com/nfl/draft/prospect-rankings/" },
     { key: "pff",  label: "PFF",  url: "https://www.pff.com/news/draft-2026-nfl-draft-big-board" },
     { key: "espn", label: "ESPN", url: "https://www.espn.com/nfl/draft/bestavailable" },

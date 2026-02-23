@@ -295,7 +295,7 @@ export function getConsensusPlayers(year: number): Array<{ rank: number; playerN
   return [];
 }
 
-export type RankingSource = "cbs" | "espn" | "nfl" | "fox" | "pff" | "all";
+export type RankingSource = "cbs" | "espn" | "nfl" | "fox" | "pff" | "all" | "avg";
 
 /**
  * Returns static rankings for ESPN / NFL.com / Fox Sports sources.
@@ -365,6 +365,65 @@ export function computeConsensusRanking(
   return Array.from(scores.entries())
     .sort((a, b) => b[1].score - a[1].score)
     .map(([playerName, { school, position }], i) => ({
+      rank: i + 1,
+      playerName,
+      school,
+      position,
+    }));
+}
+
+/**
+ * Compute an average position ranking across all 5 sources.
+ *
+ * For each source, players are iterated in overall rank order and assigned a
+ * per-position rank (1st CB seen → CB rank 1, 2nd CB seen → CB rank 2, etc.).
+ * Each player's position ranks are summed across the 5 sources, then divided
+ * by 5 to get their average position rank. The final list is sorted ascending
+ * by that average (lower = better).
+ *
+ * Unlike "All" (RRF over overall ranks), this surfaces players who are
+ * consistently high within their position group across all scouts.
+ */
+export function computeAveragePositionRanking(
+  cbsPlayers: Array<{ rank: number; playerName: string; school: string; position: string }>,
+  year: number
+): Array<{ rank: number; playerName: string; school: string; position: string }> {
+  const sourceLists = [
+    cbsPlayers,
+    getStaticPlayersBySource(year, "pff"),
+    getStaticPlayersBySource(year, "espn"),
+    getStaticPlayersBySource(year, "nfl"),
+    getStaticPlayersBySource(year, "fox"),
+  ];
+
+  // posRankSum[playerName] = { sum, count, school, position }
+  const posRankSum = new Map<string, { sum: number; count: number; school: string; position: string }>();
+
+  for (const list of sourceLists) {
+    const posCounter = new Map<string, number>();
+    // list is already ordered by overall rank ascending
+    for (const p of list) {
+      const posRank = (posCounter.get(p.position) ?? 0) + 1;
+      posCounter.set(p.position, posRank);
+
+      if (!posRankSum.has(p.playerName)) {
+        posRankSum.set(p.playerName, { sum: 0, count: 0, school: p.school, position: p.position });
+      }
+      const entry = posRankSum.get(p.playerName)!;
+      entry.sum += posRank;
+      entry.count += 1;
+    }
+  }
+
+  return Array.from(posRankSum.entries())
+    .map(([playerName, { sum, count, school, position }]) => ({
+      playerName,
+      school,
+      position,
+      avgPosRank: sum / count,
+    }))
+    .sort((a, b) => a.avgPosRank - b.avgPosRank)
+    .map(({ playerName, school, position }, i) => ({
       rank: i + 1,
       playerName,
       school,
