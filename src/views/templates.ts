@@ -1,4 +1,5 @@
 import { getFirstRoundTeams, getTeamNeeds } from "../config/draft-data.js";
+import { PLAYER_SCOUTING_2026 } from "../config/player-scouting.js";
 
 export interface App {
   id: number;
@@ -256,7 +257,9 @@ function pickTableRow(
   </td>`;
   const doubleCell = draftLocked
     ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top">${pick?.doubleScorePick ? "✓" : ""}</td>`
-    : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300" data-pick-number="${num}" ${pick?.doubleScorePick ? "checked" : ""} title="Double score" /></td>`;
+    : num <= 10
+      ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><span class="inline-block w-4 h-4 rounded border border-gray-200 bg-gray-100" title="Double score available from pick 11 onwards"></span></td>`
+      : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300 cursor-pointer" data-pick-number="${num}" ${pick?.doubleScorePick ? "checked" : ""} title="Select as your double score pick" /></td>`;
 
   return `<tr class="draft-pick-row ${style.rowBg}" data-pick-number="${num}">${numCell}${teamCell}${pickCell}${officialCell}${doubleCell}</tr>`;
 }
@@ -488,7 +491,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
 
   <!-- Player info tooltip (desktop hover) -->
   <div id="player-info-tooltip" role="tooltip"
-    class="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-56 text-sm overflow-hidden"
+    class="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-72 text-sm overflow-hidden"
     style="display:none;position:fixed;z-index:9999;pointer-events:none;"></div>
 
   <!-- Player info modal (mobile ⓘ tap) -->
@@ -773,6 +776,35 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     }
   }
 
+  // ---- DOUBLE SCORE: one pick only, pick 11+ only ----
+  function initDoubleScoreLogic() {
+    var cbs = document.querySelectorAll('.draft-double-score');
+    // Enforce: if any is already checked, disable all others
+    var checkedCb = null;
+    cbs.forEach(function(cb) { if ((cb as HTMLInputElement).checked) checkedCb = cb; });
+    if (checkedCb) {
+      cbs.forEach(function(cb) {
+        if (cb !== checkedCb) (cb as HTMLInputElement).disabled = true;
+      });
+    }
+    // Attach change handler for mutual exclusion
+    cbs.forEach(function(cb) {
+      (cb as HTMLInputElement).onchange = function() {
+        var allCbs = document.querySelectorAll('.draft-double-score');
+        if ((cb as HTMLInputElement).checked) {
+          allCbs.forEach(function(other) {
+            if (other !== cb) {
+              (other as HTMLInputElement).checked = false;
+              (other as HTMLInputElement).disabled = true;
+            }
+          });
+        } else {
+          allCbs.forEach(function(other) { (other as HTMLInputElement).disabled = false; });
+        }
+      };
+    });
+  }
+
   // ---- HTMX SWAP HANDLER ----
   document.addEventListener('htmx:afterSwap', function(evt) {
     const t = evt.detail?.target;
@@ -784,6 +816,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       } else {
         initSlotsSortable();
       }
+      initDoubleScoreLogic();
       document.getElementById('picks-table-body')?.querySelectorAll('.draft-clear-slot').forEach(function(btn) {
         btn.onclick = function() {
           const slot = this.closest('.draft-slot-container');
@@ -942,6 +975,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       return acc;
     }, {})
   )};
+  var SCOUTING = ${JSON.stringify(PLAYER_SCOUTING_2026)};
   var TEAM_NEEDS_MAP = ${JSON.stringify(getTeamNeeds(year))};
   var TEAMS_MAP = ${teamsJson};
 
@@ -1003,9 +1037,29 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   function buildInfoHtml(chipEl) {
     var d = getPlayerData(chipEl);
     var ctx = getTeamContext(chipEl);
+    var sc = SCOUTING[d.name.toLowerCase().trim()] || {};
     var posColor = (POS_COLOR[d.position] || 'bg-slate-600') + ' text-white';
-    // WR badge has dark text override
     if (d.position === 'WR') posColor = 'bg-yellow-500 text-gray-900';
+
+    var physLine = (sc.height && sc.weight) ? sc.height + ' · ' + sc.weight : '';
+
+    var scoutHtml = '';
+    if (sc.strengths || sc.weakness || sc.projection || sc.comp) {
+      scoutHtml = '<div class="mt-2 pt-2 border-t border-slate-700 space-y-1.5 text-xs">';
+      if (sc.strengths) {
+        scoutHtml += '<div class="flex gap-1.5"><span class="text-emerald-400 font-bold shrink-0 mt-px">↑</span><span class="text-slate-300 leading-snug">' + esc(sc.strengths) + '</span></div>';
+      }
+      if (sc.weakness) {
+        scoutHtml += '<div class="flex gap-1.5"><span class="text-red-400 font-bold shrink-0 mt-px">↓</span><span class="text-slate-400 leading-snug">' + esc(sc.weakness) + '</span></div>';
+      }
+      if (sc.projection || sc.comp) {
+        scoutHtml += '<div class="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">';
+        if (sc.projection) scoutHtml += '<span><span class="text-slate-500">Proj:</span> <span class="text-slate-300">' + esc(sc.projection) + '</span></span>';
+        if (sc.comp)       scoutHtml += '<span><span class="text-slate-500">Comp:</span> <span class="text-blue-300">' + esc(sc.comp) + '</span></span>';
+        scoutHtml += '</div>';
+      }
+      scoutHtml += '</div>';
+    }
 
     var fitHtml = '';
     if (ctx && ctx.teamName) {
@@ -1013,10 +1067,10 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       var fitColor  = fit === true ? 'text-emerald-400' : fit === false ? 'text-red-400' : 'text-slate-400';
       var fitIcon   = fit === true ? '✓' : fit === false ? '✗' : '–';
       var fitLabel  = fit === true ? 'Good positional fit' : fit === false ? 'Not in top team needs' : '';
-      fitHtml = '<div class="mt-2 pt-2 border-t border-slate-700">'
-        + '<div class="text-slate-300 font-semibold text-xs">' + esc(ctx.teamName) + '</div>'
-        + '<div class="text-slate-400 text-xs mt-0.5 leading-snug">Needs: ' + esc(ctx.needs || '—') + '</div>'
-        + (fitLabel ? '<div class="mt-1 text-xs font-bold ' + fitColor + '">' + fitIcon + ' ' + fitLabel + '</div>' : '')
+      fitHtml = '<div class="mt-2 pt-2 border-t border-slate-700 text-xs">'
+        + '<div class="text-slate-300 font-semibold">' + esc(ctx.teamName) + '</div>'
+        + '<div class="text-slate-400 mt-0.5 leading-snug">Needs: ' + esc(ctx.needs || '—') + '</div>'
+        + (fitLabel ? '<div class="mt-1 font-bold ' + fitColor + '">' + fitIcon + ' ' + fitLabel + '</div>' : '')
         + '</div>';
     }
 
@@ -1024,11 +1078,12 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       + '<div class="flex items-start gap-2">'
       + '<span class="mt-0.5 px-1.5 py-0.5 rounded text-xs font-bold shrink-0 ' + posColor + '">' + esc(d.position || '?') + '</span>'
       + '<div class="min-w-0 flex-1">'
-      + '<div class="font-semibold text-white leading-tight truncate">' + esc(d.name) + '</div>'
-      + (d.school ? '<div class="text-slate-400 text-xs">' + esc(d.school) + '</div>' : '')
+      + '<div class="font-semibold text-white leading-tight">' + esc(d.name) + '</div>'
+      + '<div class="text-slate-400 text-xs mt-0.5">' + (d.school ? esc(d.school) : '') + (physLine ? (d.school ? ' · ' : '') + esc(physLine) : '') + '</div>'
       + '</div>'
       + (d.rank ? '<span class="ml-1 text-slate-400 text-xs shrink-0 pt-0.5">#' + esc(d.rank) + '</span>' : '')
       + '</div>'
+      + scoutHtml
       + fitHtml
       + '</div>';
   }
@@ -1044,7 +1099,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     tip.innerHTML = buildInfoHtml(chipEl);
     tip.style.display = 'block';
     var rect = chipEl.getBoundingClientRect();
-    var TW = 224; // w-56
+    var TW = 288; // w-72
     var margin = 10;
     // Temporarily measure height off-screen
     tip.style.left = '-9999px'; tip.style.top = '-9999px';
@@ -1082,8 +1137,35 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     if (!modal || !modalInner) return;
     var d = getPlayerData(chipEl);
     var ctx = getTeamContext(chipEl);
+    var sc = SCOUTING[d.name.toLowerCase().trim()] || {};
     var posColor = (POS_COLOR[d.position] || 'bg-slate-600') + ' text-white';
     if (d.position === 'WR') posColor = 'bg-yellow-500 text-gray-900';
+
+    var physLine = (sc.height && sc.weight) ? sc.height + ' · ' + sc.weight : '';
+
+    var scoutHtml = '';
+    if (sc.strengths || sc.weakness || sc.projection || sc.comp) {
+      scoutHtml = '<div class="mt-3 space-y-2">';
+      if (sc.strengths) {
+        scoutHtml += '<div class="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">'
+          + '<div class="text-xs font-bold text-emerald-700 mb-0.5">Strengths</div>'
+          + '<div class="text-sm text-gray-700 leading-snug">' + esc(sc.strengths) + '</div>'
+          + '</div>';
+      }
+      if (sc.weakness) {
+        scoutHtml += '<div class="rounded-lg bg-red-50 border border-red-100 px-3 py-2">'
+          + '<div class="text-xs font-bold text-red-700 mb-0.5">Concerns</div>'
+          + '<div class="text-sm text-gray-700 leading-snug">' + esc(sc.weakness) + '</div>'
+          + '</div>';
+      }
+      if (sc.projection || sc.comp) {
+        scoutHtml += '<div class="flex flex-wrap gap-3 text-sm">';
+        if (sc.projection) scoutHtml += '<div><span class="text-gray-500 text-xs font-semibold uppercase tracking-wide">Projection</span><div class="font-medium text-gray-900">' + esc(sc.projection) + '</div></div>';
+        if (sc.comp)       scoutHtml += '<div><span class="text-gray-500 text-xs font-semibold uppercase tracking-wide">NFL Comp</span><div class="font-medium text-blue-700">' + esc(sc.comp) + '</div></div>';
+        scoutHtml += '</div>';
+      }
+      scoutHtml += '</div>';
+    }
 
     var fitHtml = '';
     if (ctx && ctx.teamName) {
@@ -1104,15 +1186,16 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       + '<h3 class="font-bold text-gray-900 text-base">Player Info</h3>'
       + '<button type="button" id="player-info-modal-close" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-lg leading-none">✕</button>'
       + '</div>'
-      + '<div class="px-4 py-4">'
+      + '<div class="px-4 py-4 overflow-y-auto max-h-[70vh]">'
       + '<div class="flex items-start gap-3">'
       + '<span class="mt-0.5 px-2 py-1 rounded text-sm font-bold shrink-0 ' + posColor + '">' + esc(d.position || '?') + '</span>'
       + '<div class="min-w-0 flex-1">'
       + '<div class="font-bold text-gray-900 text-lg leading-tight">' + esc(d.name) + '</div>'
-      + (d.school ? '<div class="text-gray-500 text-sm mt-0.5">' + esc(d.school) + '</div>' : '')
+      + '<div class="text-gray-500 text-sm mt-0.5">' + (d.school ? esc(d.school) : '') + (physLine ? (d.school ? ' · ' : '') + esc(physLine) : '') + '</div>'
       + '</div>'
       + (d.rank ? '<span class="text-gray-400 text-sm shrink-0 pt-1">Rank #' + esc(d.rank) + '</span>' : '')
       + '</div>'
+      + scoutHtml
       + fitHtml
       + '</div>'
       + '</div>';
