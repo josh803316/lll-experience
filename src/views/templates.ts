@@ -247,13 +247,11 @@ function pickTableRow(
   const pickCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
     <div class="draft-slot-container min-h-[2.5rem] ${!draftLocked ? "draft-slot-droppable" : ""}" data-pick-number="${num}" data-team-name="${escapeHtml(teamName)}">${slotContent}</div>
   </td>`;
-  const officialCell = draftLocked
-    ? `<td class="px-3 py-2 border-b border-gray-200 align-top">
+  const officialCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
     ${officialPlayer
       ? `<span class="font-medium ${style.rowBg === "bg-gray-100" ? "text-gray-400" : "text-blue-800"}">${escapeHtml(officialPlayer)}</span>`
       : `<span class="text-gray-300 text-sm">–</span>`}
-  </td>`
-    : "";
+  </td>`;
   const doubleCell = draftLocked
     ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top">${pick?.doubleScorePick ? "✓" : ""}</td>`
     : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300" data-pick-number="${num}" ${pick?.doubleScorePick ? "checked" : ""} title="Double score" /></td>`;
@@ -310,7 +308,7 @@ export function picksTableFragment(
       <th class="px-3 py-2 text-left font-semibold">#</th>
       <th class="px-3 py-2 text-left font-semibold">Team</th>
       <th class="px-3 py-2 text-left font-semibold">${draftLocked ? "YOUR PICK" : "PICK"}</th>
-      ${draftLocked ? `<th class="px-3 py-2 text-left font-semibold">OFFICIAL PICK</th>` : ""}
+      <th class="px-3 py-2 text-left font-semibold">OFFICIAL PICK</th>
       <th class="px-3 py-2 text-center font-semibold w-12 lg:w-auto"><span class="hidden lg:inline">DOUBLE SCORE PICK</span><span class="lg:hidden">2×</span></th>
     </tr></thead>
     <tbody id="picks-table-body">${rows}</tbody>
@@ -389,11 +387,35 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           )
           .join("")}</div></div>`;
 
+  // 2026 NFL Draft Round 1: Thursday April 23, 2026 8:00 PM ET (= 00:00 UTC April 24)
+  const DRAFT_START_ISO: Record<number, string> = {
+    2026: "2026-04-24T00:00:00Z",
+  };
+  const draftStartIso = DRAFT_START_ISO[year] ?? null;
+
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100" data-draft-year="${year}">
     ${draftTopBar(year, "picks", isAdmin)}
     <div class="max-w-7xl mx-auto py-6 px-4">
       ${yearSelector}
+
+      ${!draftLocked && draftStartIso ? `
+      <!-- Countdown clock -->
+      <div id="draft-countdown-banner" class="mb-4 bg-slate-700 border border-slate-600 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">2026 NFL Draft — Round 1 begins</p>
+          <div id="draft-countdown" class="flex items-baseline gap-3 text-white">
+            <span class="text-2xl font-bold tabular-nums" id="cd-days">--</span><span class="text-sm text-slate-400">days</span>
+            <span class="text-2xl font-bold tabular-nums" id="cd-hours">--</span><span class="text-sm text-slate-400">hrs</span>
+            <span class="text-2xl font-bold tabular-nums" id="cd-mins">--</span><span class="text-sm text-slate-400">min</span>
+            <span class="text-2xl font-bold tabular-nums" id="cd-secs">--</span><span class="text-sm text-slate-400">sec</span>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400 sm:text-right">
+          <div class="font-medium text-slate-300">Thu Apr 23 · 8 PM ET</div>
+          <div>Pittsburgh, PA</div>
+        </div>
+      </div>` : ""}
 
       <!-- Desktop-only top save button -->
       ${saveSection("save-picks-top") ? `<div class="hidden lg:block mb-4">${saveSection("save-picks-top")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
@@ -462,6 +484,28 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   </div>
 
   <script>
+// ---- COUNTDOWN CLOCK ----
+(function() {
+  const target = ${draftStartIso ? `new Date(${JSON.stringify(draftStartIso)})` : "null"};
+  if (!target) return;
+  function tick() {
+    const diff = target - Date.now();
+    if (diff <= 0) {
+      const banner = document.getElementById('draft-countdown-banner');
+      if (banner) banner.remove();
+      return;
+    }
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v).padStart(2, '0'); };
+    set('cd-days', d); set('cd-hours', h); set('cd-mins', m); set('cd-secs', s);
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
 (function() {
   const TOTAL_PICKS = 32;
   const DRAFT_YEAR = ${year};

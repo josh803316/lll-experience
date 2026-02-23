@@ -207,9 +207,9 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const picks = app ? await getUserPicks(user.id, app.id, year) : [];
     const draftLocked = app ? await getDraftStarted(app.id, year) : false;
 
-    // When the draft is live, include official picks for the realtime column
+    // Always fetch official picks so the column shows real-time results as they come in
     let officialPicksMap: Map<number, { playerName: string | null }> | undefined;
-    if (draftLocked && app) {
+    if (app) {
       const db = getDB();
       const official = await db
         .select()
