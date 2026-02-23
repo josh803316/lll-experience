@@ -28,7 +28,17 @@ export class UsersModel extends BaseModel<User> {
     data: { email: string; firstName?: string | null; lastName?: string | null }
   ): Promise<User> {
     const existing = await this.findByClerkId(db, clerkId);
-    if (existing) return existing;
+    if (existing) {
+      await db
+        .update(users)
+        .set({
+          email: data.email,
+          firstName: data.firstName ?? null,
+          lastName: data.lastName ?? null,
+        })
+        .where(eq(users.clerkId, clerkId));
+      return { ...existing, ...data, firstName: data.firstName ?? null, lastName: data.lastName ?? null };
+    }
 
     const inserted = await db
       .insert(users)

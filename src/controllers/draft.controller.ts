@@ -12,7 +12,7 @@ import {
   CURRENT_DRAFT_YEAR,
   type RankingSource,
 } from "../config/draft-data.js";
-import { isAdminUserId } from "../lib/clerk-email.js";
+import { getClerkProfile, isAdminUserId } from "../lib/clerk-email.js";
 import {
   draftLayout,
   picksTableFragment,
@@ -39,10 +39,11 @@ function parseYear(param: string | undefined): number | null {
 async function getOrCreateUser(auth: any) {
   const db = getDB();
   const clerkId = String(auth.userId);
+  const profile = await getClerkProfile(clerkId);
   return usersModel.findOrCreate(db, clerkId, {
-    email: auth.sessionClaims?.email ?? `${clerkId}@clerk.local`,
-    firstName: auth.sessionClaims?.firstName ?? null,
-    lastName: auth.sessionClaims?.lastName ?? null,
+    email: profile.email || `${clerkId}@clerk.local`,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
   });
 }
 
@@ -134,13 +135,23 @@ async function buildLeaderboard(appId: number, year: number) {
     .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year)));
   const officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
 
-  const leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }> = [];
+  const leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null; email: string }; score: number; picks: Pick[] }> = [];
   for (const uid of completeUserIds) {
     const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
     if (!u) continue;
+    const needsClerk =
+      !u.firstName && !u.lastName || !u.email || u.email.endsWith("@clerk.local");
+    const profile = needsClerk ? await getClerkProfile(u.clerkId) : null;
+    const firstName = profile ? profile.firstName : u.firstName;
+    const lastName = profile ? profile.lastName : u.lastName;
+    const email = profile ? profile.email : u.email;
     const picks = await getUserPicks(uid, appId, year);
     const doubleSet = new Set(picks.filter((p) => p.doubleScorePick).map((p) => p.pickNumber));
-    leaderboard.push({ user: { id: u.id, firstName: u.firstName, lastName: u.lastName }, score: computeScore(picks, officialResults, doubleSet), picks });
+    leaderboard.push({
+      user: { id: u.id, firstName, lastName, email: email || "" },
+      score: computeScore(picks, officialResults, doubleSet),
+      picks,
+    });
   }
   leaderboard.sort((a, b) => b.score - a.score);
   return leaderboard;
@@ -399,10 +410,18 @@ export const draftController = new Elysia({ prefix: "/draft" })
         .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
         .groupBy(draftPicks.userId);
       const pickCountMap = new Map(pickCounts.map((r) => [r.userId, r.count]));
-      const allUsers: LeaderboardUser[] = allUserRows.map((u) => ({
-        id: u.id, firstName: u.firstName, lastName: u.lastName,
-        pickCount: pickCountMap.get(u.id) ?? 0,
-      }));
+      const allUsers: LeaderboardUser[] = [];
+      for (const u of allUserRows) {
+        const needsClerk = !u.firstName && !u.lastName || !u.email || u.email.endsWith("@clerk.local");
+        const profile = needsClerk ? await getClerkProfile(u.clerkId) : null;
+        allUsers.push({
+          id: u.id,
+          firstName: profile ? profile.firstName : u.firstName,
+          lastName: profile ? profile.lastName : u.lastName,
+          email: (profile ? profile.email : u.email) || "",
+          pickCount: pickCountMap.get(u.id) ?? 0,
+        });
+      }
       return leaderboardPage([], false, year, leaderboardYears, clerkKey, allUsers);
     }
 
@@ -573,15 +592,21 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const completeUserIds = withCount.filter((r) => r.count === TOTAL_PICKS).map((r) => r.userId);
     const officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
 
-    const leaderboard: Array<{ user: { firstName: string | null; lastName: string | null }; score: number }> = [];
+    const leaderboard: Array<{ user: { firstName: string | null; lastName: string | null; email: string }; score: number }> = [];
     for (const uid of completeUserIds) {
       const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
       if (!u) continue;
+      const needsClerk = !u.firstName && !u.lastName || !u.email || u.email.endsWith("@clerk.local");
+      const profile = needsClerk ? await getClerkProfile(u.clerkId) : null;
       const picks = await getUserPicks(uid, app.id, year);
       const doubleSet = new Set(picks.filter((p) => p.doubleScorePick).map((p) => p.pickNumber));
       const score = computeScore(picks, officialResults, doubleSet);
       leaderboard.push({
-        user: { firstName: u.firstName, lastName: u.lastName },
+        user: {
+          firstName: profile ? profile.firstName : u.firstName,
+          lastName: profile ? profile.lastName : u.lastName,
+          email: (profile ? profile.email : u.email) || "",
+        },
         score,
       });
     }

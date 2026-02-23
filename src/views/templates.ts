@@ -99,18 +99,24 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
       const clerk = window.Clerk;
       if (!clerk) return;
 
-      if (clerk.user) {
-        const token = await clerk.session?.getToken();
-        window.__clerkToken = token;
+      async function _refreshClerkToken() {
+        try {
+          const t = await clerk.session?.getToken();
+          if (t) window.__clerkToken = t;
+        } catch (_) {}
       }
 
-      // Inject Bearer token into all protected HTMX requests
-      document.body.addEventListener('htmx:configRequest', async (evt) => {
+      if (clerk.user) {
+        await _refreshClerkToken();
+      }
+
+      // Proactively refresh token every 55s (safe for both 60s dev and 1hr prod tokens)
+      setInterval(_refreshClerkToken, 55_000);
+
+      // Inject Bearer token into all protected HTMX requests (must be synchronous)
+      document.body.addEventListener('htmx:configRequest', function(evt) {
         const path = new URL(evt.detail.path, window.location.origin).pathname;
         if (path.startsWith('/draft') || path.startsWith('/apps')) {
-          if (!window.__clerkToken && clerk.session) {
-            window.__clerkToken = await clerk.session.getToken();
-          }
           if (window.__clerkToken) {
             evt.detail.headers['Authorization'] = 'Bearer ' + window.__clerkToken;
           }
@@ -763,18 +769,98 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     }
   });
 
+  // ---- SAVE HELPERS ----
+  function _setSaveState(btn, state, msg) {
+    if (!btn) return;
+    const originalText = btn.dataset.originalText || btn.textContent;
+    btn.dataset.originalText = originalText;
+    if (state === 'loading') {
+      btn.disabled = true;
+      btn.textContent = '⟳ Saving…';
+    } else if (state === 'success') {
+      btn.disabled = false;
+      btn.textContent = '✓ Saved!';
+      setTimeout(() => { btn.textContent = originalText; }, 2000);
+    } else if (state === 'error') {
+      btn.disabled = false;
+      btn.textContent = originalText;
+      // Show inline error next to the button
+      const old = btn.parentElement?.querySelector('.save-error-msg');
+      if (old) old.remove();
+      const errEl = document.createElement('p');
+      errEl.className = 'save-error-msg text-xs text-red-600 mt-1';
+      errEl.textContent = msg || 'Save failed. Please try again.';
+      btn.parentElement?.appendChild(errEl);
+      setTimeout(() => errEl.remove(), 6000);
+    } else {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
   // ---- GLOBAL CLICK DELEGATION ----
-  document.addEventListener('click', function(e) {
+  document.addEventListener('click', async function(e) {
     const target = e.target;
     if (target && (target.classList?.contains('draft-save-picks') || target.id === 'save-picks-top' || target.id === 'save-picks-bottom' || target.id === 'save-picks-mobile')) {
       e.preventDefault();
+      _setSaveState(target, 'loading');
+
+      // Force-refresh token before each save
+      if (window.Clerk?.session) {
+        try {
+          window.__clerkToken = await window.Clerk.session.getToken();
+        } catch (_) {
+          _setSaveState(target, 'error', 'Session error — please reload the page.');
+          return;
+        }
+      }
+
       const state = getState();
-      htmx.ajax('POST', '/draft/' + DRAFT_YEAR + '/picks', {
-        values: { picks: JSON.stringify(state) },
-        target: '#picks-table-wrapper',
-        swap: 'outerHTML',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      const body = 'picks=' + encodeURIComponent(JSON.stringify(state));
+      const doFetch = (tok) => fetch('/draft/' + DRAFT_YEAR + '/picks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...(tok ? { 'Authorization': 'Bearer ' + tok } : {})
+        },
+        body
       });
+
+      let resp = await doFetch(window.__clerkToken);
+
+      // Auto-retry once on 401 with a fresh token
+      if (resp.status === 401 && window.Clerk?.session) {
+        try {
+          window.__clerkToken = await window.Clerk.session.getToken({ skipCache: true });
+          resp = await doFetch(window.__clerkToken);
+        } catch (_) {
+          _setSaveState(target, 'error', 'Session expired — please reload the page.');
+          return;
+        }
+      }
+
+      if (!resp.ok) {
+        const msg = resp.status === 401
+          ? 'Session expired — please reload the page.'
+          : 'Error ' + resp.status + ' — please try again.';
+        _setSaveState(target, 'error', msg);
+        return;
+      }
+
+      const html = await resp.text();
+      const wrapper = document.getElementById('picks-table-wrapper');
+      if (wrapper) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const newEl = tmp.firstElementChild;
+        if (newEl) {
+          wrapper.replaceWith(newEl);
+          initSlotsSortable();
+          initMobileSlots();
+          markUsedPlayers();
+        }
+      }
+      _setSaveState(target, 'success');
     }
     if (target?.classList?.contains('draft-clear-slot')) {
       const slot = target.closest('.draft-slot-container');
@@ -825,6 +911,7 @@ export interface LeaderboardUser {
   id: number;
   firstName: string | null;
   lastName: string | null;
+  email: string;
   pickCount: number;
 }
 
@@ -840,19 +927,27 @@ function rankMedal(rank: number): string {
   return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
 }
 
+function displayName(u: { firstName: string | null; lastName: string | null; email?: string }): string {
+  const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+  if (name) return name;
+  if (u.email) return u.email;
+  return "Player";
+}
+
 export function leaderboardScoresFragment(
-  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number }>,
+  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null; email: string }; score: number }>,
   draftStarted: boolean,
   year: number
 ): string {
-  const displayName = (u: { firstName: string | null; lastName: string | null }) =>
-    [u.firstName, u.lastName].filter(Boolean).join(" ") || "Player";
   const rows = leaderboard
     .map(
       (e, i) =>
         `<tr class="border-b border-gray-200">
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
-          <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(displayName(e.user))}</td>
+          <td class="px-4 py-2.5">
+            <div class="font-medium text-gray-900">${escapeHtml(displayName(e.user))}</div>
+            ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ""}
+          </td>
           <td class="px-4 py-2.5 font-bold ${e.score > 0 ? "text-green-700" : "text-gray-400"}">${e.score} pts</td>
         </tr>`
     )
@@ -873,7 +968,7 @@ export function leaderboardScoresFragment(
 }
 
 export function leaderboardPage(
-  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }>,
+  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null; email: string }; score: number; picks: Pick[] }>,
   draftStarted: boolean,
   year: number,
   availableYears: number[],
@@ -881,8 +976,6 @@ export function leaderboardPage(
   allUsers?: LeaderboardUser[],
   historicalWinners?: HistoricalWinnerEntry[]
 ): string {
-  const displayName = (u: { firstName: string | null; lastName: string | null }) =>
-    [u.firstName, u.lastName].filter(Boolean).join(" ") || "Player";
 
   // ── Historical past-year view ──────────────────────────────────────────────
   const pastYearContent = historicalWinners && historicalWinners.length > 0
@@ -929,7 +1022,10 @@ export function leaderboardPage(
                  ? `<span class="text-gray-400">— Not started</span>`
                  : `<span class="text-yellow-600">${u.pickCount}/32</span>`;
                return `<tr class="border-b border-gray-100 last:border-0">
-                 <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(name)}</td>
+                 <td class="px-4 py-2.5">
+                   <div class="font-medium text-gray-900">${escapeHtml(name)}</div>
+                   ${u.email ? `<div class="text-xs text-gray-500">${escapeHtml(u.email)}</div>` : ""}
+                 </td>
                  <td class="px-4 py-2.5 text-right text-sm">${status}</td>
                </tr>`;
              }).join("")}
@@ -1021,19 +1117,24 @@ export function submittedMocksPage(
 }
 
 export function resultsPage(
-  leaderboard: Array<{ user: { firstName: string | null; lastName: string | null }; score: number }>,
+  leaderboard: Array<{ user: { firstName: string | null; lastName: string | null; email: string }; score: number }>,
   officialRows: Array<{ pickNumber: number; playerName: string | null; teamName: string | null }>,
   draftStarted: boolean,
   year: number,
   availableYears: number[],
   clerkPublishableKey?: string
 ): string {
-  const displayName = (u: { firstName: string | null; lastName: string | null }) =>
-    [u.firstName, u.lastName].filter(Boolean).join(" ") || "Player";
   const scoreRows = leaderboard
     .map(
       (e, i) =>
-        `<tr class="border-b border-gray-200"><td class="px-4 py-2 font-medium">${i + 1}</td><td class="px-4 py-2">${escapeHtml(displayName(e.user))}</td><td class="px-4 py-2 font-semibold">${e.score}</td></tr>`
+        `<tr class="border-b border-gray-200">
+          <td class="px-4 py-2 font-medium">${i + 1}</td>
+          <td class="px-4 py-2">
+            <div>${escapeHtml(displayName(e.user))}</div>
+            ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ""}
+          </td>
+          <td class="px-4 py-2 font-semibold">${e.score}</td>
+        </tr>`
     )
     .join("");
   const officialRowsHtml =

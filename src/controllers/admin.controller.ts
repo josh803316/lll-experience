@@ -13,7 +13,7 @@ import {
 import { eq, and, sql, asc } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
 import { getFirstRoundTeams, CURRENT_DRAFT_YEAR, CONSENSUS_PLAYERS_2026 } from "../config/draft-data.js";
-import { getEmailForUserId, isAdminEmail, isAdminUserId } from "../lib/clerk-email.js";
+import { getClerkProfile, getEmailForUserId, isAdminEmail, isAdminUserId } from "../lib/clerk-email.js";
 import {
   adminDashboardPage,
   officialPicksEditorFragment,
@@ -76,10 +76,11 @@ async function getOfficialPicks(appId: number, year: number): Promise<OfficialPi
 async function getOrCreateUser(auth: any) {
   const db = getDB();
   const clerkId = String(auth.userId);
+  const profile = await getClerkProfile(clerkId);
   return usersModel.findOrCreate(db, clerkId, {
-    email: auth.sessionClaims?.email ?? `${clerkId}@clerk.local`,
-    firstName: auth.sessionClaims?.firstName ?? null,
-    lastName: auth.sessionClaims?.lastName ?? null,
+    email: profile.email || `${clerkId}@clerk.local`,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
   });
 }
 

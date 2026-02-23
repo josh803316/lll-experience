@@ -5,8 +5,14 @@
  */
 import { createClerkClient } from "@clerk/backend";
 
-// userId → email cache (lives for the server process lifetime)
-const cache = new Map<string, string>();
+export interface ClerkProfile {
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+// userId (clerkId) → profile cache (lives for the server process lifetime)
+const profileCache = new Map<string, ClerkProfile>();
 
 let _client: ReturnType<typeof createClerkClient> | null = null;
 function getClerkClient() {
@@ -16,12 +22,9 @@ function getClerkClient() {
   return _client;
 }
 
-export async function getEmailForUserId(userId: string): Promise<string> {
-  if (cache.has(userId)) {
-    const email = cache.get(userId)!;
-    console.log("[CLERK_EMAIL] getEmailForUserId (cached)", { userId, email });
-    return email;
-  }
+export async function getClerkProfile(userId: string): Promise<ClerkProfile> {
+  const cached = profileCache.get(userId);
+  if (cached) return cached;
   try {
     const user = await getClerkClient().users.getUser(userId);
     const email =
@@ -29,18 +32,22 @@ export async function getEmailForUserId(userId: string): Promise<string> {
         ?.emailAddress ??
       user.emailAddresses[0]?.emailAddress ??
       "";
-    cache.set(userId, email);
-    console.log("[CLERK_EMAIL] getEmailForUserId (from API)", {
-      userId,
+    const profile: ClerkProfile = {
       email,
-      primaryEmailId: user.primaryEmailAddressId,
-      allEmails: user.emailAddresses.map((e) => e.emailAddress),
-    });
-    return email;
+      firstName: user.firstName ?? null,
+      lastName: user.lastName ?? null,
+    };
+    profileCache.set(userId, profile);
+    return profile;
   } catch (err) {
-    console.warn("[CLERK_EMAIL] getEmailForUserId failed", { userId, err });
-    return "";
+    console.warn("[CLERK_EMAIL] getClerkProfile failed", { userId, err });
+    return { email: "", firstName: null, lastName: null };
   }
+}
+
+export async function getEmailForUserId(userId: string): Promise<string> {
+  const profile = await getClerkProfile(userId);
+  return profile.email;
 }
 
 function getAdminEmailsList(): string[] {
