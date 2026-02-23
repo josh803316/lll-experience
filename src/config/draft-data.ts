@@ -297,6 +297,46 @@ export function getConsensusPlayers(year: number): Array<{ rank: number; playerN
 
 export type RankingSource = "cbs" | "espn" | "nfl" | "fox" | "pff" | "all" | "avg";
 
+// ---------------------------------------------------------------------------
+// Name normalization helpers
+// ---------------------------------------------------------------------------
+
+const NAME_SUFFIXES = new Set(["jr.", "jr", "sr.", "sr", "ii", "iii", "iv", "v"]);
+
+/** Extracts the last name portion, ignoring generation suffixes like Jr./II/III. */
+function extractLastName(fullName: string): string {
+  const parts = fullName.toLowerCase().split(" ").filter((p) => !NAME_SUFFIXES.has(p));
+  return parts[parts.length - 1] ?? fullName.toLowerCase();
+}
+
+type PlayerLike = { playerName: string; school: string; position: string };
+
+/**
+ * Builds a lookup from (lastNameLower|position|schoolLower) → canonical full name,
+ * using the provided list as the authority. CBS is always passed as the authority.
+ */
+function buildCanonicalNameMap(canonicalList: PlayerLike[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const p of canonicalList) {
+    const key = `${extractLastName(p.playerName)}|${p.position}|${p.school.toLowerCase()}`;
+    if (!map.has(key)) map.set(key, p.playerName);
+  }
+  return map;
+}
+
+/**
+ * Remaps any player whose full name differs from the canonical list but whose
+ * (last name, position, school) triple matches. This de-duplicates entries like
+ * "Kevin Concepcion" (source A) vs "KC Concepcion" (CBS) for the same prospect.
+ */
+function normalizeNames<T extends PlayerLike>(players: T[], canonicalMap: Map<string, string>): T[] {
+  return players.map((p) => {
+    const key = `${extractLastName(p.playerName)}|${p.position}|${p.school.toLowerCase()}`;
+    const canonical = canonicalMap.get(key);
+    return canonical && canonical !== p.playerName ? { ...p, playerName: canonical } : p;
+  });
+}
+
 /**
  * Returns static rankings for ESPN / NFL.com / Fox Sports sources.
  * Top-50 are source-specific; ranks 51–200 fall back to the CBS list.
@@ -309,7 +349,7 @@ export function getStaticPlayersBySource(
   if (year !== 2026) return [];
   if (source === "cbs") return CONSENSUS_PLAYERS_2026;
 
-  const top50 =
+  const rawTop50 =
     source === "espn"
       ? ESPN_PLAYERS_2026_TOP50
       : source === "nfl"
@@ -317,6 +357,12 @@ export function getStaticPlayersBySource(
       : source === "pff"
       ? PFF_PLAYERS_2026_TOP50
       : FOX_PLAYERS_2026_TOP50;
+
+  // Normalize names in the source-specific top-50 against CBS so that
+  // differently-spelled names for the same prospect (same last name + school +
+  // position) resolve to the CBS canonical spelling.
+  const canonicalMap = buildCanonicalNameMap(CONSENSUS_PLAYERS_2026);
+  const top50 = normalizeNames(rawTop50, canonicalMap);
 
   const top50Names = new Set(top50.map((p) => p.playerName));
   const cbsRest = CONSENSUS_PLAYERS_2026.filter((p) => !top50Names.has(p.playerName)).map(
@@ -343,12 +389,16 @@ export function computeConsensusRanking(
 
   // Build the five source lists. CBS comes from the DB-supplied array; the rest are static
   // but share the same player universe (top-50 source-specific, 51-200 CBS fallback).
+  // Normalize all non-CBS lists against CBS so that alternate name spellings for
+  // the same prospect (same last name + school + position) are collapsed to the
+  // CBS canonical name before scores are aggregated.
+  const canonicalMap = buildCanonicalNameMap(cbsPlayers);
   const sourceLists = [
     cbsPlayers,
-    getStaticPlayersBySource(year, "pff"),
-    getStaticPlayersBySource(year, "espn"),
-    getStaticPlayersBySource(year, "nfl"),
-    getStaticPlayersBySource(year, "fox"),
+    normalizeNames(getStaticPlayersBySource(year, "pff"), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, "espn"), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, "nfl"), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, "fox"), canonicalMap),
   ];
 
   const scores = new Map<string, { score: number; school: string; position: string }>();
@@ -388,12 +438,13 @@ export function computeAveragePositionRanking(
   cbsPlayers: Array<{ rank: number; playerName: string; school: string; position: string }>,
   year: number
 ): Array<{ rank: number; playerName: string; school: string; position: string }> {
+  const canonicalMap = buildCanonicalNameMap(cbsPlayers);
   const sourceLists = [
     cbsPlayers,
-    getStaticPlayersBySource(year, "pff"),
-    getStaticPlayersBySource(year, "espn"),
-    getStaticPlayersBySource(year, "nfl"),
-    getStaticPlayersBySource(year, "fox"),
+    normalizeNames(getStaticPlayersBySource(year, "pff"), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, "espn"), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, "nfl"), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, "fox"), canonicalMap),
   ];
 
   // posRankSum[playerName] = { sum, count, school, position }
