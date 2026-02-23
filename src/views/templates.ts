@@ -971,29 +971,38 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
 // ---- PLAYER INFO TOOLTIP & MODAL ----
 (function() {
   var PLAYER_DATA = ${JSON.stringify((() => {
-    // Build per-source rank lookups so the tooltip can show a source-rank
-    // breakdown as a fallback when no hand-written scouting entry exists.
-    const srcs: Record<string, Record<string, number>> = { cbs: {}, pff: {}, espn: {}, nfl: {}, fox: {} };
-    for (const p of draftable) srcs.cbs[p.playerName.toLowerCase().trim()] = p.rank;
+    // Build per-source rank + info lookups. Keyed by lowercased player name.
+    type SrcEntry = { rank: number; school: string; position: string };
+    const srcs: Record<string, Record<string, SrcEntry>> = { cbs: {}, pff: {}, espn: {}, nfl: {}, fox: {} };
+    for (const p of draftable) srcs.cbs[p.playerName.toLowerCase().trim()] = { rank: p.rank, school: p.school, position: p.position };
     for (const src of ["pff","espn","nfl","fox"] as const) {
       for (const p of getStaticPlayersBySource(year, src)) {
-        srcs[src][p.playerName.toLowerCase().trim()] = p.rank;
+        srcs[src][p.playerName.toLowerCase().trim()] = { rank: p.rank, school: p.school, position: p.position };
       }
     }
-    return draftable.reduce((acc: Record<string, {rank: number; school: string; position: string; sourceRanks: Record<string, number>}>, p) => {
-      const key = p.playerName.toLowerCase().trim();
-      acc[key] = {
-        rank: p.rank, school: p.school, position: p.position,
+    // Union of ALL players across every source so chips from any source list
+    // (including PFF-only players absent from the CBS top-200) always get an entry.
+    const allKeys = new Set([
+      ...Object.keys(srcs.cbs), ...Object.keys(srcs.pff),
+      ...Object.keys(srcs.espn), ...Object.keys(srcs.nfl), ...Object.keys(srcs.fox),
+    ]);
+    const result: Record<string, {rank: number; school: string; position: string; sourceRanks: Record<string, number>}> = {};
+    for (const key of allKeys) {
+      const info = srcs.cbs[key] ?? srcs.pff[key] ?? srcs.espn[key] ?? srcs.nfl[key] ?? srcs.fox[key];
+      result[key] = {
+        rank:     srcs.cbs[key]?.rank  ?? 0,
+        school:   info.school,
+        position: info.position,
         sourceRanks: {
-          cbs:  srcs.cbs[key]  ?? 0,
-          pff:  srcs.pff[key]  ?? 0,
-          espn: srcs.espn[key] ?? 0,
-          nfl:  srcs.nfl[key]  ?? 0,
-          fox:  srcs.fox[key]  ?? 0,
+          cbs:  srcs.cbs[key]?.rank  ?? 0,
+          pff:  srcs.pff[key]?.rank  ?? 0,
+          espn: srcs.espn[key]?.rank ?? 0,
+          nfl:  srcs.nfl[key]?.rank  ?? 0,
+          fox:  srcs.fox[key]?.rank  ?? 0,
         },
       };
-      return acc;
-    }, {});
+    }
+    return result;
   })())};
   var SCOUTING = ${JSON.stringify(PLAYER_SCOUTING_2026)};
   var TEAM_NEEDS_MAP = ${JSON.stringify(getTeamNeeds(year))};
