@@ -8,8 +8,9 @@ import {
   draftSettings,
   draftablePlayers,
   officialDraftResults,
+  draftHistoricalWinners,
 } from "../db/schema.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, asc } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
 import { getFirstRoundTeams, CURRENT_DRAFT_YEAR, CONSENSUS_PLAYERS_2026 } from "../config/draft-data.js";
 import { getEmailForUserId, isAdminEmail, isAdminUserId } from "../lib/clerk-email.js";
@@ -19,8 +20,10 @@ import {
   adminPickRow,
   simulatorPage,
   simulatorPicksFragment,
+  historicalWinnersFragment,
   type OfficialPick,
   type SimPick,
+  type HistoricalWinner,
 } from "../views/admin-templates.js";
 import { type Pick } from "../views/templates.js";
 
@@ -249,9 +252,10 @@ export const adminController = new Elysia({ prefix: "/admin" })
     const submissionCount = submissionsResult.filter((r) => r.count === 32).length;
     const adminEmails = getAdminEmails();
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
+    const pastYears = [CURRENT_DRAFT_YEAR - 1, CURRENT_DRAFT_YEAR - 2, CURRENT_DRAFT_YEAR - 3];
 
     ctx.set.headers["Content-Type"] = "text/html";
-    return adminDashboardPage(officialPicks, draftStarted, year, submissionCount, adminEmails, clerkKey);
+    return adminDashboardPage(officialPicks, draftStarted, year, submissionCount, adminEmails, clerkKey, pastYears);
   })
 
   // POST /admin/draft/:year/start — lock picks and mark draft started
@@ -458,6 +462,71 @@ export const adminController = new Elysia({ prefix: "/admin" })
     );
 
     return { ok: true, year, count: players.length, message: `Refreshed ${players.length} CBS players for ${year}` };
+  })
+
+  // GET /admin/draft/:year/historical-winners — fragment for HTMX tab content
+  .get("/draft/:year/historical-winners", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null || year >= CURRENT_DRAFT_YEAR || year < CURRENT_DRAFT_YEAR - 3) {
+      ctx.set.status = 400; return "Invalid year for historical winners";
+    }
+    const app = await getApp();
+    if (!app) { ctx.set.status = 404; return "App not found"; }
+    const db = getDB();
+    const winners: HistoricalWinner[] = await db
+      .select()
+      .from(draftHistoricalWinners)
+      .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
+      .orderBy(asc(draftHistoricalWinners.rank));
+    ctx.set.headers["Content-Type"] = "text/html";
+    return historicalWinnersFragment(winners, year);
+  })
+
+  // POST /admin/draft/:year/historical-winners — add a winner
+  .post("/draft/:year/historical-winners", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null || year >= CURRENT_DRAFT_YEAR || year < CURRENT_DRAFT_YEAR - 3) {
+      ctx.set.status = 400; return "Invalid year";
+    }
+    const app = await getApp();
+    if (!app) { ctx.set.status = 404; return "App not found"; }
+    const body = ctx.body as Record<string, string>;
+    const rank = parseInt(body.rank ?? "1");
+    const name = (body.name ?? "").trim();
+    const email = (body.email ?? "").trim() || null;
+    const score = body.score ? parseInt(body.score) : null;
+    if (!name || isNaN(rank) || rank < 1 || rank > 3) {
+      ctx.set.status = 400; return "Name and valid rank (1–3) required";
+    }
+    const db = getDB();
+    await db.insert(draftHistoricalWinners).values({ appId: app.id, year, rank, name, email, score });
+    const winners: HistoricalWinner[] = await db
+      .select()
+      .from(draftHistoricalWinners)
+      .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
+      .orderBy(asc(draftHistoricalWinners.rank));
+    ctx.set.headers["Content-Type"] = "text/html";
+    return historicalWinnersFragment(winners, year);
+  })
+
+  // DELETE /admin/draft/:year/historical-winners/:id — remove a winner
+  .delete("/draft/:year/historical-winners/:id", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    const id = parseInt(ctx.params?.id ?? "");
+    if (year == null || isNaN(id)) { ctx.set.status = 400; return "Invalid params"; }
+    const app = await getApp();
+    if (!app) { ctx.set.status = 404; return "App not found"; }
+    const db = getDB();
+    await db
+      .delete(draftHistoricalWinners)
+      .where(and(eq(draftHistoricalWinners.id, id), eq(draftHistoricalWinners.appId, app.id)));
+    const winners: HistoricalWinner[] = await db
+      .select()
+      .from(draftHistoricalWinners)
+      .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
+      .orderBy(asc(draftHistoricalWinners.rank));
+    ctx.set.headers["Content-Type"] = "text/html";
+    return historicalWinnersFragment(winners, year);
   })
 
   // DELETE /admin/draft/:year/simulator — reset simulation

@@ -1,6 +1,14 @@
 import { baseLayout, escapeHtml, type Pick } from "./templates.js";
 import { getFirstRoundTeams, CURRENT_DRAFT_YEAR } from "../config/draft-data.js";
 
+export interface HistoricalWinner {
+  id: number;
+  rank: number;
+  name: string;
+  email: string | null;
+  score: number | null;
+}
+
 export interface OfficialPick {
   pickNumber: number;
   playerName: string | null;
@@ -134,6 +142,79 @@ export function officialPicksEditorFragment(
 </div>`;
 }
 
+// ─── Historical winners editor ───────────────────────────────────────────────
+
+export function historicalWinnersFragment(winners: HistoricalWinner[], year: number): string {
+  const rankLabel = (r: number) => r === 1 ? "🥇 1st" : r === 2 ? "🥈 2nd" : r === 3 ? "🥉 3rd" : `${r}th`;
+
+  const existingRows = winners.map((w) => `
+  <tr id="hw-row-${w.id}" class="border-b border-gray-100 hover:bg-gray-50">
+    <td class="px-3 py-2 text-sm font-medium w-20">${rankLabel(w.rank)}</td>
+    <td class="px-3 py-2 text-sm font-medium text-gray-900">${escapeHtml(w.name)}</td>
+    <td class="px-3 py-2 text-sm text-gray-500">${w.email ? escapeHtml(w.email) : "—"}</td>
+    <td class="px-3 py-2 text-sm text-gray-500 w-20">${w.score != null ? `${w.score} pts` : "—"}</td>
+    <td class="px-3 py-2 w-20">
+      <button type="button"
+        hx-delete="/admin/draft/${year}/historical-winners/${w.id}"
+        hx-target="#hw-content"
+        hx-swap="innerHTML"
+        hx-confirm="Remove this winner entry?"
+        class="px-2 py-1 text-xs bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded transition-colors">
+        Remove
+      </button>
+    </td>
+  </tr>`).join("");
+
+  return `
+  <table class="w-full text-sm mb-4 border border-gray-200 rounded-lg overflow-hidden">
+    <thead class="bg-gray-100">
+      <tr>
+        <th class="px-3 py-2 text-left font-semibold text-gray-700">Place</th>
+        <th class="px-3 py-2 text-left font-semibold text-gray-700">Name</th>
+        <th class="px-3 py-2 text-left font-semibold text-gray-700">Email</th>
+        <th class="px-3 py-2 text-left font-semibold text-gray-700">Score</th>
+        <th class="px-3 py-2"></th>
+      </tr>
+    </thead>
+    <tbody>
+      ${existingRows || `<tr><td colspan="5" class="px-3 py-4 text-center text-gray-400">No winners entered yet for ${year}.</td></tr>`}
+    </tbody>
+  </table>
+  <form
+    hx-post="/admin/draft/${year}/historical-winners"
+    hx-target="#hw-content"
+    hx-swap="innerHTML"
+    class="flex flex-wrap gap-2 items-end bg-gray-50 p-3 rounded-lg border border-dashed border-gray-300">
+    <div>
+      <label class="block text-xs text-gray-500 mb-1">Place</label>
+      <select name="rank" required class="border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none bg-white">
+        <option value="1">🥇 1st</option>
+        <option value="2">🥈 2nd</option>
+        <option value="3">🥉 3rd</option>
+      </select>
+    </div>
+    <div class="flex-1 min-w-[140px]">
+      <label class="block text-xs text-gray-500 mb-1">Name <span class="text-red-400">*</span></label>
+      <input name="name" required placeholder="Full name"
+        class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none">
+    </div>
+    <div class="flex-1 min-w-[160px]">
+      <label class="block text-xs text-gray-500 mb-1">Email (optional)</label>
+      <input name="email" type="email" placeholder="email@example.com"
+        class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none">
+    </div>
+    <div class="w-24">
+      <label class="block text-xs text-gray-500 mb-1">Score (optional)</label>
+      <input name="score" type="number" min="0" placeholder="pts"
+        class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-orange-400 focus:outline-none">
+    </div>
+    <button type="submit"
+      class="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-sm transition-colors whitespace-nowrap">
+      + Add Winner
+    </button>
+  </form>`;
+}
+
 // ─── Admin dashboard page ────────────────────────────────────────────────────
 
 export function adminDashboardPage(
@@ -142,7 +223,8 @@ export function adminDashboardPage(
   year: number,
   submissionCount: number,
   adminEmails: string[],
-  clerkPublishableKey?: string
+  clerkPublishableKey?: string,
+  pastYears: number[] = []
 ): string {
   const statusBadge = draftStarted
     ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">● Draft started — picks locked</span>`
@@ -185,6 +267,27 @@ export function adminDashboardPage(
         <p class="text-xs text-gray-500 mb-3">Enter picks as they are announced. Use "Sync from ESPN Live" during the actual draft to auto-fill. You can manually correct any entry.</p>
         ${officialPicksEditorFragment(officialPicks, year)}
       </div>
+
+      <!-- Historical Winners -->
+      ${pastYears.length > 0 ? `<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <h2 class="text-base font-bold text-gray-900 mb-1">Past Year Winners</h2>
+        <p class="text-xs text-gray-500 mb-3">Record the final standings from previous drafts. Shown on the public leaderboard for each past year.</p>
+        <div class="flex gap-0 mb-4 border-b border-gray-200" id="hw-year-tabs">
+          ${pastYears.map((y, i) => `<button type="button"
+            class="hw-tab-btn px-4 py-2 text-sm font-medium transition-colors ${i === 0 ? "border-b-2 border-orange-500 text-orange-600 -mb-px" : "text-gray-500 hover:text-gray-700"}"
+            hx-get="/admin/draft/${y}/historical-winners"
+            hx-target="#hw-content"
+            hx-swap="innerHTML"
+            onclick="document.querySelectorAll('.hw-tab-btn').forEach(b=>{b.classList.remove('border-b-2','border-orange-500','text-orange-600');b.classList.add('text-gray-500')});this.classList.add('border-b-2','border-orange-500','text-orange-600');this.classList.remove('text-gray-500')"
+            >${y}</button>`).join("")}
+        </div>
+        <div id="hw-content"
+          hx-get="/admin/draft/${pastYears[0]}/historical-winners"
+          hx-trigger="load"
+          hx-swap="innerHTML">
+          <div class="py-4 text-center text-gray-400 text-sm">Loading…</div>
+        </div>
+      </div>` : ""}
 
       <!-- Admin config info -->
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">

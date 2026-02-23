@@ -57,3 +57,14 @@ export const officialDraftResults = pgTable("official_draft_results", {
   playerName: text("player_name"),
   teamName: text("team_name"),
 });
+
+export const draftHistoricalWinners = pgTable("draft_historical_winners", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id").references(() => apps.id, { onDelete: "cascade" }).notNull(),
+  year: integer("year").notNull(),
+  rank: integer("rank").notNull(),
+  name: text("name").notNull(),
+  email: text("email"),
+  score: integer("score"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

@@ -1,8 +1,8 @@
 import { Elysia, t } from "elysia";
 import { authGuard } from "../guards/auth-guard.js";
 import { getDB } from "../db/index.js";
-import { draftPicks, apps, users, draftablePlayers, draftSettings, officialDraftResults } from "../db/schema.js";
-import { eq, and, sql } from "drizzle-orm";
+import { draftPicks, apps, users, draftablePlayers, draftSettings, officialDraftResults, draftHistoricalWinners } from "../db/schema.js";
+import { eq, and, sql, asc } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
 import {
   getFirstRoundTeams,
@@ -18,10 +18,13 @@ import {
   picksTableFragment,
   draftablePlayersFragment,
   leaderboardPage,
+  leaderboardScoresFragment,
   submittedMocksPage,
   resultsPage,
   type Pick,
   type DraftablePlayer,
+  type LeaderboardUser,
+  type HistoricalWinnerEntry,
 } from "../views/templates.js";
 
 const usersModel = new UsersModel();
@@ -114,6 +117,33 @@ function computeScore(
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+async function buildLeaderboard(appId: number, year: number) {
+  const db = getDB();
+  const withCount = await db
+    .select({ userId: draftPicks.userId, count: sql<number>`count(*)::int` })
+    .from(draftPicks)
+    .where(and(eq(draftPicks.appId, appId), eq(draftPicks.year, year)))
+    .groupBy(draftPicks.userId);
+  const completeUserIds = withCount.filter((r) => r.count === TOTAL_PICKS).map((r) => r.userId);
+
+  const officialRows = await db
+    .select()
+    .from(officialDraftResults)
+    .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year)));
+  const officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
+
+  const leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }> = [];
+  for (const uid of completeUserIds) {
+    const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
+    if (!u) continue;
+    const picks = await getUserPicks(uid, appId, year);
+    const doubleSet = new Set(picks.filter((p) => p.doubleScorePick).map((p) => p.pickNumber));
+    leaderboard.push({ user: { id: u.id, firstName: u.firstName, lastName: u.lastName }, score: computeScore(picks, officialResults, doubleSet), picks });
+  }
+  leaderboard.sort((a, b) => b.score - a.score);
+  return leaderboard;
 }
 
 export const draftController = new Elysia({ prefix: "/draft" })
@@ -330,56 +360,70 @@ export const draftController = new Elysia({ prefix: "/draft" })
   // GET /draft/:year/leaderboard
   .get("/:year/leaderboard", async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    if (year == null) {
-      ctx.set.status = 404;
-      return "Not found";
-    }
+    if (year == null) { ctx.set.status = 404; return "Not found"; }
     const auth = ctx.auth();
     await getOrCreateUser(auth);
     const app = await getApp("nfl-draft");
-    if (!app) {
-      ctx.set.status = 404;
-      return "App not found";
-    }
+    if (!app) { ctx.set.status = 404; return "App not found"; }
 
     const db = getDB();
+    const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
+    // Always show current year + past 3 years as tabs
+    const leaderboardYears = [CURRENT_DRAFT_YEAR, CURRENT_DRAFT_YEAR - 1, CURRENT_DRAFT_YEAR - 2, CURRENT_DRAFT_YEAR - 3];
+
+    ctx.set.headers["Content-Type"] = "text/html";
+
+    // Past year → show historical winners (or scoring data if admin didn't enter winners)
+    if (year < CURRENT_DRAFT_YEAR) {
+      const historicalWinners: HistoricalWinnerEntry[] = await db
+        .select()
+        .from(draftHistoricalWinners)
+        .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
+        .orderBy(asc(draftHistoricalWinners.rank));
+      if (historicalWinners.length > 0) {
+        return leaderboardPage([], false, year, leaderboardYears, clerkKey, undefined, historicalWinners);
+      }
+      // Fall back to picks-based scoring if data exists
+      const leaderboard = await buildLeaderboard(app.id, year);
+      return leaderboardPage(leaderboard, true, year, leaderboardYears, clerkKey, undefined, []);
+    }
+
     const draftStarted = await getDraftStarted(app.id, year);
 
-    const withCount = await db
-      .select({
-        userId: draftPicks.userId,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(draftPicks)
-      .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
-      .groupBy(draftPicks.userId);
-    const completeUserIds = withCount.filter((r) => r.count === TOTAL_PICKS).map((r) => r.userId);
-
-    const officialRows = await db
-      .select()
-      .from(officialDraftResults)
-      .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)));
-    const officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
-
-    const leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }> = [];
-    for (const uid of completeUserIds) {
-      const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
-      if (!u) continue;
-      const picks = await getUserPicks(uid, app.id, year);
-      const doubleSet = new Set(picks.filter((p) => p.doubleScorePick).map((p) => p.pickNumber));
-      const score = computeScore(picks, officialResults, doubleSet);
-      leaderboard.push({
-        user: { id: u.id, firstName: u.firstName, lastName: u.lastName },
-        score,
-        picks,
-      });
+    // Current year pre-draft → list all users with pick status
+    if (!draftStarted) {
+      const allUserRows = await db.select().from(users).orderBy(asc(users.lastName));
+      const pickCounts = await db
+        .select({ userId: draftPicks.userId, count: sql<number>`count(*)::int` })
+        .from(draftPicks)
+        .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
+        .groupBy(draftPicks.userId);
+      const pickCountMap = new Map(pickCounts.map((r) => [r.userId, r.count]));
+      const allUsers: LeaderboardUser[] = allUserRows.map((u) => ({
+        id: u.id, firstName: u.firstName, lastName: u.lastName,
+        pickCount: pickCountMap.get(u.id) ?? 0,
+      }));
+      return leaderboardPage([], false, year, leaderboardYears, clerkKey, allUsers);
     }
-    leaderboard.sort((a, b) => b.score - a.score);
 
-    const availableYears = await getAvailableYears(app.id);
-    const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
+    // Current year, draft live/done → scoring leaderboard
+    const leaderboard = await buildLeaderboard(app.id, year);
+    return leaderboardPage(leaderboard, draftStarted, year, leaderboardYears, clerkKey);
+  })
+
+  // GET /draft/:year/leaderboard/scores — HTMX polling fragment (live scoring only)
+  .get("/:year/leaderboard/scores", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) { ctx.set.status = 404; return "Not found"; }
+    const auth = ctx.auth();
+    await getOrCreateUser(auth);
+    const app = await getApp("nfl-draft");
+    if (!app) { ctx.set.status = 404; return "App not found"; }
+
+    const draftStarted = await getDraftStarted(app.id, year);
+    const leaderboard = await buildLeaderboard(app.id, year);
     ctx.set.headers["Content-Type"] = "text/html";
-    return leaderboardPage(leaderboard, draftStarted, year, availableYears, clerkKey);
+    return leaderboardScoresFragment(leaderboard, draftStarted, year);
   })
 
   // GET /draft/:year/submitted

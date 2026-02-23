@@ -821,33 +821,147 @@ function yearSelector(year: number, availableYears: number[], pathSegment: strin
     .join("")}</div></div>`;
 }
 
-export function leaderboardPage(
-  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }>,
+export interface LeaderboardUser {
+  id: number;
+  firstName: string | null;
+  lastName: string | null;
+  pickCount: number;
+}
+
+export interface HistoricalWinnerEntry {
+  id: number;
+  rank: number;
+  name: string;
+  email: string | null;
+  score: number | null;
+}
+
+function rankMedal(rank: number): string {
+  return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
+}
+
+export function leaderboardScoresFragment(
+  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number }>,
   draftStarted: boolean,
-  year: number,
-  availableYears: number[],
-  clerkPublishableKey?: string
+  year: number
 ): string {
   const displayName = (u: { firstName: string | null; lastName: string | null }) =>
     [u.firstName, u.lastName].filter(Boolean).join(" ") || "Player";
   const rows = leaderboard
     .map(
       (e, i) =>
-        `<tr class="border-b border-gray-200"><td class="px-4 py-2 font-medium">${i + 1}</td><td class="px-4 py-2">${escapeHtml(displayName(e.user))}</td><td class="px-4 py-2 font-semibold">${e.score}</td></tr>`
+        `<tr class="border-b border-gray-200">
+          <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
+          <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(displayName(e.user))}</td>
+          <td class="px-4 py-2.5 font-bold ${e.score > 0 ? "text-green-700" : "text-gray-400"}">${e.score} pts</td>
+        </tr>`
     )
     .join("");
+  const pollingAttrs = draftStarted
+    ? `hx-get="/draft/${year}/leaderboard/scores" hx-trigger="every 30s" hx-swap="outerHTML"`
+    : "";
+  return `<div id="leaderboard-scores" ${pollingAttrs}>
+  <table class="w-full">
+    <thead><tr class="bg-gray-50 text-left border-b border-gray-200">
+      <th class="px-4 py-2 font-semibold text-gray-600 w-8">#</th>
+      <th class="px-4 py-2 font-semibold text-gray-600">Name</th>
+      <th class="px-4 py-2 font-semibold text-gray-600">Score</th>
+    </tr></thead>
+    <tbody>${rows || `<tr><td colspan="3" class="px-4 py-8 text-center text-gray-400">No submissions yet. Scores appear once picks are saved and the draft begins.</td></tr>`}</tbody>
+  </table>
+</div>`;
+}
+
+export function leaderboardPage(
+  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null }; score: number; picks: Pick[] }>,
+  draftStarted: boolean,
+  year: number,
+  availableYears: number[],
+  clerkPublishableKey?: string,
+  allUsers?: LeaderboardUser[],
+  historicalWinners?: HistoricalWinnerEntry[]
+): string {
+  const displayName = (u: { firstName: string | null; lastName: string | null }) =>
+    [u.firstName, u.lastName].filter(Boolean).join(" ") || "Player";
+
+  // ── Historical past-year view ──────────────────────────────────────────────
+  const pastYearContent = historicalWinners && historicalWinners.length > 0
+    ? `<h2 class="text-xl font-bold text-white mb-1">${year} Draft — Final Standings</h2>
+       <p class="text-slate-400 text-sm mb-4">Results as entered by admin.</p>
+       <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+         <div class="divide-y divide-gray-100">
+           ${historicalWinners.sort((a, b) => a.rank - b.rank).map((w) => `
+           <div class="flex items-center gap-4 px-5 py-3.5">
+             <span class="text-2xl w-8 shrink-0">${rankMedal(w.rank)}</span>
+             <div class="flex-1 min-w-0">
+               <div class="font-semibold text-gray-900">${escapeHtml(w.name)}</div>
+               ${w.email ? `<div class="text-xs text-gray-400">${escapeHtml(w.email)}</div>` : ""}
+             </div>
+             ${w.score != null ? `<div class="text-sm font-bold text-gray-700 shrink-0">${w.score} pts</div>` : ""}
+           </div>`).join("")}
+         </div>
+       </div>`
+    : historicalWinners
+      ? `<p class="text-slate-400 mt-4">No results on record for ${year}.</p>`
+      : "";
+
+  // ── Pre-draft: who's playing ───────────────────────────────────────────────
+  const preDraftContent = !draftStarted && allUsers && allUsers.length > 0
+    ? `<h2 class="text-xl font-bold text-white mb-1">${year} Draft — Who's In</h2>
+       <p class="text-slate-300 text-sm mb-4">
+         Picks are hidden until the draft starts. Make yours at
+         <a href="/draft/${year}" class="text-blue-400 hover:underline">the draft room →</a>
+       </p>
+       <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+         <table class="w-full">
+           <thead><tr class="bg-gray-50 text-left border-b border-gray-200">
+             <th class="px-4 py-2 font-semibold text-gray-600">Name</th>
+             <th class="px-4 py-2 font-semibold text-gray-600 text-right">Picks</th>
+           </tr></thead>
+           <tbody>
+             ${allUsers.sort((a, b) => b.pickCount - a.pickCount || (displayName(a) < displayName(b) ? -1 : 1)).map((u) => {
+               const name = displayName(u);
+               const complete = u.pickCount >= 32;
+               const none = u.pickCount === 0;
+               const status = complete
+                 ? `<span class="text-green-600 font-semibold">✓ Submitted</span>`
+                 : none
+                 ? `<span class="text-gray-400">— Not started</span>`
+                 : `<span class="text-yellow-600">${u.pickCount}/32</span>`;
+               return `<tr class="border-b border-gray-100 last:border-0">
+                 <td class="px-4 py-2.5 font-medium text-gray-900">${escapeHtml(name)}</td>
+                 <td class="px-4 py-2.5 text-right text-sm">${status}</td>
+               </tr>`;
+             }).join("")}
+           </tbody>
+         </table>
+       </div>`
+    : "";
+
+  // ── Live / post-draft scoring ──────────────────────────────────────────────
+  const scoringContent = (draftStarted || (!allUsers && !historicalWinners))
+    ? `<p class="text-slate-300 text-sm mb-4">
+         ${draftStarted
+           ? "Scores update live as official picks come in — refreshes every 30 seconds."
+           : "Scores will update once the draft starts and official results are in."}
+       </p>
+       <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+         ${leaderboardScoresFragment(leaderboard, draftStarted, year)}
+       </div>`
+    : "";
+
+  const mainContent = historicalWinners !== undefined
+    ? pastYearContent
+    : !draftStarted && allUsers
+    ? preDraftContent
+    : scoringContent;
+
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
     ${draftTopBar(year, "leaderboard")}
     <div class="max-w-2xl mx-auto py-8 px-4">
       ${yearSelector(year, availableYears, "leaderboard")}
-      <p class="text-slate-300 text-sm mt-1">Anyone who saved a full 32-pick entry appears here. ${draftStarted ? "Scores update from official results." : "Scores will update once the draft starts and official results are in."}</p>
-      <div class="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <table class="w-full">
-          <thead><tr class="bg-gray-100 text-left"><th class="px-4 py-2 font-semibold text-gray-700">#</th><th class="px-4 py-2 font-semibold text-gray-700">Player</th><th class="px-4 py-2 font-semibold text-gray-700">Score</th></tr></thead>
-          <tbody>${rows || "<tr><td colspan=\"3\" class=\"px-4 py-6 text-center text-gray-500\">No submissions yet.</td></tr>"}</tbody>
-        </table>
-      </div>
+      ${mainContent}
     </div>
   </div>`;
   return baseLayout(content, `${year} Leaderboard — NFL Draft`, clerkPublishableKey);
