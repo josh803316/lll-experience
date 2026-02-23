@@ -69,6 +69,27 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
       font-weight: 600;
       max-width: 100%;
     }
+    .draft-slot-container { position: relative; }
+    .draft-slot-droppable.drag-over-empty {
+      background-color: #f0fdf4;
+      box-shadow: inset 0 0 0 2px #4ade80;
+      border-radius: 4px;
+    }
+    .draft-slot-droppable.drag-over-swap {
+      background-color: #fff7ed;
+      box-shadow: inset 0 0 0 2px #fb923c;
+      border-radius: 4px;
+    }
+    .draft-slot-droppable.drag-over-swap::after {
+      content: '⇄';
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      font-size: 0.95rem;
+      color: #ea580c;
+      pointer-events: none;
+    }
   </style>
   ${clerkPublishableKey ? `<script>
     window.__clerkToken = null;
@@ -405,8 +426,8 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           </div>
         </div>
 
-        <!-- Players panel (hidden by default on mobile, visible on lg+) -->
-        <div id="panel-players" class="hidden lg:block">
+        <!-- Players panel (hidden by default on mobile, sticky on desktop) -->
+        <div id="panel-players" class="hidden lg:block lg:sticky lg:top-4 lg:self-start">
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <h2 class="text-lg font-bold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">Available players</h2>
             <p class="text-xs text-gray-500 px-4 pb-1">Switch between CBS, PFF, ESPN, NFL.com, and Fox Sports rankings to compare. Hit Refresh to reload the latest data.</p>
@@ -502,25 +523,50 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   }
 
   // ---- DESKTOP: SORTABLE DRAG-AND-DROP ----
+  function clearDragHighlights() {
+    document.querySelectorAll('.drag-over-swap, .drag-over-empty').forEach(function(el) {
+      el.classList.remove('drag-over-swap', 'drag-over-empty');
+    });
+  }
+
   function initSlotsSortable() {
     slotSortables.forEach(function(s) { if (s && s.destroy) s.destroy(); });
     slotSortables = [];
     const slots = document.querySelectorAll('#picks-table-body .draft-slot-container.draft-slot-droppable');
     slots.forEach(function(slotEl) {
       const pickNum = slotEl.getAttribute('data-pick-number');
+
+      // Drag-over swap/empty indicator
+      slotEl.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        const hasChip = !!slotEl.querySelector('.draft-player-chip');
+        slotEl.classList.toggle('drag-over-swap', hasChip);
+        slotEl.classList.toggle('drag-over-empty', !hasChip);
+      });
+      slotEl.addEventListener('dragleave', function(e) {
+        if (!slotEl.contains(e.relatedTarget)) {
+          slotEl.classList.remove('drag-over-swap', 'drag-over-empty');
+        }
+      });
+      slotEl.addEventListener('drop', function() {
+        slotEl.classList.remove('drag-over-swap', 'drag-over-empty');
+      });
+
       if (typeof Sortable !== 'undefined') {
         const sortable = Sortable.create(slotEl, {
           group: { name: 'draft', put: true, pull: true },
           sort: false,
           onAdd: function(evt) {
+            slotEl.classList.remove('drag-over-swap', 'drag-over-empty');
             const item = evt.item;
             while (slotEl.children.length > 1) slotEl.removeChild(slotEl.firstChild);
             item.setAttribute('data-pick-number', pickNum || '');
             item.classList.add('draft-player-chip');
+            item.classList.remove('cursor-grab', 'active:cursor-grabbing', 'hover:bg-gray-50', 'border-b', 'border-gray-100');
             if (!item.querySelector('.draft-clear-slot')) {
               const clearBtn = document.createElement('button');
               clearBtn.type = 'button';
-              clearBtn.className = 'draft-clear-slot ml-1 text-gray-400 hover:text-red-500';
+              clearBtn.className = 'draft-clear-slot ml-1 opacity-40 hover:opacity-100';
               clearBtn.title = 'Clear';
               clearBtn.textContent = '×';
               item.appendChild(clearBtn);
@@ -534,6 +580,9 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     });
     markUsedPlayers();
   }
+
+  // Clean up any stray highlights if drag is cancelled
+  document.addEventListener('dragend', clearDragHighlights);
 
   function initPlayersSortable() {
     const list = document.getElementById('draftable-players-list');
