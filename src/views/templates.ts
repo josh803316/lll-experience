@@ -187,7 +187,7 @@ function pickTableRow(
     ? (hasPlayer ? `<div class="draft-player-chip draft-chip-readonly" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="text-xs text-gray-500">${escapeHtml(pick!.position)}</span>` : ""}</div>` : "<span class=\"text-gray-400 italic\">—</span>")
     : (hasPlayer
       ? `<div class="draft-player-chip" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="chip-pos text-xs text-gray-500">${escapeHtml(pick!.position)}</span>` : ""} <button type="button" class="draft-clear-slot ml-1 text-gray-400 hover:text-red-500" title="Clear">×</button></div>`
-      : "");
+      : `<span class="lg:hidden text-xs text-gray-300 italic pointer-events-none select-none">tap to assign</span>`);
 
   // Score badge: +N shown in number cell when we have a confirmed score
   const scoreBadge = (style.scorePts != null && style.scorePts > 0)
@@ -205,7 +205,7 @@ function pickTableRow(
   const numCell = `<td class="px-3 py-2 border-b border-gray-200 font-medium w-10 align-top ${numTextClass} ${style.accentBorder}">${num}${scoreBadge}</td>`;
   const teamCell = `<td class="px-3 py-2 border-b border-gray-200 align-top ${teamTextClass}">
     <div>${escapeHtml(teamName)}</div>
-    ${teamNeeds ? `<div class="text-xs text-gray-500 mt-0.5" title="Team needs (source: Underdog Network)">${escapeHtml(teamNeeds)}</div>` : ""}
+    ${teamNeeds ? `<div class="hidden lg:block text-xs text-gray-500 mt-0.5" title="Team needs (source: Underdog Network)">${escapeHtml(teamNeeds)}</div>` : ""}
   </td>`;
   const pickCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
     <div class="draft-slot-container min-h-[2.5rem] ${!draftLocked ? "draft-slot-droppable" : ""}" data-pick-number="${num}" data-team-name="${escapeHtml(teamName)}">${slotContent}</div>
@@ -274,7 +274,7 @@ export function picksTableFragment(
       <th class="px-3 py-2 text-left font-semibold">Team</th>
       <th class="px-3 py-2 text-left font-semibold">${draftLocked ? "YOUR PICK" : "PICK"}</th>
       ${draftLocked ? `<th class="px-3 py-2 text-left font-semibold">OFFICIAL PICK</th>` : ""}
-      <th class="px-3 py-2 text-center font-semibold">DOUBLE SCORE PICK</th>
+      <th class="px-3 py-2 text-center font-semibold w-12 lg:w-auto"><span class="hidden lg:inline">DOUBLE SCORE PICK</span><span class="lg:hidden">2×</span></th>
     </tr></thead>
     <tbody id="picks-table-body">${rows}</tbody>
   </table>
@@ -357,13 +357,33 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     ${draftTopBar(year, "picks", isAdmin)}
     <div class="max-w-7xl mx-auto py-6 px-4">
       ${yearSelector}
-      ${saveSection("save-picks-top") ? `<div class="mb-4">${saveSection("save-picks-top")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2">
+
+      <!-- Desktop-only top save button -->
+      ${saveSection("save-picks-top") ? `<div class="hidden lg:block mb-4">${saveSection("save-picks-top")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
+
+      <!-- Mobile tab bar -->
+      <div class="lg:hidden flex rounded-lg overflow-hidden border border-slate-600 mb-3" id="mobile-tab-bar">
+        <button type="button" id="tab-btn-picks" class="flex-1 py-2.5 text-sm font-semibold bg-slate-600 text-white">📋 My Picks</button>
+        <button type="button" id="tab-btn-players" class="flex-1 py-2.5 text-sm font-semibold bg-slate-700 text-slate-400">👥 Players</button>
+      </div>
+
+      <!-- Mobile save button -->
+      ${saveSection("save-picks-mobile") ? `<div class="lg:hidden mb-3">${saveSection("save-picks-mobile")}<p class="text-xs text-gray-500 mt-1">Fill all 32 picks to appear on the leaderboard.</p></div>` : ""}
+
+      <!-- Main grid: 3-col on desktop, tab-controlled on mobile -->
+      <div class="lg:grid lg:grid-cols-3 lg:gap-6">
+
+        <!-- Picks panel (shown by default on mobile) -->
+        <div id="panel-picks" class="lg:col-span-2 mb-6 lg:mb-0">
+          <!-- Selected player banner (mobile only, initially hidden) -->
+          <div id="mobile-selected-banner" class="hidden mb-3 bg-blue-600 text-white px-3 py-2.5 rounded-lg items-center gap-2">
+            <span class="flex-1 text-sm font-medium truncate min-w-0">Tap a slot for: <span id="mobile-selected-name" class="font-bold"></span></span>
+            <button type="button" id="mobile-clear-selection" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-blue-700 hover:bg-blue-500 text-white text-base">✕</button>
+          </div>
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <h2 class="text-lg font-bold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">First round — your picks</h2>
             <p class="text-xs text-gray-500 px-4 pb-1">Scoring: 3 pts exact, 2 pts ±1 spot, 1 pt ±2 spots. Double-score doubles that slot. Team needs from <a href="https://underdognetwork.com/football/news/2026-nfl-team-needs" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Underdog Network</a>. Rankings: <a href="https://www.cbssports.com/nfl/draft/prospect-rankings/" target="_blank" rel="noopener" class="text-blue-600 hover:underline">CBS</a> · <a href="https://www.pff.com/news/draft-2026-nfl-draft-big-board" target="_blank" rel="noopener" class="text-blue-600 hover:underline">PFF</a> · <a href="https://www.espn.com/nfl/draft/bestavailable" target="_blank" rel="noopener" class="text-blue-600 hover:underline">ESPN</a> · <a href="https://www.nfl.com/draft/tracker/prospects" target="_blank" rel="noopener" class="text-blue-600 hover:underline">NFL.com</a></p>
-            <div class="p-4">
+            <div class="p-4 overflow-x-auto">
               <div
                 hx-get="/draft/${year}/picks"
                 hx-trigger="load"
@@ -374,7 +394,9 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
             </div>
           </div>
         </div>
-        <div>
+
+        <!-- Players panel (hidden by default on mobile, visible on lg+) -->
+        <div id="panel-players" class="hidden lg:block">
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <h2 class="text-lg font-bold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">Available players</h2>
             <p class="text-xs text-gray-500 px-4 pb-1">Switch between CBS, PFF, ESPN, NFL.com, and Fox Sports rankings to compare. Hit Refresh to reload the latest data.</p>
@@ -394,8 +416,11 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
             <a href="/draft/${year}/results" class="block w-full py-2.5 px-4 bg-slate-600 hover:bg-slate-500 text-white font-medium rounded-lg text-center transition-colors">Results</a>
           </div>
         </div>
+
       </div>
-      ${saveSection("save-picks-bottom") ? `<div class="mt-6">${saveSection("save-picks-bottom")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
+
+      <!-- Desktop-only bottom save button -->
+      ${saveSection("save-picks-bottom") ? `<div class="hidden lg:block mt-6">${saveSection("save-picks-bottom")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
     </div>
   </div>
 
@@ -412,6 +437,9 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       return p ? { pickNumber: num, playerName: p.playerName, position: p.position || null, teamName: p.teamName || teamName, doubleScorePick: !!p.doubleScorePick } : { pickNumber: num, playerName: null, position: null, teamName, doubleScorePick: false };
     })
   )};
+
+  // ---- UTILITY ----
+  function isMobile() { return window.innerWidth < 1024; }
 
   function getState() {
     const body = document.getElementById('picks-table-body');
@@ -455,7 +483,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       const name = chip.getAttribute('data-player-name');
       if (used.has(name)) {
         chip.classList.add('in-use', 'opacity-50', 'text-gray-400', 'cursor-not-allowed');
-        chip.classList.remove('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing');
+        chip.classList.remove('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing', 'active:bg-blue-50');
       } else {
         chip.classList.remove('in-use', 'opacity-50', 'text-gray-400', 'cursor-not-allowed');
         chip.classList.add('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing');
@@ -463,6 +491,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     });
   }
 
+  // ---- DESKTOP: SORTABLE DRAG-AND-DROP ----
   function initSlotsSortable() {
     slotSortables.forEach(function(s) { if (s && s.destroy) s.destroy(); });
     slotSortables = [];
@@ -509,12 +538,123 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     markUsedPlayers();
   }
 
+  // ---- MOBILE: TAP INTERACTION ----
+  var mobileSelectedPlayer = null;
+
+  function setMobileSelected(player) {
+    mobileSelectedPlayer = player;
+    var banner = document.getElementById('mobile-selected-banner');
+    var nameEl = document.getElementById('mobile-selected-name');
+    if (!banner) return;
+    if (player) {
+      if (nameEl) nameEl.textContent = player.playerName + (player.position ? ' (' + player.position + ')' : '');
+      banner.classList.remove('hidden');
+      banner.classList.add('flex');
+    } else {
+      banner.classList.add('hidden');
+      banner.classList.remove('flex');
+      if (nameEl) nameEl.textContent = '';
+      // Clear selection highlight in player list
+      document.querySelectorAll('#draftable-players-list .mobile-selected').forEach(function(el) {
+        el.classList.remove('mobile-selected', 'bg-blue-50', 'border-l-2', 'border-blue-500');
+      });
+    }
+  }
+
+  function initMobileSlots() {
+    document.querySelectorAll('#picks-table-body .draft-slot-container.draft-slot-droppable').forEach(function(slotEl) {
+      slotEl.style.minHeight = '3rem';
+      slotEl.onclick = function(e) {
+        // Let clear-button clicks fall through to the global handler
+        if (e.target && (e.target.classList.contains('draft-clear-slot') || e.target.closest && e.target.closest('.draft-clear-slot'))) return;
+        if (!mobileSelectedPlayer) {
+          // No player selected: tap empty slot → go to Players tab to pick one
+          if (!slotEl.querySelector('.draft-player-chip')) switchTab('players');
+          return;
+        }
+        // Assign selected player to this slot
+        var pickNum = slotEl.getAttribute('data-pick-number');
+        while (slotEl.firstChild) slotEl.removeChild(slotEl.firstChild);
+        var chip = document.createElement('div');
+        chip.className = 'draft-player-chip flex items-center gap-1 flex-wrap py-0.5';
+        chip.setAttribute('data-player-name', mobileSelectedPlayer.playerName);
+        chip.setAttribute('data-position', mobileSelectedPlayer.position || '');
+        chip.setAttribute('data-pick-number', pickNum || '');
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'chip-name text-sm font-medium';
+        nameSpan.textContent = mobileSelectedPlayer.playerName;
+        chip.appendChild(nameSpan);
+        if (mobileSelectedPlayer.position) {
+          var posSpan = document.createElement('span');
+          posSpan.className = 'chip-pos text-xs text-gray-500';
+          posSpan.textContent = mobileSelectedPlayer.position;
+          chip.appendChild(posSpan);
+        }
+        var clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'draft-clear-slot ml-1 text-gray-400 hover:text-red-500 text-base leading-none';
+        clearBtn.title = 'Clear';
+        clearBtn.textContent = '×';
+        chip.appendChild(clearBtn);
+        slotEl.appendChild(chip);
+        setMobileSelected(null);
+        markUsedPlayers();
+      };
+    });
+    markUsedPlayers();
+  }
+
+  function initMobilePlayerTaps() {
+    document.querySelectorAll('#draftable-players-list .draftable-player-chip').forEach(function(chip) {
+      chip.onclick = function() {
+        if (chip.classList.contains('in-use')) return;
+        // Highlight selected chip
+        document.querySelectorAll('#draftable-players-list .mobile-selected').forEach(function(el) {
+          el.classList.remove('mobile-selected', 'bg-blue-50', 'border-l-2', 'border-blue-500');
+        });
+        chip.classList.add('mobile-selected', 'bg-blue-50', 'border-l-2', 'border-blue-500');
+        setMobileSelected({
+          playerName: chip.getAttribute('data-player-name') || '',
+          position: chip.getAttribute('data-position') || '',
+          school: chip.getAttribute('data-school') || ''
+        });
+        switchTab('picks');
+      };
+    });
+    markUsedPlayers();
+  }
+
+  // ---- MOBILE: TAB SWITCHING ----
+  function switchTab(tab) {
+    var picksPanel = document.getElementById('panel-picks');
+    var playersPanel = document.getElementById('panel-players');
+    var tabPicks = document.getElementById('tab-btn-picks');
+    var tabPlayers = document.getElementById('tab-btn-players');
+    if (!picksPanel || !playersPanel) return;
+    if (tab === 'picks') {
+      picksPanel.classList.remove('hidden');
+      playersPanel.classList.add('hidden');
+      if (tabPicks)   { tabPicks.classList.add('bg-slate-600','text-white'); tabPicks.classList.remove('bg-slate-700','text-slate-400'); }
+      if (tabPlayers) { tabPlayers.classList.remove('bg-slate-600','text-white'); tabPlayers.classList.add('bg-slate-700','text-slate-400'); }
+    } else {
+      picksPanel.classList.add('hidden');
+      playersPanel.classList.remove('hidden');
+      if (tabPlayers) { tabPlayers.classList.add('bg-slate-600','text-white'); tabPlayers.classList.remove('bg-slate-700','text-slate-400'); }
+      if (tabPicks)   { tabPicks.classList.remove('bg-slate-600','text-white'); tabPicks.classList.add('bg-slate-700','text-slate-400'); }
+    }
+  }
+
+  // ---- HTMX SWAP HANDLER ----
   document.addEventListener('htmx:afterSwap', function(evt) {
     const t = evt.detail?.target;
     const picksJustSwapped = t && (t.id === 'picks-table-wrapper' || (t.querySelector && t.querySelector('#picks-table-body')));
     const wrapperPresent = document.getElementById('picks-table-wrapper');
     if (picksJustSwapped || (wrapperPresent && slotSortables.length === 0)) {
-      initSlotsSortable();
+      if (isMobile()) {
+        initMobileSlots();
+      } else {
+        initSlotsSortable();
+      }
       document.getElementById('picks-table-body')?.querySelectorAll('.draft-clear-slot').forEach(function(btn) {
         btn.onclick = function() {
           const slot = this.closest('.draft-slot-container');
@@ -526,7 +666,11 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     if (playersPanel || (t && (t.id === 'draftable-players-panel' || t.querySelector?.('#draftable-players-list')))) {
       const list = document.getElementById('draftable-players-list');
       if (list && list._sortable) { list._sortable.destroy(); list._sortable = null; }
-      initPlayersSortable();
+      if (isMobile()) {
+        initMobilePlayerTaps();
+      } else {
+        initPlayersSortable();
+      }
 
       function getCurrentSource() {
         return document.getElementById('draftable-players-panel')?.dataset?.source || 'all';
@@ -556,9 +700,10 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     }
   });
 
+  // ---- GLOBAL CLICK DELEGATION ----
   document.addEventListener('click', function(e) {
     const target = e.target;
-    if (target && (target.classList?.contains('draft-save-picks') || target.id === 'save-picks-top' || target.id === 'save-picks-bottom')) {
+    if (target && (target.classList?.contains('draft-save-picks') || target.id === 'save-picks-top' || target.id === 'save-picks-bottom' || target.id === 'save-picks-mobile')) {
       e.preventDefault();
       const state = getState();
       htmx.ajax('POST', '/draft/' + DRAFT_YEAR + '/picks', {
@@ -573,6 +718,11 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       if (slot) { while (slot.firstChild) slot.removeChild(slot.firstChild); markUsedPlayers(); }
     }
   });
+
+  // ---- MOBILE TAB & BANNER SETUP ----
+  document.getElementById('tab-btn-picks')?.addEventListener('click', function() { switchTab('picks'); });
+  document.getElementById('tab-btn-players')?.addEventListener('click', function() { switchTab('players'); });
+  document.getElementById('mobile-clear-selection')?.addEventListener('click', function() { setMobileSelected(null); });
 })();
   </script>`;
   return baseLayout(content, "NFL Draft Predictor — LLL Experience", clerkPublishableKey);
