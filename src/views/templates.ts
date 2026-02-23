@@ -59,6 +59,8 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
     .htmx-added { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    #player-info-tooltip { animation: fadeTip 0.1s ease; }
+    @keyframes fadeTip { from { opacity:0; transform:translateY(2px); } to { opacity:1; transform:translateY(0); } }
     .draft-player-chip {
       background-color: #f0fdf4;
       border: 1px solid #86efac;
@@ -325,11 +327,12 @@ export function draftablePlayersFragment(
   const items = filtered
     .map(
       (p) =>
-        `<div class="draftable-player-chip border-b border-gray-100 px-3 py-2 flex items-center gap-2 cursor-grab active:cursor-grabbing hover:bg-gray-50 bg-white" data-player-name="${escapeHtml(p.playerName)}" data-position="${escapeHtml(p.position)}" data-school="${escapeHtml(p.school)}">
+        `<div class="draftable-player-chip border-b border-gray-100 px-3 py-2 flex items-center gap-2 cursor-grab active:cursor-grabbing hover:bg-gray-50 bg-white" data-player-name="${escapeHtml(p.playerName)}" data-position="${escapeHtml(p.position)}" data-school="${escapeHtml(p.school)}" data-rank="${p.rank}">
   <span class="text-gray-500 font-medium w-6">${p.rank}</span>
   <span class="font-medium text-gray-900 flex-1 truncate">${escapeHtml(p.playerName)}</span>
   <span class="text-gray-600 text-sm truncate">${escapeHtml(p.school)}</span>
   <span class="text-gray-600 text-sm">${escapeHtml(p.position)}</span>
+  <button type="button" class="player-info-btn lg:hidden shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:bg-blue-100 active:text-blue-600" title="Player info" aria-label="Player info"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01"/></svg></button>
 </div>`
     )
     .join("");
@@ -481,6 +484,18 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       <!-- Desktop-only bottom save button -->
       ${saveSection("save-picks-bottom") ? `<div class="hidden lg:block mt-6">${saveSection("save-picks-bottom")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
     </div>
+  </div>
+
+  <!-- Player info tooltip (desktop hover) -->
+  <div id="player-info-tooltip" role="tooltip"
+    class="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-56 text-sm overflow-hidden"
+    style="display:none;position:fixed;z-index:9999;pointer-events:none;"></div>
+
+  <!-- Player info modal (mobile ⓘ tap) -->
+  <div id="player-info-modal"
+    class="fixed inset-0 z-[9998] flex items-end sm:items-center justify-center bg-black/50 p-4"
+    style="display:none;">
+    <div id="player-info-modal-inner" class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl"></div>
   </div>
 
   <script>
@@ -719,7 +734,8 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
 
   function initMobilePlayerTaps() {
     document.querySelectorAll('#draftable-players-list .draftable-player-chip').forEach(function(chip) {
-      chip.onclick = function() {
+      chip.onclick = function(e) {
+        if (e.target && e.target.closest && e.target.closest('.player-info-btn')) return;
         if (chip.classList.contains('in-use')) return;
         // Highlight selected chip
         document.querySelectorAll('#draftable-players-list .mobile-selected').forEach(function(el) {
@@ -916,6 +932,215 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   document.getElementById('tab-btn-picks')?.addEventListener('click', function() { switchTab('picks'); });
   document.getElementById('tab-btn-players')?.addEventListener('click', function() { switchTab('players'); });
   document.getElementById('mobile-clear-selection')?.addEventListener('click', function() { setMobileSelected(null); });
+})();
+
+// ---- PLAYER INFO TOOLTIP & MODAL ----
+(function() {
+  var PLAYER_DATA = ${JSON.stringify(
+    draftable.reduce((acc: Record<string, {rank: number; school: string; position: string}>, p) => {
+      acc[p.playerName.toLowerCase().trim()] = { rank: p.rank, school: p.school, position: p.position };
+      return acc;
+    }, {})
+  )};
+  var TEAM_NEEDS_MAP = ${JSON.stringify(getTeamNeeds(year))};
+  var TEAMS_MAP = ${teamsJson};
+
+  // Expands a position abbreviation to aliases that may appear in team needs strings
+  var POS_EXPAND = {
+    'OT':  ['OT','LT','RT'],
+    'OG':  ['OG','LG','RG','IOL'],
+    'IOL': ['IOL','OG','LG','RG','C'],
+    'C':   ['C','IOL'],
+    'S':   ['S','FS','SS'],
+    'CB':  ['CB','Slot CB'],
+    'WR':  ['WR','X WR','Slot WR'],
+  };
+
+  // Position → badge colour (Tailwind bg class)
+  var POS_COLOR = {
+    QB:'bg-red-600', RB:'bg-orange-500', WR:'bg-yellow-500 text-gray-900', TE:'bg-purple-600',
+    OT:'bg-blue-600', OG:'bg-blue-500', IOL:'bg-blue-500', C:'bg-blue-500',
+    EDGE:'bg-green-700', DT:'bg-green-600', LB:'bg-teal-600',
+    CB:'bg-indigo-600', S:'bg-violet-600',
+  };
+
+  function checkFit(pos, needsStr) {
+    if (!pos || !needsStr) return null;
+    var aliases = POS_EXPAND[pos] || [pos];
+    var nl = needsStr.toLowerCase();
+    return aliases.some(function(a) { return nl.indexOf(a.toLowerCase()) !== -1; });
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function getPlayerData(chipEl) {
+    var name = chipEl.getAttribute('data-player-name') || '';
+    var pos  = chipEl.getAttribute('data-position') || '';
+    var schoolAttr = chipEl.getAttribute('data-school') || '';
+    var rankAttr   = chipEl.getAttribute('data-rank') || '';
+    var key  = name.toLowerCase().trim();
+    var pData = PLAYER_DATA[key] || {};
+    return {
+      name:     name,
+      position: pos || pData.position || '',
+      school:   schoolAttr || pData.school || '',
+      rank:     rankAttr || (pData.rank ? String(pData.rank) : ''),
+    };
+  }
+
+  function getTeamContext(chipEl) {
+    var slot = chipEl.closest && chipEl.closest('.draft-slot-container');
+    if (!slot) return null;
+    var pickNum = parseInt(slot.getAttribute('data-pick-number') || '0', 10);
+    if (!pickNum) return null;
+    var teamName = slot.getAttribute('data-team-name') || TEAMS_MAP[pickNum] || '';
+    var needs = TEAM_NEEDS_MAP[pickNum] || '';
+    return { pickNum: pickNum, teamName: teamName, needs: needs };
+  }
+
+  function buildInfoHtml(chipEl) {
+    var d = getPlayerData(chipEl);
+    var ctx = getTeamContext(chipEl);
+    var posColor = (POS_COLOR[d.position] || 'bg-slate-600') + ' text-white';
+    // WR badge has dark text override
+    if (d.position === 'WR') posColor = 'bg-yellow-500 text-gray-900';
+
+    var fitHtml = '';
+    if (ctx && ctx.teamName) {
+      var fit = checkFit(d.position, ctx.needs);
+      var fitColor  = fit === true ? 'text-emerald-400' : fit === false ? 'text-red-400' : 'text-slate-400';
+      var fitIcon   = fit === true ? '✓' : fit === false ? '✗' : '–';
+      var fitLabel  = fit === true ? 'Good positional fit' : fit === false ? 'Not in top team needs' : '';
+      fitHtml = '<div class="mt-2 pt-2 border-t border-slate-700">'
+        + '<div class="text-slate-300 font-semibold text-xs">' + esc(ctx.teamName) + '</div>'
+        + '<div class="text-slate-400 text-xs mt-0.5 leading-snug">Needs: ' + esc(ctx.needs || '—') + '</div>'
+        + (fitLabel ? '<div class="mt-1 text-xs font-bold ' + fitColor + '">' + fitIcon + ' ' + fitLabel + '</div>' : '')
+        + '</div>';
+    }
+
+    return '<div class="p-3">'
+      + '<div class="flex items-start gap-2">'
+      + '<span class="mt-0.5 px-1.5 py-0.5 rounded text-xs font-bold shrink-0 ' + posColor + '">' + esc(d.position || '?') + '</span>'
+      + '<div class="min-w-0 flex-1">'
+      + '<div class="font-semibold text-white leading-tight truncate">' + esc(d.name) + '</div>'
+      + (d.school ? '<div class="text-slate-400 text-xs">' + esc(d.school) + '</div>' : '')
+      + '</div>'
+      + (d.rank ? '<span class="ml-1 text-slate-400 text-xs shrink-0 pt-0.5">#' + esc(d.rank) + '</span>' : '')
+      + '</div>'
+      + fitHtml
+      + '</div>';
+  }
+
+  // ---- DESKTOP TOOLTIP ----
+  var tip = document.getElementById('player-info-tooltip');
+  var hideTimer = null;
+
+  function showTip(chipEl) {
+    if (!tip || window.innerWidth < 1024) return;
+    if (chipEl.classList.contains('sortable-drag') || chipEl.classList.contains('sortable-ghost')) return;
+    clearTimeout(hideTimer);
+    tip.innerHTML = buildInfoHtml(chipEl);
+    tip.style.display = 'block';
+    var rect = chipEl.getBoundingClientRect();
+    var TW = 224; // w-56
+    var margin = 10;
+    // Temporarily measure height off-screen
+    tip.style.left = '-9999px'; tip.style.top = '-9999px';
+    var TH = tip.offsetHeight || 120;
+    var left = rect.right + margin;
+    var top  = rect.top + (rect.height / 2) - (TH / 2);
+    if (left + TW > window.innerWidth - margin) left = rect.left - TW - margin;
+    top  = Math.max(margin, Math.min(window.innerHeight - TH - margin, top));
+    left = Math.max(margin, left);
+    tip.style.left = left + 'px';
+    tip.style.top  = top  + 'px';
+  }
+
+  function hideTip() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function() { if (tip) tip.style.display = 'none'; }, 80);
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    if (window.innerWidth < 1024) return;
+    var chip = e.target && e.target.closest && e.target.closest('.draftable-player-chip, .draft-player-chip');
+    if (chip) showTip(chip);
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (window.innerWidth < 1024) return;
+    var chip = e.target && e.target.closest && e.target.closest('.draftable-player-chip, .draft-player-chip');
+    if (chip && !chip.contains(e.relatedTarget)) hideTip();
+  });
+
+  // ---- MOBILE MODAL ----
+  var modal      = document.getElementById('player-info-modal');
+  var modalInner = document.getElementById('player-info-modal-inner');
+
+  function showModal(chipEl) {
+    if (!modal || !modalInner) return;
+    var d = getPlayerData(chipEl);
+    var ctx = getTeamContext(chipEl);
+    var posColor = (POS_COLOR[d.position] || 'bg-slate-600') + ' text-white';
+    if (d.position === 'WR') posColor = 'bg-yellow-500 text-gray-900';
+
+    var fitHtml = '';
+    if (ctx && ctx.teamName) {
+      var fit = checkFit(d.position, ctx.needs);
+      var fitBg    = fit === true ? 'bg-emerald-50 border-emerald-200' : fit === false ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200';
+      var fitColor = fit === true ? 'text-emerald-700' : fit === false ? 'text-red-700' : 'text-gray-500';
+      var fitIcon  = fit === true ? '✓' : fit === false ? '✗' : '–';
+      var fitLabel = fit === true ? 'Good positional fit' : fit === false ? 'Not in top team needs' : '';
+      fitHtml = '<div class="mt-3 rounded-lg border p-3 ' + fitBg + '">'
+        + '<div class="font-semibold text-gray-800 text-sm">' + esc(ctx.teamName) + '</div>'
+        + '<div class="text-gray-500 text-xs mt-1 leading-snug">Needs: ' + esc(ctx.needs || '—') + '</div>'
+        + (fitLabel ? '<div class="mt-1.5 text-sm font-bold ' + fitColor + '">' + fitIcon + ' ' + fitLabel + '</div>' : '')
+        + '</div>';
+    }
+
+    modalInner.innerHTML = '<div>'
+      + '<div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-200">'
+      + '<h3 class="font-bold text-gray-900 text-base">Player Info</h3>'
+      + '<button type="button" id="player-info-modal-close" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 text-lg leading-none">✕</button>'
+      + '</div>'
+      + '<div class="px-4 py-4">'
+      + '<div class="flex items-start gap-3">'
+      + '<span class="mt-0.5 px-2 py-1 rounded text-sm font-bold shrink-0 ' + posColor + '">' + esc(d.position || '?') + '</span>'
+      + '<div class="min-w-0 flex-1">'
+      + '<div class="font-bold text-gray-900 text-lg leading-tight">' + esc(d.name) + '</div>'
+      + (d.school ? '<div class="text-gray-500 text-sm mt-0.5">' + esc(d.school) + '</div>' : '')
+      + '</div>'
+      + (d.rank ? '<span class="text-gray-400 text-sm shrink-0 pt-1">Rank #' + esc(d.rank) + '</span>' : '')
+      + '</div>'
+      + fitHtml
+      + '</div>'
+      + '</div>';
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function hideModal() {
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target && e.target.closest && e.target.closest('.player-info-btn');
+    if (btn) {
+      e.stopPropagation();
+      e.preventDefault();
+      var chip = btn.closest('.draftable-player-chip, .draft-player-chip') || btn;
+      showModal(chip);
+      return;
+    }
+    if (modal && modal.style.display !== 'none') {
+      if (e.target === modal || (e.target && e.target.closest && e.target.closest('#player-info-modal-close'))) {
+        hideModal();
+      }
+    }
+  });
 })();
   </script>`;
   return baseLayout(content, "NFL Draft Predictor — LLL Experience", clerkPublishableKey);
