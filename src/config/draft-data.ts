@@ -423,16 +423,17 @@ export function computeConsensusRanking(
 }
 
 /**
- * Compute an average position ranking across all 5 sources.
+ * Compute an average overall ranking across all 5 sources.
  *
- * For each source, players are iterated in overall rank order and assigned a
- * per-position rank (1st CB seen → CB rank 1, 2nd CB seen → CB rank 2, etc.).
- * Each player's position ranks are summed across the 5 sources, then divided
- * by 5 to get their average position rank. The final list is sorted ascending
- * by that average (lower = better).
+ * For each player, sum their overall rank number on each source (CBS, PFF,
+ * ESPN, NFL.com, Fox) then divide by the number of sources where they appear.
+ * Because every source list extends to 200 via the CBS fallback, every player
+ * effectively appears in all 5 lists. The final output is sorted ascending by
+ * that average (lower = better), giving an intuitive "average draft slot".
  *
- * Unlike "All" (RRF over overall ranks), this surfaces players who are
- * consistently high within their position group across all scouts.
+ * Unlike "All" (RRF which inflates early picks exponentially), this is a
+ * straight arithmetic mean — a player ranked 10th on every board beats one
+ * ranked 1st on two boards but 50th on the others.
  */
 export function computeAveragePositionRanking(
   cbsPlayers: Array<{ rank: number; playerName: string; school: string; position: string }>,
@@ -447,33 +448,28 @@ export function computeAveragePositionRanking(
     normalizeNames(getStaticPlayersBySource(year, "fox"), canonicalMap),
   ];
 
-  // posRankSum[playerName] = { sum, count, school, position }
-  const posRankSum = new Map<string, { sum: number; count: number; school: string; position: string }>();
+  // rankSum[playerName] = { sum of overall ranks, count, school, position }
+  const rankSum = new Map<string, { sum: number; count: number; school: string; position: string }>();
 
   for (const list of sourceLists) {
-    const posCounter = new Map<string, number>();
-    // list is already ordered by overall rank ascending
     for (const p of list) {
-      const posRank = (posCounter.get(p.position) ?? 0) + 1;
-      posCounter.set(p.position, posRank);
-
-      if (!posRankSum.has(p.playerName)) {
-        posRankSum.set(p.playerName, { sum: 0, count: 0, school: p.school, position: p.position });
+      if (!rankSum.has(p.playerName)) {
+        rankSum.set(p.playerName, { sum: 0, count: 0, school: p.school, position: p.position });
       }
-      const entry = posRankSum.get(p.playerName)!;
-      entry.sum += posRank;
+      const entry = rankSum.get(p.playerName)!;
+      entry.sum += p.rank;
       entry.count += 1;
     }
   }
 
-  return Array.from(posRankSum.entries())
+  return Array.from(rankSum.entries())
     .map(([playerName, { sum, count, school, position }]) => ({
       playerName,
       school,
       position,
-      avgPosRank: sum / count,
+      avgRank: sum / count,
     }))
-    .sort((a, b) => a.avgPosRank - b.avgPosRank)
+    .sort((a, b) => a.avgRank - b.avgRank)
     .map(({ playerName, school, position }, i) => ({
       rank: i + 1,
       playerName,
