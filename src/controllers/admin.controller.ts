@@ -18,11 +18,8 @@ import {
   adminDashboardPage,
   officialPicksEditorFragment,
   adminPickRow,
-  simulatorPage,
-  simulatorPicksFragment,
   historicalWinnersFragment,
   type OfficialPick,
-  type SimPick,
   type HistoricalWinner,
 } from "../views/admin-templates.js";
 import { type Pick } from "../views/templates.js";
@@ -92,66 +89,6 @@ async function getUserPicks(userId: number, appId: number, year: number): Promis
     .where(and(eq(draftPicks.userId, userId), eq(draftPicks.appId, appId), eq(draftPicks.year, year)))
     .orderBy(draftPicks.pickNumber);
   return rows as Pick[];
-}
-
-// ─── Simulator in-memory state ───────────────────────────────────────────────
-// Keyed by year. Reset on server restart.
-const simulatorState = new Map<number, SimPick[]>();
-
-function getSimPicks(year: number): SimPick[] {
-  return simulatorState.get(year) ?? [];
-}
-
-async function pickNextSimPick(appId: number, year: number): Promise<SimPick | null> {
-  const db = getDB();
-  const current = getSimPicks(year);
-  const nextPickNum = current.length + 1;
-  if (nextPickNum > 32) return null;
-
-  const usedNames = new Set(current.map((p) => p.playerName.toLowerCase().trim()));
-  const allPlayers = await db
-    .select()
-    .from(draftablePlayers)
-    .where(and(eq(draftablePlayers.appId, appId), eq(draftablePlayers.year, year)))
-    .orderBy(draftablePlayers.rank);
-
-  const available = allPlayers.filter((p) => !usedNames.has(p.playerName.toLowerCase().trim()));
-  if (available.length === 0) return null;
-
-  // Pick from top-40 available players randomly (simulate realistic picks)
-  const pool = available.slice(0, Math.min(40, available.length));
-  const chosen = pool[Math.floor(Math.random() * pool.length)];
-  const teams = getFirstRoundTeams(year);
-
-  const simPick: SimPick = {
-    pickNumber: nextPickNum,
-    playerName: chosen.playerName,
-    teamName: teams[nextPickNum] ?? `Pick ${nextPickNum}`,
-    position: chosen.position,
-  };
-
-  const updated = [...current, simPick];
-  simulatorState.set(year, updated);
-  return simPick;
-}
-
-function computeSimScore(userPicks: Pick[], simPicks: SimPick[]): number {
-  const officialByPlayer = new Map<string, number>();
-  simPicks.forEach((p) => {
-    officialByPlayer.set(p.playerName.trim().toLowerCase().replace(/\s+/g, " "), p.pickNumber);
-  });
-
-  let score = 0;
-  for (const p of userPicks) {
-    if (!p.playerName) continue;
-    const officialPickNum = officialByPlayer.get(p.playerName.trim().toLowerCase().replace(/\s+/g, " "));
-    if (officialPickNum == null) continue;
-    const diff = Math.abs(p.pickNumber - officialPickNum);
-    const base = diff === 0 ? 3 : diff === 1 ? 2 : diff === 2 ? 1 : 0;
-    const mult = p.doubleScorePick ? 2 : 1;
-    score += base * mult;
-  }
-  return score;
 }
 
 // ─── ESPN live draft sync ─────────────────────────────────────────────────────
@@ -392,49 +329,6 @@ export const adminController = new Elysia({ prefix: "/admin" })
     { params: t.Object({ year: t.String(), pickNumber: t.String() }) }
   )
 
-  // GET /admin/draft/:year/simulator — simulator page
-  .get("/draft/:year/simulator", async (ctx: any) => {
-    const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
-
-    const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
-
-    const auth = ctx.auth();
-    const user = await getOrCreateUser(auth);
-    const [userPicks, simPicks] = await Promise.all([
-      getUserPicks(user.id, app.id, year),
-      Promise.resolve(getSimPicks(year)),
-    ]);
-    const score = computeSimScore(userPicks, simPicks);
-    const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
-
-    ctx.set.headers["Content-Type"] = "text/html";
-    return simulatorPage(userPicks, simPicks, year, score, clerkKey);
-  })
-
-  // POST /admin/draft/:year/simulator/next — reveal next random pick
-  .post("/draft/:year/simulator/next", async (ctx: any) => {
-    const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
-
-    const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
-
-    await pickNextSimPick(app.id, year);
-
-    const auth = ctx.auth();
-    const user = await getOrCreateUser(auth);
-    const [userPicks, simPicks] = await Promise.all([
-      getUserPicks(user.id, app.id, year),
-      Promise.resolve(getSimPicks(year)),
-    ]);
-    const score = computeSimScore(userPicks, simPicks);
-
-    ctx.set.headers["Content-Type"] = "text/html";
-    return simulatorPicksFragment(userPicks, simPicks, year, score);
-  })
-
   // POST /admin/draft/:year/refresh-players — upsert CBS consensus list from static data into DB
   .post("/draft/:year/refresh-players", async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
@@ -528,24 +422,6 @@ export const adminController = new Elysia({ prefix: "/admin" })
       .orderBy(asc(draftHistoricalWinners.rank));
     ctx.set.headers["Content-Type"] = "text/html";
     return historicalWinnersFragment(winners, year);
-  })
-
-  // DELETE /admin/draft/:year/simulator — reset simulation
-  .delete("/draft/:year/simulator", async (ctx: any) => {
-    const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
-
-    simulatorState.delete(year);
-
-    const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
-
-    const auth = ctx.auth();
-    const user = await getOrCreateUser(auth);
-    const userPicks = await getUserPicks(user.id, app.id, year);
-
-    ctx.set.headers["Content-Type"] = "text/html";
-    return simulatorPicksFragment(userPicks, [], year, 0);
   });
 
 function escapeHtmlInline(str: string): string {

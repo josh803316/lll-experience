@@ -18,7 +18,7 @@ export interface OfficialPick {
 
 // ─── Admin nav header ────────────────────────────────────────────────────────
 
-function adminTopBar(year: number, active: "dashboard" | "simulator"): string {
+function adminTopBar(year: number): string {
   return `
   <header class="bg-gray-900 border-b border-gray-700">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
@@ -28,10 +28,6 @@ function adminTopBar(year: number, active: "dashboard" | "simulator"): string {
         <a href="/draft/${year}" class="text-sm text-gray-400 hover:text-white">Selection Room</a>
       </div>
       <h1 class="text-base font-bold text-orange-400 truncate">⚙ Admin — NFL Draft ${year}</h1>
-      <nav class="flex gap-1">
-        <a href="/admin/draft/${year}" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === "dashboard" ? "bg-gray-700 text-white" : "text-gray-400 hover:bg-gray-700 hover:text-white"}">Dashboard</a>
-        <a href="/admin/draft/${year}/simulator" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === "simulator" ? "bg-gray-700 text-white" : "text-gray-400 hover:bg-gray-700 hover:text-white"}">Simulator</a>
-      </nav>
     </div>
   </header>`;
 }
@@ -243,7 +239,7 @@ export function adminDashboardPage(
 
   const content = `
   <div class="min-h-screen bg-gray-50">
-    ${adminTopBar(year, "dashboard")}
+    ${adminTopBar(year)}
     <div class="max-w-7xl mx-auto py-6 px-4 space-y-6">
 
       <!-- Status bar -->
@@ -254,10 +250,6 @@ export function adminDashboardPage(
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           ${startBtn}
-          <a href="/admin/draft/${year}/simulator"
-            class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded font-medium text-sm transition-colors">
-            🎮 Open Simulator
-          </a>
         </div>
       </div>
 
@@ -456,7 +448,7 @@ export function simulatorPage(
 ): string {
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
-    ${adminTopBar(year, "simulator")}
+    ${adminTopBar(year)}
     <div class="max-w-4xl mx-auto py-6 px-4">
       <p class="text-slate-400 text-sm mb-4">
         Simulate the draft by revealing one pick at a time. Your saved picks are shown in "Your Pick". Random players are assigned as official picks. Score updates live. Only visible to admins.

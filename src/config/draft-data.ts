@@ -36,6 +36,17 @@ export const FIRST_ROUND_TEAMS_2026: Record<number, string> = {
   32: "Seattle Seahawks",
 };
 
+/** Daniel Jeremiah 2026 NFL Mock Draft 2.0 — https://www.nfl.com/news/daniel-jeremiah-2026-nfl-mock-draft-2-0 — pick order 1–32. */
+export const DANIEL_JEREMIAH_MOCK_2_0_2026: string[] = [
+  "Fernando Mendoza", "David Bailey", "Francis Mauigoa", "Rueben Bain Jr.", "Carnell Tate",
+  "Spencer Fano", "Arvell Reese", "Makai Lemon", "Jeremiyah Love", "Caleb Downs",
+  "Mansoor Delane", "Jermod McCoy", "Emmanuel McNeil-Warren", "Jordyn Tyson", "Sonny Styles",
+  "Olaivavega Ioane", "T.J. Parker", "Dillon Thieneman", "Keldric Faulk", "Akheem Mesidor",
+  "Denzel Boston", "Kenyon Sadiq", "Blake Miller", "Monroe Freeling", "Peter Woods",
+  "Malachi Fields", "Lee Hunter", "Caleb Lomu", "Colton Hood", "C.J. Allen",
+  "Zion Young", "KC Concepcion",
+];
+
 /** 2026 team needs (pick number → concise needs). Remapped to match corrected draft order. */
 export const TEAM_NEEDS_2026: Record<number, string> = {
   1: "QB, LG, LB, DT, C, RT, WR, EDGE",       // Las Vegas Raiders
@@ -337,6 +348,22 @@ function normalizeNames<T extends PlayerLike>(players: T[], canonicalMap: Map<st
   });
 }
 
+type RankedPlayerLike = { rank: number; playerName: string; school: string; position: string };
+
+/**
+ * Deduplicates a ranked list by (last name, position, school), keeping the entry
+ * with the best (lowest) rank so the same player does not appear multiple times.
+ */
+function deduplicateByPositionSchool<T extends RankedPlayerLike>(players: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const p of players) {
+    const key = `${extractLastName(p.playerName)}|${p.position}|${p.school.toLowerCase()}`;
+    const existing = byKey.get(key);
+    if (!existing || p.rank < existing.rank) byKey.set(key, p);
+  }
+  return Array.from(byKey.values()).sort((a, b) => a.rank - b.rank);
+}
+
 /**
  * Returns static rankings for ESPN / NFL.com / Fox Sports sources.
  * Top-50 are source-specific; ranks 51–200 fall back to the CBS list.
@@ -362,7 +389,9 @@ export function getStaticPlayersBySource(
   // differently-spelled names for the same prospect (same last name + school +
   // position) resolve to the CBS canonical spelling.
   const canonicalMap = buildCanonicalNameMap(CONSENSUS_PLAYERS_2026);
-  const top50 = normalizeNames(rawTop50, canonicalMap);
+  const top50Normalized = normalizeNames(rawTop50, canonicalMap);
+  // Deduplicate by (last name, position, school) so the same player appears once per source (best rank kept).
+  const top50 = deduplicateByPositionSchool(top50Normalized);
 
   const top50Names = new Set(top50.map((p) => p.playerName));
   const cbsRest = CONSENSUS_PLAYERS_2026.filter((p) => !top50Names.has(p.playerName)).map(
