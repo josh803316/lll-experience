@@ -1,4 +1,4 @@
-import { text, timestamp, pgTable, serial, integer, boolean } from "drizzle-orm/pg-core";
+import { text, timestamp, pgTable, serial, integer, boolean, bigint, jsonb } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -47,6 +47,16 @@ export const draftSettings = pgTable("draft_settings", {
   appId: integer("app_id").references(() => apps.id, { onDelete: "cascade" }).notNull(),
   year: integer("year").notNull(),
   draftStartedAt: timestamp("draft_started_at"),
+});
+
+/** Persisted mock simulation state so reload/restart keeps current reveal progress. */
+export const draftMockState = pgTable("draft_mock_state", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id").references(() => apps.id, { onDelete: "cascade" }).notNull(),
+  year: integer("year").notNull(),
+  revealedCount: integer("revealed_count").notNull().default(0),
+  nextRevealAtMs: bigint("next_reveal_at_ms", { mode: "number" }).notNull(),
+  picksJson: jsonb("picks_json").$type<Array<{ pickNumber: number; playerName: string; teamName: string; position: string | null }>>().notNull(),
 });
 
 export const officialDraftResults = pgTable("official_draft_results", {

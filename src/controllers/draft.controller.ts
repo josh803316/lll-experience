@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { authGuard } from "../guards/auth-guard.js";
 import { getDB } from "../db/index.js";
-import { draftPicks, apps, users, draftablePlayers, draftSettings, officialDraftResults, draftHistoricalWinners } from "../db/schema.js";
+import { draftPicks, apps, users, draftablePlayers, draftSettings, officialDraftResults, draftHistoricalWinners, draftMockState } from "../db/schema.js";
 import { eq, and, sql, asc } from "drizzle-orm";
 import { UsersModel } from "../models/users.model.js";
 import {
@@ -10,6 +10,7 @@ import {
   getStaticPlayersBySource,
   computeConsensusRanking,
   computeAveragePositionRanking,
+  getPositionForPlayer,
   CURRENT_DRAFT_YEAR,
   DANIEL_JEREMIAH_MOCK_2_0_2026,
   type RankingSource,
@@ -135,12 +136,13 @@ function normalizeName(name: string): string {
   return s;
 }
 
-// ─── Mock simulation state (Daniel Jeremiah 2.0 order, reveal one pick per minute) ───
+// ─── Mock simulation state (Daniel Jeremiah 2.0 order, reveal one pick per 30s) ───
+type MockPick = { pickNumber: number; playerName: string; teamName: string; position: string | null };
 type MockState = {
   active: boolean;
   revealedCount: number;
   nextRevealAt: number;
-  picks: Array<{ pickNumber: number; playerName: string; teamName: string }>;
+  picks: MockPick[];
 };
 const mockStateByYear = new Map<number, MockState>();
 
@@ -160,13 +162,13 @@ function advanceMockIfDue(year: number): void {
   }
 }
 
-function getMockOfficialPicks(year: number): Map<number, { playerName: string | null }> | null {
+function getMockOfficialPicks(year: number): Map<number, { playerName: string | null; position?: string | null }> | null {
   const state = mockStateByYear.get(year);
   if (!state?.active) return null;
-  const map = new Map<number, { playerName: string | null }>();
+  const map = new Map<number, { playerName: string | null; position?: string | null }>();
   for (let i = 0; i < state.revealedCount && i < state.picks.length; i++) {
     const p = state.picks[i];
-    map.set(p.pickNumber, { playerName: p.playerName });
+    map.set(p.pickNumber, { playerName: p.playerName, position: p.position ?? null });
   }
   return map;
 }
@@ -174,10 +176,11 @@ function getMockOfficialPicks(year: number): Map<number, { playerName: string | 
 function startMock(year: number): boolean {
   if (year !== 2026) return false;
   const teams = getFirstRoundTeams(year);
-  const picks = DANIEL_JEREMIAH_MOCK_2_0_2026.map((playerName, i) => ({
+  const picks: MockPick[] = DANIEL_JEREMIAH_MOCK_2_0_2026.map((playerName, i) => ({
     pickNumber: i + 1,
     playerName,
     teamName: teams[i + 1] ?? `Pick ${i + 1}`,
+    position: getPositionForPlayer(playerName, year),
   }));
   mockStateByYear.set(year, {
     active: true,
@@ -190,6 +193,53 @@ function startMock(year: number): boolean {
 
 function resetMock(year: number): void {
   mockStateByYear.delete(year);
+}
+
+async function loadMockStateFromDb(appId: number, year: number): Promise<void> {
+  const db = getDB();
+  const rows = await db
+    .select()
+    .from(draftMockState)
+    .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return;
+  const state: MockState = {
+    active: true,
+    revealedCount: row.revealedCount,
+    nextRevealAt: Number(row.nextRevealAtMs),
+    picks: row.picksJson as MockPick[],
+  };
+  mockStateByYear.set(year, state);
+  advanceMockIfDue(year);
+  await saveMockStateToDb(state, appId, year);
+}
+
+async function saveMockStateToDb(state: MockState, appId: number, year: number): Promise<void> {
+  const db = getDB();
+  const existing = await db
+    .select()
+    .from(draftMockState)
+    .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)))
+    .limit(1);
+  const payload = {
+    appId,
+    year,
+    revealedCount: state.revealedCount,
+    nextRevealAtMs: state.nextRevealAt,
+    picksJson: state.picks,
+  };
+  if (existing[0]) {
+    await db.update(draftMockState).set(payload).where(eq(draftMockState.id, existing[0].id));
+  } else {
+    await db.insert(draftMockState).values(payload);
+  }
+}
+
+async function deleteMockStateFromDb(appId: number, year: number): Promise<void> {
+  await getDB()
+    .delete(draftMockState)
+    .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)));
 }
 
 async function buildLeaderboard(
@@ -270,6 +320,7 @@ export const draftController = new Elysia({ prefix: "/draft" })
       sessionClaims: auth.sessionClaims ?? null,
     });
     const isAdmin = await isAdminUserId(String(auth.userId));
+    if (app) await loadMockStateFromDb(app.id, year);
     const mock = getMockState(year);
     const mockInfo = mock
       ? { active: true, revealedCount: mock.revealedCount, complete: mock.revealedCount >= 32 }
@@ -293,8 +344,11 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const draftLocked = app ? await getDraftStarted(app.id, year) : false;
 
     // When mock is active, advance time and use mock picks for "Official" column; otherwise use DB.
+    if (app) await loadMockStateFromDb(app.id, year);
     if (app) advanceMockIfDue(year);
-    let officialPicksMap: Map<number, { playerName: string | null }> | undefined;
+    const mockState = getMockState(year);
+    if (mockState && app) await saveMockStateToDb(mockState, app.id, year);
+    let officialPicksMap: Map<number, { playerName: string | null; position?: string | null }> | undefined;
     if (app) {
       const mockPicks = getMockOfficialPicks(year);
       if (mockPicks) {
@@ -305,7 +359,9 @@ export const draftController = new Elysia({ prefix: "/draft" })
           .select()
           .from(officialDraftResults)
           .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)));
-        officialPicksMap = new Map(official.map((r) => [r.pickNumber, { playerName: r.playerName }]));
+        officialPicksMap = new Map(
+          official.map((r) => [r.pickNumber, { playerName: r.playerName, position: getPositionForPlayer(r.playerName ?? "", year) }])
+        );
       }
     }
 
@@ -316,7 +372,7 @@ export const draftController = new Elysia({ prefix: "/draft" })
     return picksTableFragment(picks, draftLocked, year, officialPicksMap, mockActive, mockStatus);
   })
 
-  // POST /draft/:year/mock/start — admin only; start Daniel Jeremiah 2.0 mock (one pick per minute)
+  // POST /draft/:year/mock/start — admin only; start Daniel Jeremiah 2.0 mock
   .post("/:year/mock/start", async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
     if (year == null) {
@@ -329,10 +385,17 @@ export const draftController = new Elysia({ prefix: "/draft" })
       ctx.set.status = 403;
       return "Admin only";
     }
+    const app = await getApp("nfl-draft");
+    if (!app) {
+      ctx.set.status = 500;
+      return "App not found";
+    }
     if (!startMock(year)) {
       ctx.set.status = 400;
       return "Mock only supported for 2026";
     }
+    const state = getMockState(year);
+    if (state) await saveMockStateToDb(state, app.id, year);
     ctx.set.headers["HX-Redirect"] = `/draft/${year}`;
     return "";
   })
@@ -350,6 +413,8 @@ export const draftController = new Elysia({ prefix: "/draft" })
       ctx.set.status = 403;
       return "Admin only";
     }
+    const app = await getApp("nfl-draft");
+    if (app) await deleteMockStateFromDb(app.id, year);
     resetMock(year);
     ctx.set.headers["HX-Redirect"] = `/draft/${year}`;
     return "";
@@ -362,6 +427,8 @@ export const draftController = new Elysia({ prefix: "/draft" })
       ctx.set.status = 404;
       return { active: false, revealedCount: 0, complete: false };
     }
+    const app = await getApp("nfl-draft");
+    if (app) await loadMockStateFromDb(app.id, year);
     const state = getMockState(year);
     if (!state) {
       return { active: false, revealedCount: 0, complete: false };
@@ -436,6 +503,21 @@ export const draftController = new Elysia({ prefix: "/draft" })
       for (const p of parsed) {
         if (p.pickNumber <= 10) p.doubleScorePick = false;
         else if (singleDoublePickNum != null && p.pickNumber !== singleDoublePickNum) p.doubleScorePick = false;
+      }
+
+      // Enforce: no duplicate players (same normalized name); keep first occurrence by slot, clear later ones
+      const seenNormalized = new Set<string>();
+      for (let num = 1; num <= TOTAL_PICKS; num++) {
+        const p = parsed.find((x) => x.pickNumber === num);
+        const name = p?.playerName?.trim();
+        if (!name) continue;
+        const norm = normalizeName(name);
+        if (seenNormalized.has(norm)) {
+          if (p) p.playerName = undefined;
+          if (p) p.position = undefined;
+        } else {
+          seenNormalized.add(norm);
+        }
       }
 
       const draftStarted = await getDraftStarted(app.id, year);
@@ -564,8 +646,15 @@ export const draftController = new Elysia({ prefix: "/draft" })
 
     const draftStarted = await getDraftStarted(app.id, year);
 
-    // Current year pre-draft → list all users with pick status
-    if (!draftStarted) {
+    // Load mock state so we can show standings when simulation is running or complete (even if draft not "started")
+    await loadMockStateFromDb(app.id, year);
+    const mock = getMockState(year);
+    const mockActive = !!mock?.active;
+    const mockComplete = !!(mock?.active && mock.revealedCount >= 32);
+    const showStandings = draftStarted || mockActive || mockComplete;
+
+    // Current year pre-draft and no mock → list who's in (names + pick counts only; no scores, no other users' picks)
+    if (!showStandings) {
       const allUserRows = await db.select().from(users).orderBy(asc(users.lastName));
       const pickCounts = await db
         .select({ userId: draftPicks.userId, count: sql<number>`count(*)::int` })
@@ -588,18 +677,20 @@ export const draftController = new Elysia({ prefix: "/draft" })
       return leaderboardPage([], false, year, leaderboardYears, clerkKey, allUsers);
     }
 
-    // Current year: if mock simulation is complete, show mock results; else normal scoring leaderboard
-    const mock = getMockState(year);
-    const mockComplete = !!(mock?.active && mock.revealedCount >= 32);
+    // Standings: score against mock simulation (when active/complete) or official results; only users with 32 picks, no picks exposed
     const isAdmin = await isAdminUserId(String(ctx.auth()?.userId ?? ""));
     let leaderboard: Awaited<ReturnType<typeof buildLeaderboard>>;
-    if (mockComplete && mock) {
-      const officialOverride = new Map<number, string | null>(mock.picks.map((p) => [p.pickNumber, p.playerName]));
+    if (mockActive && mock) {
+      const officialOverride = new Map<number, string | null>();
+      for (let i = 0; i < mock.revealedCount && i < mock.picks.length; i++) {
+        const p = mock.picks[i];
+        officialOverride.set(p.pickNumber, p.playerName);
+      }
       leaderboard = await buildLeaderboard(app.id, year, officialOverride);
     } else {
       leaderboard = await buildLeaderboard(app.id, year);
     }
-    return leaderboardPage(leaderboard, draftStarted, year, leaderboardYears, clerkKey, undefined, undefined, mockComplete, isAdmin);
+    return leaderboardPage(leaderboard, draftStarted, year, leaderboardYears, clerkKey, undefined, undefined, mockComplete, isAdmin, mockActive);
   })
 
   // GET /draft/:year/leaderboard/scores — HTMX polling fragment (live scoring only)
@@ -611,10 +702,23 @@ export const draftController = new Elysia({ prefix: "/draft" })
     const app = await getApp("nfl-draft");
     if (!app) { ctx.set.status = 404; return "App not found"; }
 
+    await loadMockStateFromDb(app.id, year);
+    const mock = getMockState(year);
+    const mockActive = !!mock?.active;
+    let leaderboard: Awaited<ReturnType<typeof buildLeaderboard>>;
+    if (mockActive && mock) {
+      const officialOverride = new Map<number, string | null>();
+      for (let i = 0; i < mock.revealedCount && i < mock.picks.length; i++) {
+        const p = mock.picks[i];
+        officialOverride.set(p.pickNumber, p.playerName);
+      }
+      leaderboard = await buildLeaderboard(app.id, year, officialOverride);
+    } else {
+      leaderboard = await buildLeaderboard(app.id, year);
+    }
     const draftStarted = await getDraftStarted(app.id, year);
-    const leaderboard = await buildLeaderboard(app.id, year);
     ctx.set.headers["Content-Type"] = "text/html";
-    return leaderboardScoresFragment(leaderboard, draftStarted, year);
+    return leaderboardScoresFragment(leaderboard, draftStarted || mockActive, year);
   })
 
   // GET /draft/:year/submitted

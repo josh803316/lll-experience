@@ -306,6 +306,25 @@ export function getConsensusPlayers(year: number): Array<{ rank: number; playerN
   return [];
 }
 
+/** Normalize name for lookup (match templates/draft controller). */
+function normForLookup(name: string): string {
+  let s = name.trim().toLowerCase().replace(/\s+/g, " ").replace(/\./g, "");
+  s = s.replace(/\s+(jr|sr|ii|iii|iv)\s*$/gi, "").trim();
+  s = s.replace(/\breuben\b/g, "rueben");
+  return s;
+}
+
+/** Look up position for a player by name from consensus/rankings; returns null if not found. */
+export function getPositionForPlayer(name: string, year: number = 2026): string | null {
+  if (!name?.trim() || year !== 2026) return null;
+  const norm = normForLookup(name);
+  const list = getConsensusPlayers(year);
+  for (const p of list) {
+    if (normForLookup(p.playerName) === norm) return p.position;
+  }
+  return null;
+}
+
 export type RankingSource = "cbs" | "espn" | "nfl" | "fox" | "pff" | "all" | "avg";
 
 // ---------------------------------------------------------------------------

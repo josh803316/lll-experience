@@ -73,6 +73,10 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
       max-width: 100%;
     }
     .draft-slot-container { position: relative; }
+    #picks-table-wrapper.picks-unsaved {
+      box-shadow: 0 0 0 2px #f59e0b;
+      border-radius: 8px;
+    }
     .draft-slot-droppable.drag-over-empty {
       background-color: #f0fdf4;
       box-shadow: inset 0 0 0 2px #4ade80;
@@ -248,9 +252,11 @@ function pickTableRow(
   pick: Pick | null,
   draftLocked: boolean,
   officialPlayer: string | null,
+  officialPosition: string | null | undefined,
   style: { rowBg: string; accentBorder: string; scorePts: number | null },
   showScoreColumn: boolean,
-  cumulativeTotal?: number
+  cumulativeTotal?: number,
+  doubleScoreLocked = false
 ): string {
   const hasPlayer = pick?.playerName;
   const slotContent = draftLocked
@@ -259,16 +265,13 @@ function pickTableRow(
       ? `<div class="draft-player-chip flex items-center gap-1" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="chip-pos text-xs opacity-70">${escapeHtml(pick!.position)}</span>` : ""} <button type="button" class="draft-clear-slot ml-1 opacity-40 hover:opacity-100" title="Clear">×</button></div>`
       : `<span class="lg:hidden text-xs text-gray-300 italic pointer-events-none select-none">tap to assign</span>`);
 
-  // Score badge: +N shown in number cell when we have a confirmed score
+  // Score badge: +N in number cell (draft-row-score-badge + data-pts for client-side double toggle)
   const scoreBadge = (style.scorePts != null && style.scorePts > 0)
-    ? ` <span class="block text-[10px] font-bold leading-none mt-0.5 ${
-        style.scorePts >= 6 ? "text-green-700" :
-        style.scorePts >= 3 ? "text-green-600" :
-        style.scorePts >= 2 ? "text-yellow-600" : "text-red-500"
-      }">+${style.scorePts}</span>`
+    ? ` <span class="draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 ${style.scorePts >= 6 ? "text-green-700" : style.scorePts >= 3 ? "text-green-600" : style.scorePts >= 2 ? "text-yellow-600" : "text-red-500"}" data-pts="${style.scorePts}">+${style.scorePts}</span>`
+    : style.scorePts === 0
+    ? ` <span class="draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 text-gray-500" data-pts="0">0</span>`
     : "";
 
-  // Mute text in confirmed-zero rows
   const teamTextClass = style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-gray-900";
   const numTextClass  = style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-gray-600";
 
@@ -278,22 +281,26 @@ function pickTableRow(
     ${teamNeeds ? `<div class="hidden lg:block text-xs text-gray-500 mt-0.5" title="Team needs (source: Underdog Network)">${escapeHtml(teamNeeds)}</div>` : ""}
   </td>`;
   const pickCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
-    <div class="draft-slot-container min-h-[2.5rem] ${!draftLocked ? "draft-slot-droppable" : ""}" data-pick-number="${num}" data-team-name="${escapeHtml(teamName)}">${slotContent}</div>
+    <div class="draft-slot-container min-h-[2.5rem] ${!draftLocked ? "draft-slot-droppable" : ""}" data-pick-number="${num}" data-team-name="${escapeHtml(teamName)}" data-current-player="${escapeHtml(pick?.playerName || "")}" data-current-position="${escapeHtml(pick?.position || "")}">${slotContent}</div>
   </td>`;
+  const officialDisplay = officialPlayer
+    ? (officialPosition ? officialPlayer + " - " + officialPosition : officialPlayer)
+    : "";
   const officialCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
     ${officialPlayer
-      ? `<span class="font-medium ${style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-blue-800"}">${escapeHtml(officialPlayer)}</span>`
-      : `<span class="text-gray-300 text-sm">–</span>`}
+      ? `<span class="font-medium ${style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-blue-800"}">${escapeHtml(officialDisplay)}</span>`
+      : `<span class="text-gray-300 text-sm">-</span>`}
   </td>`;
-  const doubleCell = draftLocked
-    ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top">${pick?.doubleScorePick ? "✓" : ""}</td>`
-    : num <= 10
+  const doubleCell =
+    num <= 10
       ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><span class="inline-block w-4 h-4 rounded border border-gray-200 bg-gray-100" title="Double score available from pick 11 onwards"></span></td>`
-      : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300 cursor-pointer" data-pick-number="${num}" ${pick?.doubleScorePick ? "checked" : ""} title="Select as your double score pick" /></td>`;
+      : draftLocked || doubleScoreLocked
+      ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top">${pick?.doubleScorePick ? "✓" : ""}</td>`
+      : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300 cursor-pointer" data-pick-number="${num}" ${pick?.doubleScorePick ? "checked" : ""} title="Select as your double score pick (one only, locks when simulation starts)" /></td>`;
 
   const scoreCell = showScoreColumn
-    ? `<td class="px-3 py-2 border-b border-gray-200 text-right align-top font-semibold tabular-nums ${style.scorePts != null ? (style.scorePts > 0 ? "text-green-700" : "text-gray-500") : "text-gray-300"}">
-        <span class="block">${style.scorePts != null ? (style.scorePts > 0 ? `+${style.scorePts}` : "0") : "–"}</span>
+    ? `<td class="px-3 py-2 border-b border-gray-200 text-right align-top font-semibold tabular-nums draft-score-cell ${style.scorePts != null ? (style.scorePts > 0 ? "text-green-700" : "text-gray-500") : "text-gray-300"}">
+        <span class="draft-row-score-value block" data-pts="${style.scorePts != null ? style.scorePts : ""}">${style.scorePts != null ? (style.scorePts > 0 ? `+${style.scorePts}` : "0") : "–"}</span>
         ${cumulativeTotal != null ? `<span class="block text-xs font-normal text-gray-500 mt-0.5">(${cumulativeTotal})</span>` : ""}
       </td>`
     : "";
@@ -305,7 +312,7 @@ export function picksTableFragment(
   picks: Pick[],
   draftLocked = false,
   year = 2026,
-  officialPicks?: Map<number, { playerName: string | null }>,
+  officialPicks?: Map<number, { playerName: string | null; position?: string | null }>,
   pollWhenLiveOrMock = false,
   mockStatus?: { revealedCount: number; complete: boolean }
 ): string {
@@ -322,6 +329,7 @@ export function picksTableFragment(
   }
 
   const showScores = draftLocked || (officialPicks != null && officialPicks.size > 0);
+  const doubleScoreLocked = draftLocked || mockStatus != null;
 
   const styles = Array.from({ length: TOTAL_PICKS }, (_, i) => {
     const num = i + 1;
@@ -340,9 +348,10 @@ export function picksTableFragment(
     const teamNeeds = needs[num] ?? "";
     const userPick = pickMap.get(num) ?? null;
     const officialPlayer = officialPicks?.get(num)?.playerName ?? null;
+    const officialPosition = officialPicks?.get(num)?.position ?? null;
     const style = styles[i];
     const cumulativeTotal = showScores ? cumulativeScores[i] : undefined;
-    return pickTableRow(num, teamName, teamNeeds, userPick, draftLocked, officialPlayer, style, showScores, cumulativeTotal);
+    return pickTableRow(num, teamName, teamNeeds, userPick, draftLocked, officialPlayer, officialPosition, style, showScores, cumulativeTotal, doubleScoreLocked);
   }).join("");
 
   // Poll when draft is live or mock simulation is running so official/mock picks update in real-time
@@ -620,14 +629,47 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       return p ? { pickNumber: num, playerName: p.playerName, position: p.position || null, teamName: p.teamName || teamName, doubleScorePick: !!p.doubleScorePick } : { pickNumber: num, playerName: null, position: null, teamName, doubleScorePick: false };
     })
   )};
+  let savedStateJson = null;
+
+  function getStateJson() { return JSON.stringify(getState()); }
+  function isDirty() {
+    var current = getStateJson();
+    var base = savedStateJson !== null ? savedStateJson : JSON.stringify(draftState);
+    return current !== base;
+  }
+  function setUnsavedUI(dirty) {
+    var wrapper = document.getElementById('picks-table-wrapper');
+    if (wrapper) {
+      wrapper.classList.toggle('picks-unsaved', !!dirty);
+    }
+    ['save-picks-top', 'save-picks-bottom', 'save-picks-mobile'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (!btn) return;
+      if (dirty) {
+        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+        btn.classList.add('bg-amber-500', 'hover:bg-amber-600');
+        btn.textContent = 'Save picks (unsaved changes)';
+      } else {
+        btn.classList.remove('bg-amber-500', 'hover:bg-amber-600');
+        btn.classList.add('bg-green-600', 'hover:bg-green-700');
+        btn.textContent = 'Set Your Picks';
+      }
+    });
+  }
+  function updateDirtyUI() { setUnsavedUI(isDirty()); }
 
   // ---- UTILITY ----
   function isMobile() { return window.innerWidth < 1024; }
 
   function getState() {
-    const body = document.getElementById('picks-table-body');
+    const wrapper = document.getElementById('picks-table-wrapper');
+    const body = wrapper?.querySelector('#picks-table-body') || document.getElementById('picks-table-body');
     if (!body) return draftState;
     const rows = body.querySelectorAll('.draft-pick-row');
+    if (!rows.length) {
+      console.log('[draft] getState: picks table has 0 rows, using draftState fallback');
+      return draftState;
+    }
     const state = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -636,7 +678,8 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       const doubleScorePick = num <= 10 ? false : (doubleEl ? doubleEl.checked : (draftState[num - 1] && draftState[num - 1].doubleScorePick));
       const slot = r.querySelector('.draft-slot-container');
       const chip = slot ? slot.querySelector('.draft-player-chip, .draftable-player-chip') : null;
-      const playerName = chip ? (chip.getAttribute('data-player-name') || (chip.querySelector('.chip-name')?.textContent?.trim()) || null) : null;
+      const playerNameFromSlot = slot ? ((slot.getAttribute('data-current-player') || '').trim() || null) : null;
+      const playerName = playerNameFromSlot || (chip ? (extractPlayerNameFromChip(chip) || null) : null);
       const position = chip ? (chip.getAttribute('data-position') || (chip.querySelector('.chip-pos')?.textContent?.trim()) || null) : null;
       state.push({
         pickNumber: num,
@@ -650,6 +693,38 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   }
 
   let slotSortables = [];
+
+  function normNameForDup(name) {
+    if (!name || typeof name !== 'string') return '';
+    var s = name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\./g, '');
+    s = s.replace(/\s+(jr|sr|ii|iii|iv)\s*$/gi, '').trim();
+    s = s.replace(/\breuben\b/g, 'rueben');
+    return s;
+  }
+
+  function extractPlayerNameFromChip(chip) {
+    if (!chip) return '';
+    var byAttr = chip.getAttribute('data-player-name');
+    if (byAttr && typeof byAttr === 'string' && byAttr.trim()) return byAttr.trim();
+    var byChipName = chip.querySelector('.chip-name')?.textContent?.trim();
+    if (byChipName) return byChipName;
+    // Drag-cloned list items keep their original structure; the player name is in flex-1 span.
+    var byFlexSpan = chip.querySelector('span.flex-1')?.textContent?.trim();
+    if (byFlexSpan) return byFlexSpan;
+    return '';
+  }
+
+  function setDraftStatePick(pickNum, playerName, position) {
+    var idx = Number(pickNum) - 1;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= draftState.length) return;
+    draftState[idx] = {
+      ...draftState[idx],
+      pickNumber: idx + 1,
+      playerName: playerName || null,
+      position: position || null,
+      teamName: TEAMS[idx + 1] || null,
+    };
+  }
 
   function getUsedPlayerNames() {
     const names = new Set();
@@ -711,7 +786,27 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           onAdd: function(evt) {
             slotEl.classList.remove('drag-over-swap', 'drag-over-empty');
             const item = evt.item;
-            while (slotEl.children.length > 1) slotEl.removeChild(slotEl.firstChild);
+            const addedName = extractPlayerNameFromChip(item);
+            const addedNorm = normNameForDup(addedName || '');
+            var alreadyInOtherSlot = false;
+            var picksBody = slotEl.closest('#picks-table-body');
+            var slotsRoot = picksBody || document;
+            slotsRoot.querySelectorAll('.draft-slot-container.draft-slot-droppable').forEach(function(other) {
+              if (other === slotEl) return;
+              var chip = other.querySelector('.draft-player-chip, .draftable-player-chip');
+              if (!chip || !addedNorm) return;
+              var otherName = extractPlayerNameFromChip(chip);
+              var otherNorm = normNameForDup(otherName);
+              if (otherNorm && otherNorm === addedNorm) alreadyInOtherSlot = true;
+            });
+            if (alreadyInOtherSlot) {
+              item.remove();
+              markUsedPlayers();
+              return;
+            }
+            [].slice.call(slotEl.children).forEach(function(child) {
+              if (child !== item) slotEl.removeChild(child);
+            });
             item.setAttribute('data-pick-number', pickNum || '');
             item.classList.add('draft-player-chip');
             item.classList.remove('cursor-grab', 'active:cursor-grabbing', 'hover:bg-gray-50', 'border-b', 'border-gray-100');
@@ -723,9 +818,22 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
               clearBtn.textContent = '×';
               item.appendChild(clearBtn);
             }
+            slotEl.setAttribute('data-current-player', addedName || '');
+            slotEl.setAttribute('data-current-position', item.getAttribute('data-position') || '');
+            setDraftStatePick(pickNum, addedName, item.getAttribute('data-position') || '');
             markUsedPlayers();
+            updateDirtyUI();
           },
-          onRemove: function() { markUsedPlayers(); }
+          onRemove: function(evt) {
+            var fromPickNum = evt?.from?.getAttribute('data-pick-number');
+            if (evt?.from) {
+              evt.from.setAttribute('data-current-player', '');
+              evt.from.setAttribute('data-current-position', '');
+            }
+            if (fromPickNum) setDraftStatePick(fromPickNum, null, null);
+            markUsedPlayers();
+            updateDirtyUI();
+          }
         });
         slotSortables.push(sortable);
       }
@@ -788,6 +896,11 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           if (!slotEl.querySelector('.draft-player-chip')) switchTab('players');
           return;
         }
+        var used = getUsedPlayerNames();
+        if (used.has(mobileSelectedPlayer.playerName || '')) {
+          setMobileSelected(null);
+          return;
+        }
         var pickNum = slotEl.getAttribute('data-pick-number');
         while (slotEl.firstChild) slotEl.removeChild(slotEl.firstChild);
         var chip = document.createElement('div');
@@ -812,8 +925,12 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
         clearBtn.textContent = '×';
         chip.appendChild(clearBtn);
         slotEl.appendChild(chip);
+        slotEl.setAttribute('data-current-player', mobileSelectedPlayer.playerName || '');
+        slotEl.setAttribute('data-current-position', mobileSelectedPlayer.position || '');
+        setDraftStatePick(pickNum, mobileSelectedPlayer.playerName, mobileSelectedPlayer.position || '');
         setMobileSelected(null);
         markUsedPlayers();
+        updateDirtyUI();
       };
     });
     markUsedPlayers();
@@ -860,31 +977,82 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     }
   }
 
-  // ---- DOUBLE SCORE: one pick only, pick 11+ only ----
+  // ---- DOUBLE SCORE: only picks 11-32, exactly one at a time; update row score display when toggled ----
+  function updateRowScoreDisplay(row, doubleChecked) {
+    var badge = row.querySelector('.draft-row-score-badge');
+    var valueSpan = row.querySelector('.draft-row-score-value');
+    var scoreCell = row.querySelector('td.draft-score-cell');
+    if (!badge || !valueSpan) return;
+    var ptsStr = (badge.getAttribute('data-pts') || valueSpan.getAttribute('data-pts') || '').trim();
+    if (ptsStr === '') return;
+    var current = parseInt(ptsStr, 10);
+    if (isNaN(current)) return;
+    var newPts = doubleChecked ? current * 2 : Math.floor(current / 2);
+    if (newPts < 0) newPts = 0;
+    badge.setAttribute('data-pts', String(newPts));
+    valueSpan.setAttribute('data-pts', String(newPts));
+    badge.textContent = newPts > 0 ? '+' + newPts : '0';
+    valueSpan.textContent = newPts > 0 ? '+' + newPts : '0';
+    var colorClass = newPts >= 6 ? 'text-green-700' : newPts >= 3 ? 'text-green-600' : newPts >= 2 ? 'text-yellow-600' : newPts > 0 ? 'text-red-500' : 'text-gray-500';
+    badge.className = 'draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 ' + colorClass;
+    if (scoreCell) {
+      scoreCell.classList.remove('text-green-700', 'text-gray-500', 'text-gray-300');
+      scoreCell.classList.add(newPts > 0 ? 'text-green-700' : 'text-gray-500');
+    }
+  }
+
   function initDoubleScoreLogic() {
-    var cbs = document.querySelectorAll('.draft-double-score');
-    // Enforce: if any is already checked, disable all others
+    var cbs = document.querySelectorAll('#picks-table-body input.draft-double-score');
     var checkedCb = null;
-    cbs.forEach(function(cb) { if (cb.checked) checkedCb = cb; });
+    cbs.forEach(function(cb) {
+      var row = cb.closest('.draft-pick-row');
+      var num = row ? parseInt(row.dataset.pickNumber || '', 10) : 0;
+      if (num <= 10) { cb.disabled = true; cb.checked = false; return; }
+      if (cb.checked) checkedCb = cb;
+    });
     if (checkedCb) {
       cbs.forEach(function(cb) {
-        if (cb !== checkedCb) cb.disabled = true;
+        if (cb !== checkedCb && !cb.disabled) cb.disabled = true;
+      });
+    } else {
+      cbs.forEach(function(cb) {
+        var row = cb.closest('.draft-pick-row');
+        var num = row ? parseInt(row.dataset.pickNumber || '', 10) : 0;
+        if (num > 10) cb.disabled = false;
       });
     }
-    // Attach change handler for mutual exclusion
     cbs.forEach(function(cb) {
+      var row = cb.closest('.draft-pick-row');
+      var num = row ? parseInt(row.dataset.pickNumber || '', 10) : 0;
+      if (num <= 10) return;
       cb.onchange = function() {
-        var allCbs = document.querySelectorAll('.draft-double-score');
-        if (cb.checked) {
+        var el = this;
+        var allCbs = document.querySelectorAll('#picks-table-body input.draft-double-score');
+        if (el.checked) {
           allCbs.forEach(function(other) {
-            if (other !== cb) {
+            var orow = other.closest('.draft-pick-row');
+            var onum = orow ? parseInt(orow.dataset.pickNumber || '', 10) : 0;
+            if (onum <= 10) return;
+            if (other !== el) {
               other.checked = false;
               other.disabled = true;
+              var r = other.closest('.draft-pick-row');
+              if (r) updateRowScoreDisplay(r, false);
             }
           });
+          if (row) updateRowScoreDisplay(row, true);
         } else {
-          allCbs.forEach(function(other) { other.disabled = false; });
+          allCbs.forEach(function(other) {
+            var orow = other.closest('.draft-pick-row');
+            var onum = orow ? parseInt(orow.dataset.pickNumber || '', 10) : 0;
+            if (onum > 10) other.disabled = false;
+          });
+          if (row) updateRowScoreDisplay(row, false);
         }
+        if (row && num >= 1 && num <= draftState.length) {
+          draftState[num - 1] = Object.assign({}, draftState[num - 1], { doubleScorePick: el.checked });
+        }
+        updateDirtyUI();
       };
     });
   }
@@ -895,18 +1063,17 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
     const picksJustSwapped = t && (t.id === 'picks-table-wrapper' || (t.querySelector && t.querySelector('#picks-table-body')));
     const wrapperPresent = document.getElementById('picks-table-wrapper');
     if (picksJustSwapped || (wrapperPresent && slotSortables.length === 0)) {
+      console.log('[draft] htmx:afterSwap: picks table swapped or reinit');
       if (isMobile()) {
         initMobileSlots();
       } else {
         initSlotsSortable();
       }
       initDoubleScoreLogic();
-      document.getElementById('picks-table-body')?.querySelectorAll('.draft-clear-slot').forEach(function(btn) {
-        btn.onclick = function() {
-          const slot = this.closest('.draft-slot-container');
-          if (slot) { while (slot.firstChild) slot.removeChild(slot.firstChild); markUsedPlayers(); }
-        };
-      });
+      draftState = getState();
+      savedStateJson = getStateJson();
+      updateDirtyUI();
+      markUsedPlayers();
     }
     const playersPanel = document.getElementById('draftable-players-panel');
     if (playersPanel || (t && (t.id === 'draftable-players-panel' || t.querySelector?.('#draftable-players-list')))) {
@@ -1034,14 +1201,29 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           wrapper.replaceWith(newEl);
           initSlotsSortable();
           initMobileSlots();
+          draftState = getState();
           markUsedPlayers();
+          savedStateJson = getStateJson();
+          setUnsavedUI(false);
         }
       }
       _setSaveState(target, 'success');
     }
     if (target?.classList?.contains('draft-clear-slot')) {
       const slot = target.closest('.draft-slot-container');
-      if (slot) { while (slot.firstChild) slot.removeChild(slot.firstChild); markUsedPlayers(); }
+      if (slot) {
+        var chip = slot.querySelector('.draft-player-chip, .draftable-player-chip');
+        var clearedName = chip ? chip.getAttribute('data-player-name') : null;
+        console.log('[draft] clear: removing player', clearedName);
+        while (slot.firstChild) slot.removeChild(slot.firstChild);
+        slot.setAttribute('data-current-player', '');
+        slot.setAttribute('data-current-position', '');
+        var pickNum = slot.getAttribute('data-pick-number');
+        if (pickNum) setDraftStatePick(pickNum, null, null);
+        console.log('[draft] clear: calling markUsedPlayers after local draftState update');
+        markUsedPlayers();
+        updateDirtyUI();
+      }
     }
   });
 
@@ -1471,7 +1653,8 @@ export function leaderboardPage(
   allUsers?: LeaderboardUser[],
   historicalWinners?: HistoricalWinnerEntry[],
   mockComplete = false,
-  isAdmin = false
+  isAdmin = false,
+  mockActive = false
 ): string {
 
   // ── Historical past-year view ──────────────────────────────────────────────
@@ -1532,7 +1715,7 @@ export function leaderboardPage(
     : "";
 
   // ── Live / post-draft scoring (or mock results) ─────────────────────────────
-  const scoringContent = (draftStarted || mockComplete || (!allUsers && !historicalWinners))
+  const scoringContent = (draftStarted || mockComplete || mockActive || (!allUsers && !historicalWinners))
     ? `${mockComplete
         ? `<h2 class="text-xl font-bold text-white mb-1">Mock results</h2>
            <p class="text-slate-400 text-sm mb-2">Standings based on Daniel Jeremiah 2.0 mock draft simulation. Not the real draft.</p>
@@ -1545,13 +1728,16 @@ export function leaderboardPage(
                  hx-confirm="Reset mock simulation?"
                >Reset mock</button></div>`
              : ""}`
+        : mockActive
+        ? `<h2 class="text-xl font-bold text-white mb-1">Simulation standings</h2>
+           <p class="text-slate-400 text-sm mb-4">Live scores vs. current Daniel Jeremiah 2.0 simulation (updates every 30s). Only users with full pick sheets are shown.</p>`
         : `<p class="text-slate-300 text-sm mb-4">
              ${draftStarted
                ? "Scores update live as official picks come in — refreshes every 30 seconds."
                : "Scores will update once the draft starts and official results are in."}
            </p>`}
        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-         ${leaderboardScoresFragment(leaderboard, draftStarted && !mockComplete, year)}
+         ${leaderboardScoresFragment(leaderboard, (draftStarted || mockActive) && !mockComplete, year)}
        </div>`
     : "";
 
