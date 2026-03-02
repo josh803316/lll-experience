@@ -16,12 +16,14 @@ import {
   type RankingSource,
 } from "../config/draft-data.js";
 import { getClerkProfile, isAdminUserId } from "../lib/clerk-email.js";
+import { refreshESPNProspects, getCachedESPNProspects } from "../services/rankings-refresh.js";
 import {
   draftLayout,
   picksTableFragment,
   draftablePlayersFragment,
   leaderboardPage,
   leaderboardScoresFragment,
+  leaderboardUserPicksFragment,
   submittedMocksPage,
   resultsPage,
   type Pick,
@@ -462,6 +464,49 @@ export const draftController = new Elysia({ prefix: "/draft" })
       const app = await getApp("nfl-draft");
       const cbsPlayers = app ? await getDraftablePlayers(app.id, year) : [];
       draftable = computeAveragePositionRanking(cbsPlayers, year) as DraftablePlayer[];
+    } else if (source === "espn") {
+      // Prefer live-fetched ESPN data from cache; fall back to static list
+      const cached = getCachedESPNProspects(year);
+      if (cached && cached.length > 0) {
+        draftable = cached as DraftablePlayer[];
+      } else {
+        draftable = getStaticPlayersBySource(year, source) as DraftablePlayer[];
+      }
+    } else {
+      draftable = getStaticPlayersBySource(year, source) as DraftablePlayer[];
+    }
+
+    ctx.set.headers["Content-Type"] = "text/html";
+    return draftablePlayersFragment(draftable, positionFilter, source);
+  })
+
+  // POST /draft/:year/players/refresh — fetch fresh ESPN prospect rankings and return updated fragment
+  .post("/:year/players/refresh", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const positionFilter = (ctx.query?.position as string) || "OVR";
+    const source = ((ctx.query?.source as string) || "espn") as RankingSource;
+
+    // Always force a fresh fetch on explicit refresh
+    const result = await refreshESPNProspects(year, true);
+
+    let draftable: DraftablePlayer[];
+    if (source === "cbs") {
+      const app = await getApp("nfl-draft");
+      draftable = app ? await getDraftablePlayers(app.id, year) : [];
+    } else if (source === "all") {
+      const app = await getApp("nfl-draft");
+      const cbsPlayers = app ? await getDraftablePlayers(app.id, year) : [];
+      draftable = computeConsensusRanking(cbsPlayers, year) as DraftablePlayer[];
+    } else if (source === "avg") {
+      const app = await getApp("nfl-draft");
+      const cbsPlayers = app ? await getDraftablePlayers(app.id, year) : [];
+      draftable = computeAveragePositionRanking(cbsPlayers, year) as DraftablePlayer[];
+    } else if (source === "espn" && result.players.length > 0) {
+      draftable = result.players as DraftablePlayer[];
     } else {
       draftable = getStaticPlayersBySource(year, source) as DraftablePlayer[];
     }
@@ -693,6 +738,47 @@ export const draftController = new Elysia({ prefix: "/draft" })
     return leaderboardPage(leaderboard, draftStarted, year, leaderboardYears, clerkKey, undefined, undefined, mockComplete, isAdmin, mockActive);
   })
 
+  // GET /draft/:year/leaderboard/picks/:userId — HTMX fragment: one user's picks for right panel (only when draft started)
+  .get("/:year/leaderboard/picks/:userId", async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    const userId = Number(ctx.params?.userId);
+    if (year == null || !Number.isInteger(userId) || userId < 1) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const auth = ctx.auth();
+    await getOrCreateUser(auth);
+    const app = await getApp("nfl-draft");
+    if (!app) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const draftStarted = await getDraftStarted(app.id, year);
+    if (!draftStarted) {
+      ctx.set.status = 403;
+      return "Picks are hidden until the draft starts.";
+    }
+    const db = getDB();
+    const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!u) {
+      ctx.set.status = 404;
+      return "Not found";
+    }
+    const needsClerk = !u.firstName && !u.lastName || !u.email || u.email.endsWith("@clerk.local");
+    const profile = needsClerk ? await getClerkProfile(u.clerkId) : null;
+    const picks = await getUserPicks(userId, app.id, year);
+    ctx.set.headers["Content-Type"] = "text/html";
+    return leaderboardUserPicksFragment(
+      {
+        firstName: profile ? profile.firstName : u.firstName,
+        lastName: profile ? profile.lastName : u.lastName,
+        email: (profile ? profile.email : u.email) || "",
+      },
+      picks,
+      year
+    );
+  })
+
   // GET /draft/:year/leaderboard/scores — HTMX polling fragment (live scoring only)
   .get("/:year/leaderboard/scores", async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
@@ -717,8 +803,9 @@ export const draftController = new Elysia({ prefix: "/draft" })
       leaderboard = await buildLeaderboard(app.id, year);
     }
     const draftStarted = await getDraftStarted(app.id, year);
+    const showPicksLink = draftStarted && !mockActive && !(mock && mock.revealedCount >= 32);
     ctx.set.headers["Content-Type"] = "text/html";
-    return leaderboardScoresFragment(leaderboard, draftStarted || mockActive, year);
+    return leaderboardScoresFragment(leaderboard, draftStarted || mockActive, year, showPicksLink);
   })
 
   // GET /draft/:year/submitted

@@ -84,6 +84,8 @@ const app = baseApp
 if (process.env.VERCEL !== "1") {
   app.listen(PORT);
   console.log(`LLL Experience running at http://localhost:${PORT}`);
+  const { startDraftAutoPolling } = await import("./services/draft-auto.js");
+  startDraftAutoPolling();
 }
 
 export type App = typeof app;

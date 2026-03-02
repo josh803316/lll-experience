@@ -91,57 +91,16 @@ async function getUserPicks(userId: number, appId: number, year: number): Promis
   return rows as Pick[];
 }
 
-// ─── ESPN live draft sync ─────────────────────────────────────────────────────
+// ─── Official picks sync (multi-source: ESPN Core, ESPN Site, ESPN Alternate) ───
 
-async function syncFromESPN(appId: number, year: number): Promise<{ synced: number; error?: string }> {
+async function syncOfficialPicks(appId: number, year: number): Promise<{ synced: number; source: string; error?: string }> {
   try {
-    const url = `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${year}/draft/picks?limit=100`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return { synced: 0, error: `ESPN API responded with ${res.status}` };
-
-    const data = await res.json() as any;
-    const items: any[] = data?.items ?? [];
-
-    // ESPN returns $ref links for nested data — resolve picks from items
-    type EspnPick = { round?: number; pick?: number; athlete?: { displayName?: string; shortName?: string }; team?: { displayName?: string; abbreviation?: string } };
-    const firstRoundItems: EspnPick[] = items.filter((item: any) => item?.round === 1 || !item?.round);
-
-    if (firstRoundItems.length === 0) {
-      // Try alternate ESPN endpoint format
-      const alt = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`;
-      const altRes = await fetch(alt, { signal: AbortSignal.timeout(10_000) });
-      if (!altRes.ok) return { synced: 0, error: "ESPN API returned no first-round picks yet" };
-      // Parse alternate format if needed
-      return { synced: 0, error: "No first-round picks available from ESPN yet. Check back during the live draft." };
-    }
-
-    const db = getDB();
-    let synced = 0;
-    for (const item of firstRoundItems) {
-      const pickNum = item?.pick;
-      const playerName = item?.athlete?.displayName ?? item?.athlete?.shortName ?? null;
-      const teamName = item?.team?.displayName ?? null;
-      if (!pickNum || pickNum > 32) continue;
-
-      const existing = await db
-        .select()
-        .from(officialDraftResults)
-        .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year), eq(officialDraftResults.pickNumber, pickNum)))
-        .limit(1);
-
-      if (existing.length > 0) {
-        await db
-          .update(officialDraftResults)
-          .set({ playerName, teamName })
-          .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year), eq(officialDraftResults.pickNumber, pickNum)));
-      } else {
-        await db.insert(officialDraftResults).values({ appId, year, pickNumber: pickNum, playerName, teamName });
-      }
-      synced++;
-    }
-    return { synced };
+    const { syncOfficialPicksFromMultipleSources } = await import("../services/draft-auto.js");
+    const result = await syncOfficialPicksFromMultipleSources(appId, year);
+    if (result.synced > 0) return { synced: result.synced, source: result.source };
+    return { synced: 0, source: "none", error: "No first-round picks from any source (ESPN Core, ESPN Site, ESPN Alternate). Try again during the live draft." };
   } catch (err: any) {
-    return { synced: 0, error: err?.message ?? "Unknown error during sync" };
+    return { synced: 0, source: "none", error: err?.message ?? "Unknown error during sync" };
   }
 }
 
@@ -230,7 +189,7 @@ export const adminController = new Elysia({ prefix: "/admin" })
     const app = await getApp();
     if (!app) { ctx.set.status = 404; return "App not found"; }
 
-    const { synced, error } = await syncFromESPN(app.id, year);
+    const { synced, source, error } = await syncOfficialPicks(app.id, year);
     const officialPicks = await getOfficialPicks(app.id, year);
 
     ctx.set.headers["Content-Type"] = "text/html";
@@ -239,7 +198,7 @@ export const adminController = new Elysia({ prefix: "/admin" })
     // Prepend a status banner
     const banner = error
       ? `<div class="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">⚠ Sync error: ${escapeHtmlInline(error)}</div>`
-      : `<div class="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ Synced ${synced} pick${synced !== 1 ? "s" : ""} from ESPN</div>`;
+      : `<div class="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ Synced ${synced} pick${synced !== 1 ? "s" : ""} from ${escapeHtmlInline(source)}</div>`;
 
     return banner + fragment;
   })

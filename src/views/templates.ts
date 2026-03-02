@@ -1,4 +1,4 @@
-import { getFirstRoundTeams, getTeamNeeds, getStaticPlayersBySource } from "../config/draft-data.js";
+import { getFirstRoundTeams, getTeamNeeds, getStaticPlayersBySource, DRAFT_START_ISO_BY_YEAR } from "../config/draft-data.js";
 import { PLAYER_SCOUTING_2026 } from "../config/player-scouting.js";
 
 export interface App {
@@ -485,11 +485,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           )
           .join("")}</div></div>`;
 
-  // 2026 NFL Draft Round 1: Thursday April 23, 2026 8:00 PM ET (= 00:00 UTC April 24)
-  const DRAFT_START_ISO: Record<number, string> = {
-    2026: "2026-04-24T00:00:00Z",
-  };
-  const draftStartIso = DRAFT_START_ISO[year] ?? null;
+  const draftStartIso = DRAFT_START_ISO_BY_YEAR[year] ?? null;
 
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100" data-draft-year="${year}">
@@ -1107,7 +1103,28 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
         refreshBtn.onclick = function() {
           var icon = document.getElementById('refresh-icon');
           if (icon) icon.style.animation = 'spin 0.8s linear infinite';
-          loadPlayers(getCurrentPos(), getCurrentSource());
+          var pos = getCurrentPos();
+          var src = getCurrentSource();
+          // POST to refresh endpoint so server fetches latest ESPN prospect data,
+          // then swap the result directly into the panel.
+          var url = '/draft/' + DRAFT_YEAR + '/players/refresh?position=' + encodeURIComponent(pos) + '&source=' + encodeURIComponent(src);
+          fetch(url, { method: 'POST' })
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+              var panel = document.getElementById('draftable-players-panel');
+              if (panel) {
+                panel.outerHTML = html;
+                htmx.process(document.body);
+              }
+            })
+            .catch(function() {
+              // Fall back to a plain GET reload on network error
+              loadPlayers(pos, src);
+            })
+            .finally(function() {
+              var ic = document.getElementById('refresh-icon');
+              if (ic) ic.style.animation = '';
+            });
         };
       }
     }
@@ -1614,19 +1631,23 @@ function displayName(u: { firstName: string | null; lastName: string | null; ema
 export function leaderboardScoresFragment(
   leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null; email: string }; score: number }>,
   draftStarted: boolean,
-  year: number
+  year: number,
+  showPicksLink = false
 ): string {
   const rows = leaderboard
     .map(
-      (e, i) =>
-        `<tr class="border-b border-gray-200">
+      (e, i) => {
+        const nameCell = `<td class="px-4 py-2.5">
+          <div class="font-medium text-gray-900">${escapeHtml(displayName(e.user))}</div>
+          ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ""}
+        </td>`;
+        const trAttrs = showPicksLink ? ` class="border-b border-gray-200 cursor-pointer hover:bg-gray-50" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML"` : ` class="border-b border-gray-200"`;
+        return `<tr${trAttrs}>
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
-          <td class="px-4 py-2.5">
-            <div class="font-medium text-gray-900">${escapeHtml(displayName(e.user))}</div>
-            ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ""}
-          </td>
+          ${nameCell}
           <td class="px-4 py-2.5 font-bold ${e.score > 0 ? "text-green-700" : "text-gray-400"}">${e.score} pts</td>
-        </tr>`
+        </tr>`;
+      }
     )
     .join("");
   const pollingAttrs = draftStarted
@@ -1641,6 +1662,64 @@ export function leaderboardScoresFragment(
     </tr></thead>
     <tbody>${rows || `<tr><td colspan="3" class="px-4 py-8 text-center text-gray-400">No submissions yet. Scores appear once picks are saved and the draft begins.</td></tr>`}</tbody>
   </table>
+</div>`;
+}
+
+/** Placeholder for right panel before draft is over (or when picks are not viewable). */
+export function leaderboardPicksPlaceholderFragment(): string {
+  return `<div id="leaderboard-picks-panel" class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+  <div class="px-4 py-3 border-b border-gray-200 bg-gray-50">
+    <h3 class="font-semibold text-gray-700">View picks</h3>
+  </div>
+  <div class="p-6 text-center text-gray-500 text-sm">
+    <p>Select a player from the leaderboard to view their picks here.</p>
+    <p class="mt-2 text-gray-400">Before the draft ends, picks are hidden.</p>
+  </div>
+  <table class="w-full text-sm text-gray-400">
+    <thead><tr class="bg-gray-50 border-b border-gray-200"><th class="px-3 py-2 text-left">#</th><th class="px-3 py-2 text-left">Team</th><th class="px-3 py-2 text-left">Pick</th></tr></thead>
+    <tbody>
+      ${Array.from({ length: 5 }, (_, i) => `<tr class="border-b border-gray-100"><td class="px-3 py-1.5">${i + 1}</td><td class="px-3 py-1.5">—</td><td class="px-3 py-1.5">—</td></tr>`).join("")}
+      <tr><td colspan="3" class="px-3 py-2 text-center text-gray-300">…</td></tr>
+    </tbody>
+  </table>
+</div>`;
+}
+
+/** Fragment showing one user's picks for the leaderboard right panel (after draft over). */
+export function leaderboardUserPicksFragment(
+  user: { firstName: string | null; lastName: string | null; email: string },
+  picks: Pick[],
+  year: number
+): string {
+  const teams = getFirstRoundTeams(year);
+  const sorted = [...picks].sort((a, b) => a.pickNumber - b.pickNumber);
+  const rows = sorted
+    .map(
+      (p) =>
+        `<tr class="border-b border-gray-100">
+          <td class="px-3 py-1.5 font-medium text-gray-600 w-8">${p.pickNumber}</td>
+          <td class="px-3 py-1.5 text-gray-700">${escapeHtml(teams[p.pickNumber] ?? "—")}</td>
+          <td class="px-3 py-1.5">${escapeHtml(p.playerName ?? "—")}${p.position ? ` <span class="text-gray-500">(${escapeHtml(p.position)})</span>` : ""}</td>
+          <td class="px-3 py-1.5 text-center w-10">${p.doubleScorePick ? "2×" : ""}</td>
+        </tr>`
+    )
+    .join("");
+  const name = displayName(user);
+  return `<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+  <div class="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+    <h3 class="font-semibold text-gray-700">${escapeHtml(name)}</h3>
+  </div>
+  <div class="overflow-x-auto max-h-[70vh] overflow-y-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="bg-gray-50 text-left border-b border-gray-200">
+        <th class="px-3 py-2 font-semibold text-gray-600 w-8">#</th>
+        <th class="px-3 py-2 font-semibold text-gray-600">Team</th>
+        <th class="px-3 py-2 font-semibold text-gray-600">Pick</th>
+        <th class="px-3 py-2 font-semibold text-gray-600 text-center w-10">2×</th>
+      </tr></thead>
+      <tbody>${rows || "<tr><td colspan=\"4\" class=\"px-3 py-4 text-center text-gray-500\">No picks.</td></tr>"}</tbody>
+    </table>
+  </div>
 </div>`;
 }
 
@@ -1733,11 +1812,11 @@ export function leaderboardPage(
            <p class="text-slate-400 text-sm mb-4">Live scores vs. current Daniel Jeremiah 2.0 simulation (updates every 30s). Only users with full pick sheets are shown.</p>`
         : `<p class="text-slate-300 text-sm mb-4">
              ${draftStarted
-               ? "Scores update live as official picks come in — refreshes every 30 seconds."
+               ? "Scores update live as official picks come in — refreshes every 30 seconds. Click a name to view their picks on the right."
                : "Scores will update once the draft starts and official results are in."}
            </p>`}
        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-         ${leaderboardScoresFragment(leaderboard, (draftStarted || mockActive) && !mockComplete, year)}
+         ${leaderboardScoresFragment(leaderboard, (draftStarted || mockActive) && !mockComplete, year, draftStarted && !mockActive && !mockComplete)}
        </div>`
     : "";
 
@@ -1747,12 +1826,20 @@ export function leaderboardPage(
     ? preDraftContent
     : scoringContent;
 
+  const showRightPanel = !historicalWinners && (!!allUsers || !!leaderboard.length);
+  const rightPanel = showRightPanel
+    ? `<div class="lg:w-96 shrink-0">${leaderboardPicksPlaceholderFragment()}</div>`
+    : "";
+
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
     ${draftTopBar(year, "leaderboard")}
-    <div class="max-w-2xl mx-auto py-8 px-4">
+    <div class="max-w-5xl mx-auto py-8 px-4">
       ${yearSelector(year, availableYears, "leaderboard")}
-      ${mainContent}
+      <div class="${showRightPanel ? "grid grid-cols-1 lg:grid-cols-[1fr_24rem] gap-6 items-start" : ""}">
+        <div class="min-w-0">${mainContent}</div>
+        ${rightPanel}
+      </div>
     </div>
   </div>`;
   return baseLayout(content, `${year} Leaderboard — NFL Draft`, clerkPublishableKey);

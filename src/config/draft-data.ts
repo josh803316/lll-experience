@@ -290,6 +290,18 @@ export const CONSENSUS_PLAYERS_2026: Array<{ rank: number; playerName: string; s
 /** Default/current draft year. Override with CURRENT_DRAFT_YEAR env. */
 export const CURRENT_DRAFT_YEAR = Number(process.env.CURRENT_DRAFT_YEAR) || 2026;
 
+/** Draft start time (Round 1) — ISO string UTC. Used for countdown and auto-start. */
+export const DRAFT_START_ISO_BY_YEAR: Record<number, string> = {
+  2026: "2026-04-24T00:00:00Z",
+};
+
+export function getDraftStartTimeMs(year: number): number | null {
+  const iso = DRAFT_START_ISO_BY_YEAR[year];
+  if (!iso) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
 /** Year-aware getters for multi-year support. Add new years here as needed. */
 export function getFirstRoundTeams(year: number): Record<number, string> {
   if (year === 2026) return FIRST_ROUND_TEAMS_2026;
