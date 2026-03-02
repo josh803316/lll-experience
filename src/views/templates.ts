@@ -534,7 +534,10 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
             <button type="button" id="mobile-clear-selection" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-blue-700 hover:bg-blue-500 text-white text-base">✕</button>
           </div>
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
-            <h2 class="text-lg font-bold text-gray-900 px-4 py-3 border-b border-gray-200 bg-gray-50">First round — your picks</h2>
+            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+              <h2 class="text-lg font-bold text-gray-900">First round — your picks</h2>
+              ${!draftLocked ? `<button type="button" id="clear-all-picks-btn" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors" title="Clear all picks and start over">Clear all</button>` : ""}
+            </div>
             ${simulateResetBtn}
             <p class="text-xs text-gray-500 px-4 pb-1">Scoring: 3 pts exact, 2 pts ±1 spot, 1 pt ±2 spots. Double-score doubles that slot. Team needs from <a href="https://underdognetwork.com/football/news/2026-nfl-team-needs" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Underdog Network</a>. Rankings: <a href="https://www.cbssports.com/nfl/draft/prospect-rankings/" target="_blank" rel="noopener" class="text-blue-600 hover:underline">CBS</a> · <a href="https://www.pff.com/news/draft-2026-nfl-draft-big-board" target="_blank" rel="noopener" class="text-blue-600 hover:underline">PFF</a> · <a href="https://www.espn.com/nfl/draft/bestavailable" target="_blank" rel="noopener" class="text-blue-600 hover:underline">ESPN</a> · <a href="https://www.nfl.com/draft/tracker/prospects" target="_blank" rel="noopener" class="text-blue-600 hover:underline">NFL.com</a></p>
             <div class="p-4 overflow-x-auto">
@@ -1242,6 +1245,19 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
         updateDirtyUI();
       }
     }
+  });
+
+  document.getElementById('clear-all-picks-btn')?.addEventListener('click', function() {
+    if (!confirm('Clear all 32 picks and start over?')) return;
+    document.querySelectorAll('#picks-table-body .draft-slot-container.draft-slot-droppable').forEach(function(slot) {
+      while (slot.firstChild) slot.removeChild(slot.firstChild);
+      slot.setAttribute('data-current-player', '');
+      slot.setAttribute('data-current-position', '');
+      var pickNum = slot.getAttribute('data-pick-number');
+      if (pickNum) setDraftStatePick(pickNum, null, null);
+    });
+    markUsedPlayers();
+    updateDirtyUI();
   });
 
   // ---- MOBILE TAB & BANNER SETUP ----
