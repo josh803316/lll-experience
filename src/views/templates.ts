@@ -1,5 +1,10 @@
-import { getFirstRoundTeams, getTeamNeeds, getStaticPlayersBySource, DRAFT_START_ISO_BY_YEAR } from "../config/draft-data.js";
-import { PLAYER_SCOUTING_2026 } from "../config/player-scouting.js";
+import {
+  getFirstRoundTeams,
+  getTeamNeeds,
+  getStaticPlayersBySource,
+  DRAFT_START_ISO_BY_YEAR,
+} from '../config/draft-data.js';
+import {PLAYER_SCOUTING_2026} from '../config/player-scouting.js';
 
 export interface App {
   id: number;
@@ -28,14 +33,14 @@ export interface DraftablePlayer {
 
 export function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-export function baseLayout(content: string, title = "LLL Experience", clerkPublishableKey?: string): string {
+export function baseLayout(content: string, title = 'LLL Experience', clerkPublishableKey?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -46,13 +51,17 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-  ${clerkPublishableKey ? `<script
+  ${
+    clerkPublishableKey
+      ? `<script
     async
     crossorigin="anonymous"
     data-clerk-publishable-key="${clerkPublishableKey}"
     src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
     type="text/javascript"
-  ></script>` : ""}
+  ></script>`
+      : ''
+  }
   <style>
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-block; }
@@ -98,7 +107,9 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
       pointer-events: none;
     }
   </style>
-  ${clerkPublishableKey ? `<script>
+  ${
+    clerkPublishableKey
+      ? `<script>
     window.__clerkToken = null;
 
     window.addEventListener('load', async () => {
@@ -130,7 +141,9 @@ export function baseLayout(content: string, title = "LLL Experience", clerkPubli
         }
       });
     });
-  </script>` : ""}
+  </script>`
+      : ''
+  }
 </head>
 <body class="bg-gray-50 min-h-screen">
   ${content}
@@ -159,17 +172,21 @@ export function landingPage(clerkPublishableKey?: string): string {
       }
     });
   </script>`;
-  return baseLayout(content, "LLL Experience", clerkPublishableKey);
+  return baseLayout(content, 'LLL Experience', clerkPublishableKey);
 }
 
 export function appsPage(appList: App[], clerkPublishableKey?: string): string {
-  const cards = appList.map((app) => `
+  const cards = appList
+    .map(
+      (app) => `
     <a href="/${escapeHtml(app.slug)}"
        class="block bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-200 p-6 transition-shadow">
       <h2 class="text-xl font-semibold text-gray-900 mb-2">${escapeHtml(app.name)}</h2>
-      ${app.description ? `<p class="text-gray-500">${escapeHtml(app.description)}</p>` : ""}
+      ${app.description ? `<p class="text-gray-500">${escapeHtml(app.description)}</p>` : ''}
       <span class="mt-4 inline-block text-blue-600 font-medium">Play →</span>
-    </a>`).join("");
+    </a>`,
+    )
+    .join('');
 
   const content = `
   <div class="max-w-4xl mx-auto py-12 px-4">
@@ -178,16 +195,16 @@ export function appsPage(appList: App[], clerkPublishableKey?: string): string {
       ${cards || '<p class="text-gray-500">No apps available yet.</p>'}
     </div>
   </div>`;
-  return baseLayout(content, "Apps — LLL Experience", clerkPublishableKey);
+  return baseLayout(content, 'Apps — LLL Experience', clerkPublishableKey);
 }
 
 const TOTAL_PICKS = 32;
 
 /** Normalize a player name for matching user picks to official picks (handles spelling variants, punctuation, Jr./Sr.). */
 function normPlayerName(name: string): string {
-  let s = name.trim().toLowerCase().replace(/\s+/g, " ").replace(/\./g, "");
-  s = s.replace(/\s+(jr|sr|ii|iii|iv)\s*$/i, "").trim();
-  const spellingVariants: [RegExp, string][] = [[/\breuben\b/g, "rueben"]];
+  let s = name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\./g, '');
+  s = s.replace(/\s+(jr|sr|ii|iii|iv)\s*$/i, '').trim();
+  const spellingVariants: [RegExp, string][] = [[/\breuben\b/g, 'rueben']];
   for (const [re, replacement] of spellingVariants) {
     s = s.replace(re, replacement);
   }
@@ -207,10 +224,14 @@ function computeRowStyle(
   officialByPlayer: Map<string, number>,
   showScores: boolean,
   pickNumber: number,
-  officialPicks?: Map<number, { playerName: string | null }>
-): { rowBg: string; accentBorder: string; scorePts: number | null } {
-  if (!showScores) return { rowBg: "", accentBorder: "", scorePts: null };
-  if (!pick?.playerName) return { rowBg: "bg-gray-50", accentBorder: "", scorePts: null };
+  officialPicks?: Map<number, {playerName: string | null}>,
+): {rowBg: string; accentBorder: string; scorePts: number | null} {
+  if (!showScores) {
+    return {rowBg: '', accentBorder: '', scorePts: null};
+  }
+  if (!pick?.playerName) {
+    return {rowBg: 'bg-gray-50', accentBorder: '', scorePts: null};
+  }
 
   const userNorm = normPlayerName(pick.playerName);
   const officialSlot = officialByPlayer.get(userNorm);
@@ -219,30 +240,42 @@ function computeRowStyle(
     const diff = Math.abs(pickNumber - officialSlot);
     const base = diff === 0 ? 3 : diff === 1 ? 2 : diff === 2 ? 1 : 0;
     const pts = base * (pick.doubleScorePick ? 2 : 1);
-    if (diff === 0) return { rowBg: "bg-green-100", accentBorder: "border-l-4 border-green-500", scorePts: pts };
-    if (diff === 1) return { rowBg: "bg-yellow-100", accentBorder: "border-l-4 border-yellow-400", scorePts: pts };
-    if (diff === 2) return { rowBg: "bg-red-100",    accentBorder: "border-l-4 border-red-400",   scorePts: pts };
-    return { rowBg: "bg-gray-200", accentBorder: "", scorePts: 0 };
+    if (diff === 0) {
+      return {rowBg: 'bg-green-100', accentBorder: 'border-l-4 border-green-500', scorePts: pts};
+    }
+    if (diff === 1) {
+      return {rowBg: 'bg-yellow-100', accentBorder: 'border-l-4 border-yellow-400', scorePts: pts};
+    }
+    if (diff === 2) {
+      return {rowBg: 'bg-red-100', accentBorder: 'border-l-4 border-red-400', scorePts: pts};
+    }
+    return {rowBg: 'bg-gray-200', accentBorder: '', scorePts: 0};
   }
 
-  if (!officialPicks || officialPicks.size === 0) return { rowBg: "bg-gray-50", accentBorder: "", scorePts: null };
+  if (!officialPicks || officialPicks.size === 0) {
+    return {rowBg: 'bg-gray-50', accentBorder: '', scorePts: null};
+  }
 
   const minSlot = Math.max(1, pickNumber - 2);
   const maxSlot = Math.min(32, pickNumber + 2);
-  const windowSlots = Array.from({ length: maxSlot - minSlot + 1 }, (_, i) => minSlot + i);
+  const windowSlots = Array.from({length: maxSlot - minSlot + 1}, (_, i) => minSlot + i);
   const allRevealed = windowSlots.every((s) => {
     const p = officialPicks.get(s)?.playerName;
-    return p != null && p.trim() !== "";
+    return p != null && p.trim() !== '';
   });
-  if (!allRevealed) return { rowBg: "bg-gray-50", accentBorder: "", scorePts: null };
+  if (!allRevealed) {
+    return {rowBg: 'bg-gray-50', accentBorder: '', scorePts: null};
+  }
 
   const userInWindow = windowSlots.some((s) => {
     const officialName = officialPicks.get(s)?.playerName?.trim();
     return officialName != null && normPlayerName(officialName) === userNorm;
   });
-  if (userInWindow) return { rowBg: "bg-gray-50", accentBorder: "", scorePts: null };
+  if (userInWindow) {
+    return {rowBg: 'bg-gray-50', accentBorder: '', scorePts: null};
+  }
 
-  return { rowBg: "bg-gray-200", accentBorder: "", scorePts: 0 };
+  return {rowBg: 'bg-gray-200', accentBorder: '', scorePts: 0};
 }
 
 function pickTableRow(
@@ -253,57 +286,64 @@ function pickTableRow(
   draftLocked: boolean,
   officialPlayer: string | null,
   officialPosition: string | null | undefined,
-  style: { rowBg: string; accentBorder: string; scorePts: number | null },
+  style: {rowBg: string; accentBorder: string; scorePts: number | null},
   showScoreColumn: boolean,
   cumulativeTotal?: number,
-  doubleScoreLocked = false
+  doubleScoreLocked = false,
 ): string {
   const hasPlayer = pick?.playerName;
   const slotContent = draftLocked
-    ? (hasPlayer ? `<div class="draft-player-chip flex items-center gap-1 draft-chip-readonly" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="text-xs opacity-70">${escapeHtml(pick!.position)}</span>` : ""}</div>` : "<span class=\"text-gray-400 italic\">—</span>")
-    : (hasPlayer
-      ? `<div class="draft-player-chip flex items-center gap-1" data-player-name="${escapeHtml(pick!.playerName!)}" data-position="${escapeHtml(pick!.position || "")}"><span class="chip-name">${escapeHtml(pick!.playerName!)}</span>${pick!.position ? ` <span class="chip-pos text-xs opacity-70">${escapeHtml(pick!.position)}</span>` : ""} <button type="button" class="draft-clear-slot ml-1 opacity-40 hover:opacity-100" title="Clear">×</button></div>`
-      : `<span class="lg:hidden text-xs text-gray-300 italic pointer-events-none select-none">tap to assign</span>`);
+    ? hasPlayer
+      ? `<div class="draft-player-chip flex items-center gap-1 draft-chip-readonly" data-player-name="${escapeHtml(pick.playerName!)}" data-position="${escapeHtml(pick.position || '')}"><span class="chip-name">${escapeHtml(pick.playerName!)}</span>${pick.position ? ` <span class="text-xs opacity-70">${escapeHtml(pick.position)}</span>` : ''}</div>`
+      : '<span class="text-gray-400 italic">—</span>'
+    : hasPlayer
+      ? `<div class="draft-player-chip flex items-center gap-1" data-player-name="${escapeHtml(pick.playerName!)}" data-position="${escapeHtml(pick.position || '')}"><span class="chip-name">${escapeHtml(pick.playerName!)}</span>${pick.position ? ` <span class="chip-pos text-xs opacity-70">${escapeHtml(pick.position)}</span>` : ''} <button type="button" class="draft-clear-slot ml-1 opacity-40 hover:opacity-100" title="Clear">×</button></div>`
+      : `<span class="lg:hidden text-xs text-gray-300 italic pointer-events-none select-none">tap to assign</span>`;
 
   // Score badge: +N in number cell (draft-row-score-badge + data-pts for client-side double toggle)
-  const scoreBadge = (style.scorePts != null && style.scorePts > 0)
-    ? ` <span class="draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 ${style.scorePts >= 6 ? "text-green-700" : style.scorePts >= 3 ? "text-green-600" : style.scorePts >= 2 ? "text-yellow-600" : "text-red-500"}" data-pts="${style.scorePts}">+${style.scorePts}</span>`
-    : style.scorePts === 0
-    ? ` <span class="draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 text-gray-500" data-pts="0">0</span>`
-    : "";
+  const scoreBadge =
+    style.scorePts != null && style.scorePts > 0
+      ? ` <span class="draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 ${style.scorePts >= 6 ? 'text-green-700' : style.scorePts >= 3 ? 'text-green-600' : style.scorePts >= 2 ? 'text-yellow-600' : 'text-red-500'}" data-pts="${style.scorePts}">+${style.scorePts}</span>`
+      : style.scorePts === 0
+        ? ` <span class="draft-row-score-badge block text-[10px] font-bold leading-none mt-0.5 text-gray-500" data-pts="0">0</span>`
+        : '';
 
-  const teamTextClass = style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-gray-900";
-  const numTextClass  = style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-gray-600";
+  const teamTextClass = style.rowBg === 'bg-gray-200' ? 'text-gray-500' : 'text-gray-900';
+  const numTextClass = style.rowBg === 'bg-gray-200' ? 'text-gray-500' : 'text-gray-600';
 
   const numCell = `<td class="px-3 py-2 border-b border-gray-200 font-medium w-10 align-top ${numTextClass} ${style.accentBorder}">${num}${scoreBadge}</td>`;
   const teamCell = `<td class="px-3 py-2 border-b border-gray-200 align-top ${teamTextClass}">
     <div>${escapeHtml(teamName)}</div>
-    ${teamNeeds ? `<div class="hidden lg:block text-xs text-gray-500 mt-0.5" title="Team needs (source: Underdog Network)">${escapeHtml(teamNeeds)}</div>` : ""}
+    ${teamNeeds ? `<div class="hidden lg:block text-xs text-gray-500 mt-0.5" title="Team needs (source: Underdog Network)">${escapeHtml(teamNeeds)}</div>` : ''}
   </td>`;
   const pickCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
-    <div class="draft-slot-container min-h-[2.5rem] ${!draftLocked ? "draft-slot-droppable" : ""}" data-pick-number="${num}" data-team-name="${escapeHtml(teamName)}" data-current-player="${escapeHtml(pick?.playerName || "")}" data-current-position="${escapeHtml(pick?.position || "")}">${slotContent}</div>
+    <div class="draft-slot-container min-h-[2.5rem] ${!draftLocked ? 'draft-slot-droppable' : ''}" data-pick-number="${num}" data-team-name="${escapeHtml(teamName)}" data-current-player="${escapeHtml(pick?.playerName || '')}" data-current-position="${escapeHtml(pick?.position || '')}">${slotContent}</div>
   </td>`;
   const officialDisplay = officialPlayer
-    ? (officialPosition ? officialPlayer + " - " + officialPosition : officialPlayer)
-    : "";
+    ? officialPosition
+      ? officialPlayer + ' - ' + officialPosition
+      : officialPlayer
+    : '';
   const officialCell = `<td class="px-3 py-2 border-b border-gray-200 align-top">
-    ${officialPlayer
-      ? `<span class="font-medium ${style.rowBg === "bg-gray-200" ? "text-gray-500" : "text-blue-800"}">${escapeHtml(officialDisplay)}</span>`
-      : `<span class="text-gray-300 text-sm">-</span>`}
+    ${
+      officialPlayer
+        ? `<span class="font-medium ${style.rowBg === 'bg-gray-200' ? 'text-gray-500' : 'text-blue-800'}">${escapeHtml(officialDisplay)}</span>`
+        : `<span class="text-gray-300 text-sm">-</span>`
+    }
   </td>`;
   const doubleCell =
     num <= 10
       ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><span class="inline-block w-4 h-4 rounded border border-gray-200 bg-gray-100" title="Double score available from pick 11 onwards"></span></td>`
       : draftLocked || doubleScoreLocked
-      ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top">${pick?.doubleScorePick ? "✓" : ""}</td>`
-      : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300 cursor-pointer" data-pick-number="${num}" ${pick?.doubleScorePick ? "checked" : ""} title="Select as your double score pick (one only, locks when simulation starts)" /></td>`;
+        ? `<td class="px-3 py-2 border-b border-gray-200 text-center align-top">${pick?.doubleScorePick ? '✓' : ''}</td>`
+        : `<td class="px-3 py-2 border-b border-gray-200 text-center align-top"><input type="checkbox" class="draft-double-score rounded border-gray-300 cursor-pointer" data-pick-number="${num}" ${pick?.doubleScorePick ? 'checked' : ''} title="Select as your double score pick (one only, locks when simulation starts)" /></td>`;
 
   const scoreCell = showScoreColumn
-    ? `<td class="px-3 py-2 border-b border-gray-200 text-right align-top font-semibold tabular-nums draft-score-cell ${style.scorePts != null ? (style.scorePts > 0 ? "text-green-700" : "text-gray-500") : "text-gray-300"}">
-        <span class="draft-row-score-value block" data-pts="${style.scorePts != null ? style.scorePts : ""}">${style.scorePts != null ? (style.scorePts > 0 ? `+${style.scorePts}` : "0") : "–"}</span>
-        ${cumulativeTotal != null ? `<span class="block text-xs font-normal text-gray-500 mt-0.5">(${cumulativeTotal})</span>` : ""}
+    ? `<td class="px-3 py-2 border-b border-gray-200 text-right align-top font-semibold tabular-nums draft-score-cell ${style.scorePts != null ? (style.scorePts > 0 ? 'text-green-700' : 'text-gray-500') : 'text-gray-300'}">
+        <span class="draft-row-score-value block" data-pts="${style.scorePts != null ? style.scorePts : ''}">${style.scorePts != null ? (style.scorePts > 0 ? `+${style.scorePts}` : '0') : '–'}</span>
+        ${cumulativeTotal != null ? `<span class="block text-xs font-normal text-gray-500 mt-0.5">(${cumulativeTotal})</span>` : ''}
       </td>`
-    : "";
+    : '';
 
   return `<tr class="draft-pick-row ${style.rowBg}" data-pick-number="${num}">${numCell}${teamCell}${pickCell}${officialCell}${doubleCell}${scoreCell}</tr>`;
 }
@@ -312,9 +352,9 @@ export function picksTableFragment(
   picks: Pick[],
   draftLocked = false,
   year = 2026,
-  officialPicks?: Map<number, { playerName: string | null; position?: string | null }>,
+  officialPicks?: Map<number, {playerName: string | null; position?: string | null}>,
   pollWhenLiveOrMock = false,
-  mockStatus?: { revealedCount: number; complete: boolean }
+  mockStatus?: {revealedCount: number; complete: boolean},
 ): string {
   const teams = getFirstRoundTeams(year);
   const needs = getTeamNeeds(year);
@@ -323,15 +363,17 @@ export function picksTableFragment(
   // Reverse map: normalized player name → official pick number (for score calc)
   const officialByPlayer = new Map<string, number>();
   if (officialPicks) {
-    officialPicks.forEach(({ playerName }, pickNum) => {
-      if (playerName) officialByPlayer.set(normPlayerName(playerName), pickNum);
+    officialPicks.forEach(({playerName}, pickNum) => {
+      if (playerName) {
+        officialByPlayer.set(normPlayerName(playerName), pickNum);
+      }
     });
   }
 
   const showScores = draftLocked || (officialPicks != null && officialPicks.size > 0);
   const doubleScoreLocked = draftLocked || mockStatus != null;
 
-  const styles = Array.from({ length: TOTAL_PICKS }, (_, i) => {
+  const styles = Array.from({length: TOTAL_PICKS}, (_, i) => {
     const num = i + 1;
     const userPick = pickMap.get(num) ?? null;
     return computeRowStyle(userPick, officialByPlayer, showScores, num, officialPicks);
@@ -342,23 +384,33 @@ export function picksTableFragment(
     return acc;
   }, []);
 
-  const rows = Array.from({ length: TOTAL_PICKS }, (_, i) => {
+  const rows = Array.from({length: TOTAL_PICKS}, (_, i) => {
     const num = i + 1;
     const teamName = teams[num] ?? `Pick ${num}`;
-    const teamNeeds = needs[num] ?? "";
+    const teamNeeds = needs[num] ?? '';
     const userPick = pickMap.get(num) ?? null;
     const officialPlayer = officialPicks?.get(num)?.playerName ?? null;
     const officialPosition = officialPicks?.get(num)?.position ?? null;
     const style = styles[i];
     const cumulativeTotal = showScores ? cumulativeScores[i] : undefined;
-    return pickTableRow(num, teamName, teamNeeds, userPick, draftLocked, officialPlayer, officialPosition, style, showScores, cumulativeTotal, doubleScoreLocked);
-  }).join("");
+    return pickTableRow(
+      num,
+      teamName,
+      teamNeeds,
+      userPick,
+      draftLocked,
+      officialPlayer,
+      officialPosition,
+      style,
+      showScores,
+      cumulativeTotal,
+      doubleScoreLocked,
+    );
+  }).join('');
 
   // Poll when draft is live or mock simulation is running so official/mock picks update in real-time
   const shouldPoll = draftLocked || pollWhenLiveOrMock;
-  const pollingAttrs = shouldPoll
-    ? `hx-get="/draft/${year}/picks" hx-trigger="every 15s" hx-swap="outerHTML"`
-    : "";
+  const pollingAttrs = shouldPoll ? `hx-get="/draft/${year}/picks" hx-trigger="every 15s" hx-swap="outerHTML"` : '';
 
   const legend = shouldPoll
     ? `<div class="flex flex-wrap gap-3 text-xs text-gray-600 mb-2 px-1">
@@ -367,11 +419,11 @@ export function picksTableFragment(
         <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-red-300"></span> ±2 slots (+1 pt)</span>
         <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-sm bg-gray-300"></span> ±3+ slots (0 pts)</span>
       </div>`
-    : "";
+    : '';
 
   const mockStatusBlock = mockStatus
     ? `<div class="mb-3 flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-amber-600 font-medium">Mock simulation ${mockStatus.complete ? "complete" : `in progress (${mockStatus.revealedCount}/32)`}. Board updates every 30 seconds.</span>
+        <span class="text-xs text-amber-600 font-medium">Mock simulation ${mockStatus.complete ? 'complete' : `in progress (${mockStatus.revealedCount}/32)`}. Board updates every 30 seconds.</span>
         <button type="button" id="mock-reset-btn" class="px-3 py-1.5 rounded text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white"
           hx-post="/draft/${year}/mock/reset"
           hx-target="body"
@@ -380,7 +432,7 @@ export function picksTableFragment(
           hx-confirm="Reset mock simulation? This will clear the simulated picks and leaderboard."
         >Reset mock</button>
       </div>`
-    : "";
+    : '';
 
   return `<div id="picks-table-wrapper" ${pollingAttrs}>
   ${mockStatusBlock}
@@ -389,22 +441,18 @@ export function picksTableFragment(
     <thead><tr class="bg-red-600 text-white">
       <th class="px-3 py-2 text-left font-semibold">#</th>
       <th class="px-3 py-2 text-left font-semibold">Team</th>
-      <th class="px-3 py-2 text-left font-semibold">${draftLocked ? "YOUR PICK" : "PICK"}</th>
+      <th class="px-3 py-2 text-left font-semibold">${draftLocked ? 'YOUR PICK' : 'PICK'}</th>
       <th class="px-3 py-2 text-left font-semibold">OFFICIAL PICK</th>
       <th class="px-3 py-2 text-center font-semibold w-12 lg:w-auto"><span class="hidden lg:inline">DOUBLE SCORE PICK</span><span class="lg:hidden">2×</span></th>
-      ${showScores ? "<th class=\"px-3 py-2 text-right font-semibold w-14\">Score</th>" : ""}
+      ${showScores ? '<th class="px-3 py-2 text-right font-semibold w-14">Score</th>' : ''}
     </tr></thead>
     <tbody id="picks-table-body">${rows}</tbody>
   </table>
 </div>`;
 }
 
-export function draftablePlayersFragment(
-  players: DraftablePlayer[],
-  positionFilter: string,
-  source = "all"
-): string {
-  const filtered = positionFilter === "OVR" ? players : players.filter((p) => p.position === positionFilter);
+export function draftablePlayersFragment(players: DraftablePlayer[], positionFilter: string, source = 'all'): string {
+  const filtered = positionFilter === 'OVR' ? players : players.filter((p) => p.position === positionFilter);
   const items = filtered
     .map(
       (p) =>
@@ -414,25 +462,33 @@ export function draftablePlayersFragment(
   <span class="text-gray-600 text-sm truncate">${escapeHtml(p.school)}</span>
   <span class="text-gray-600 text-sm">${escapeHtml(p.position)}</span>
   <button type="button" class="player-info-btn lg:hidden shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 active:bg-blue-100 active:text-blue-600" title="Player info" aria-label="Player info"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01"/></svg></button>
-</div>`
+</div>`,
     )
-    .join("");
+    .join('');
 
   const sources = [
-    { key: "all",  label: "All",  url: "https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026" },
-    { key: "avg",  label: "Avg",  url: "https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026" },
-    { key: "cbs",  label: "CBS",  url: "https://www.cbssports.com/nfl/draft/prospect-rankings/" },
-    { key: "pff",  label: "PFF",  url: "https://www.pff.com/news/draft-2026-nfl-draft-big-board" },
-    { key: "espn", label: "ESPN", url: "https://www.espn.com/nfl/draft/bestavailable" },
-    { key: "nfl",  label: "NFL",  url: "https://www.nfl.com/news/daniel-jeremiah-s-top-50-2026-nfl-draft-prospect-rankings-1-0" },
-    { key: "fox",  label: "Fox",  url: "https://www.foxsports.com/articles/nfl/2026-nfl-draft-big-board-top-prospects-rankings" },
+    {key: 'all', label: 'All', url: 'https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026'},
+    {key: 'avg', label: 'Avg', url: 'https://www.nflmockdraftdatabase.com/big-boards/2026/consensus-big-board-2026'},
+    {key: 'cbs', label: 'CBS', url: 'https://www.cbssports.com/nfl/draft/prospect-rankings/'},
+    {key: 'pff', label: 'PFF', url: 'https://www.pff.com/news/draft-2026-nfl-draft-big-board'},
+    {key: 'espn', label: 'ESPN', url: 'https://www.espn.com/nfl/draft/bestavailable'},
+    {
+      key: 'nfl',
+      label: 'NFL',
+      url: 'https://www.nfl.com/news/daniel-jeremiah-s-top-50-2026-nfl-draft-prospect-rankings-1-0',
+    },
+    {
+      key: 'fox',
+      label: 'Fox',
+      url: 'https://www.foxsports.com/articles/nfl/2026-nfl-draft-big-board-top-prospects-rankings',
+    },
   ];
   const activeSource = sources.find((s) => s.key === source) ?? sources[0];
 
   return `<div id="draftable-players-panel" class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden" data-source="${escapeHtml(source)}" data-position="${escapeHtml(positionFilter)}">
   <div class="flex items-center gap-2 px-2 pt-2 pb-1 border-b border-gray-200 bg-gray-50 flex-wrap">
     <span class="text-xs text-gray-500 shrink-0">Rankings:</span>
-    ${sources.map((s) => `<button type="button" class="draft-source-filter px-2 py-0.5 rounded text-xs font-semibold ${s.key === source ? "bg-red-600 text-white" : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"}" data-source="${s.key}">${s.label}</button>`).join("")}
+    ${sources.map((s) => `<button type="button" class="draft-source-filter px-2 py-0.5 rounded text-xs font-semibold ${s.key === source ? 'bg-red-600 text-white' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'}" data-source="${s.key}">${s.label}</button>`).join('')}
     <div class="ml-auto flex items-center gap-1">
       <a href="${escapeHtml(activeSource.url)}" target="_blank" rel="noopener" title="Open ${escapeHtml(activeSource.label)} rankings in a new tab" class="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-white text-blue-600 border border-gray-300 hover:bg-blue-50 hover:border-blue-300 transition-colors">
         Source
@@ -445,20 +501,32 @@ export function draftablePlayersFragment(
     </div>
   </div>
   <div class="flex flex-wrap gap-1 p-2 border-b border-gray-200 bg-gray-50">
-    <button type="button" class="draft-pos-filter px-2 py-1 rounded text-sm font-medium ${positionFilter === "OVR" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-300"}" data-pos="OVR">OVR</button>
-    ${["QB", "RB", "WR", "TE", "OT", "OG", "C", "IOL", "DT", "EDGE", "LB", "CB", "S"].map(
-      (pos) => `<button type="button" class="draft-pos-filter px-2 py-1 rounded text-sm font-medium ${positionFilter === pos ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-300"}" data-pos="${pos}">${pos}</button>`
-    ).join("")}
+    <button type="button" class="draft-pos-filter px-2 py-1 rounded text-sm font-medium ${positionFilter === 'OVR' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}" data-pos="OVR">OVR</button>
+    ${['QB', 'RB', 'WR', 'TE', 'OT', 'OG', 'C', 'IOL', 'DT', 'EDGE', 'LB', 'CB', 'S']
+      .map(
+        (pos) =>
+          `<button type="button" class="draft-pos-filter px-2 py-1 rounded text-sm font-medium ${positionFilter === pos ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300'}" data-pos="${pos}">${pos}</button>`,
+      )
+      .join('')}
   </div>
   <div class="overflow-auto max-h-[70vh]" id="draftable-players-list">${items}</div>
 </div>`;
 }
 
-export type MockInfo = { active: boolean; revealedCount: number; complete: boolean };
+export type MockInfo = {active: boolean; revealedCount: number; complete: boolean};
 
-export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftStarted: boolean, year: number, availableYears: number[], clerkPublishableKey?: string, isAdmin = false, mockInfo?: MockInfo): string {
+export function draftLayout(
+  picks: Pick[],
+  draftable: DraftablePlayer[],
+  draftStarted: boolean,
+  year: number,
+  availableYears: number[],
+  clerkPublishableKey?: string,
+  isAdmin = false,
+  mockInfo?: MockInfo,
+): string {
   const draftLocked = draftStarted;
-  const mock = mockInfo ?? { active: false, revealedCount: 0, complete: false };
+  const mock = mockInfo ?? {active: false, revealedCount: 0, complete: false};
   const simulateResetBtn =
     isAdmin && year === 2026 && !mock.active
       ? `<div class="mb-3"><button type="button" id="mock-simulate-btn" class="px-3 py-1.5 rounded text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white"
@@ -468,32 +536,34 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           hx-redirect="/draft/${year}"
         >Simulate</button>
         <span class="ml-2 text-xs text-gray-500">Run a mock draft using Daniel Jeremiah 2.0 order; one pick every 30 seconds.</span></div>`
-      : "";
+      : '';
   const saveSection = (id: string) =>
     draftLocked
-      ? ""
+      ? ''
       : `<button type="button" id="${id}" class="draft-save-picks w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors">Set Your Picks</button>`;
 
   const teamsJson = JSON.stringify(getFirstRoundTeams(year));
   const yearSelector =
     availableYears.length <= 1
-      ? ""
+      ? ''
       : `<div class="flex items-center gap-2 mb-4"><span class="text-slate-400 text-sm">Year:</span><div class="flex gap-1">${availableYears
           .map(
             (y) =>
-              `<a href="/draft/${y}" class="px-3 py-1 rounded text-sm font-medium ${y === year ? "bg-slate-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}">${y}</a>`
+              `<a href="/draft/${y}" class="px-3 py-1 rounded text-sm font-medium ${y === year ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}">${y}</a>`,
           )
-          .join("")}</div></div>`;
+          .join('')}</div></div>`;
 
   const draftStartIso = DRAFT_START_ISO_BY_YEAR[year] ?? null;
 
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100" data-draft-year="${year}">
-    ${draftTopBar(year, "picks", isAdmin)}
+    ${draftTopBar(year, 'picks', isAdmin)}
     <div class="max-w-7xl mx-auto py-6 px-4">
       ${yearSelector}
 
-      ${!draftLocked && draftStartIso ? `
+      ${
+        !draftLocked && draftStartIso
+          ? `
       <!-- Countdown clock -->
       <div id="draft-countdown-banner" class="mb-4 bg-slate-700 border border-slate-600 rounded-xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
         <div class="flex-1">
@@ -509,10 +579,12 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           <div class="font-medium text-slate-300">Thu Apr 23 · 8 PM ET</div>
           <div>Pittsburgh, PA</div>
         </div>
-      </div>` : ""}
+      </div>`
+          : ''
+      }
 
       <!-- Desktop-only top save button -->
-      ${saveSection("save-picks-top") ? `<div class="hidden lg:block mb-4">${saveSection("save-picks-top")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
+      ${saveSection('save-picks-top') ? `<div class="hidden lg:block mb-4">${saveSection('save-picks-top')}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ''}
 
       <!-- Mobile tab bar -->
       <div class="lg:hidden flex rounded-lg overflow-hidden border border-slate-600 mb-3" id="mobile-tab-bar">
@@ -521,7 +593,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       </div>
 
       <!-- Mobile save button -->
-      ${saveSection("save-picks-mobile") ? `<div class="lg:hidden mb-3">${saveSection("save-picks-mobile")}<p class="text-xs text-gray-500 mt-1">Fill all 32 picks to appear on the leaderboard.</p></div>` : ""}
+      ${saveSection('save-picks-mobile') ? `<div class="lg:hidden mb-3">${saveSection('save-picks-mobile')}<p class="text-xs text-gray-500 mt-1">Fill all 32 picks to appear on the leaderboard.</p></div>` : ''}
 
       <!-- Main grid: 3-col on desktop, tab-controlled on mobile -->
       <div class="lg:grid lg:grid-cols-3 lg:gap-6">
@@ -536,7 +608,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <h2 class="text-lg font-bold text-gray-900">First round — your picks</h2>
-              ${!draftLocked ? `<button type="button" id="clear-all-picks-btn" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors" title="Clear all picks and start over">Clear all</button>` : ""}
+              ${!draftLocked ? `<button type="button" id="clear-all-picks-btn" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors" title="Clear all picks and start over">Clear all</button>` : ''}
             </div>
             ${simulateResetBtn}
             <p class="text-xs text-gray-500 px-4 pb-1">Scoring: 3 pts exact, 2 pts ±1 spot, 1 pt ±2 spots. Double-score doubles that slot. Team needs from <a href="https://underdognetwork.com/football/news/2026-nfl-team-needs" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Underdog Network</a>. Rankings: <a href="https://www.cbssports.com/nfl/draft/prospect-rankings/" target="_blank" rel="noopener" class="text-blue-600 hover:underline">CBS</a> · <a href="https://www.pff.com/news/draft-2026-nfl-draft-big-board" target="_blank" rel="noopener" class="text-blue-600 hover:underline">PFF</a> · <a href="https://www.espn.com/nfl/draft/bestavailable" target="_blank" rel="noopener" class="text-blue-600 hover:underline">ESPN</a> · <a href="https://www.nfl.com/draft/tracker/prospects" target="_blank" rel="noopener" class="text-blue-600 hover:underline">NFL.com</a></p>
@@ -577,7 +649,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
       </div>
 
       <!-- Desktop-only bottom save button -->
-      ${saveSection("save-picks-bottom") ? `<div class="hidden lg:block mt-6">${saveSection("save-picks-bottom")}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ""}
+      ${saveSection('save-picks-bottom') ? `<div class="hidden lg:block mt-6">${saveSection('save-picks-bottom')}<p class="text-xs text-gray-500 mt-1">You can save anytime. Only entries with all 32 picks filled appear on the leaderboard.</p></div>` : ''}
     </div>
   </div>
 
@@ -596,7 +668,7 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   <script>
 // ---- COUNTDOWN CLOCK ----
 (function() {
-  const target = ${draftStartIso ? `new Date(${JSON.stringify(draftStartIso)})` : "null"};
+  const target = ${draftStartIso ? `new Date(${JSON.stringify(draftStartIso)})` : 'null'};
   if (!target) return;
   function tick() {
     const diff = target - Date.now();
@@ -621,12 +693,20 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   const DRAFT_YEAR = ${year};
   const TEAMS = ${teamsJson};
   let draftState = ${JSON.stringify(
-    Array.from({ length: TOTAL_PICKS }, (_, i) => {
+    Array.from({length: TOTAL_PICKS}, (_, i) => {
       const num = i + 1;
       const p = picks.find((x: Pick) => x.pickNumber === num);
       const teamName = getFirstRoundTeams(year)[num] ?? null;
-      return p ? { pickNumber: num, playerName: p.playerName, position: p.position || null, teamName: p.teamName || teamName, doubleScorePick: !!p.doubleScorePick } : { pickNumber: num, playerName: null, position: null, teamName, doubleScorePick: false };
-    })
+      return p
+        ? {
+            pickNumber: num,
+            playerName: p.playerName,
+            position: p.position || null,
+            teamName: p.teamName || teamName,
+            doubleScorePick: !!p.doubleScorePick,
+          }
+        : {pickNumber: num, playerName: null, position: null, teamName, doubleScorePick: false};
+    }),
   )};
   let savedStateJson = null;
 
@@ -1268,40 +1348,50 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
 
 // ---- PLAYER INFO TOOLTIP & MODAL ----
 (function() {
-  var PLAYER_DATA = ${JSON.stringify((() => {
-    // Build per-source rank + info lookups. Keyed by lowercased player name.
-    type SrcEntry = { rank: number; school: string; position: string };
-    const srcs: Record<string, Record<string, SrcEntry>> = { cbs: {}, pff: {}, espn: {}, nfl: {}, fox: {} };
-    for (const p of draftable) srcs.cbs[p.playerName.toLowerCase().trim()] = { rank: p.rank, school: p.school, position: p.position };
-    for (const src of ["pff","espn","nfl","fox"] as const) {
-      for (const p of getStaticPlayersBySource(year, src)) {
-        srcs[src][p.playerName.toLowerCase().trim()] = { rank: p.rank, school: p.school, position: p.position };
+  var PLAYER_DATA = ${JSON.stringify(
+    (() => {
+      // Build per-source rank + info lookups. Keyed by lowercased player name.
+      type SrcEntry = {rank: number; school: string; position: string};
+      const srcs: Record<string, Record<string, SrcEntry>> = {cbs: {}, pff: {}, espn: {}, nfl: {}, fox: {}};
+      for (const p of draftable) {
+        srcs.cbs[p.playerName.toLowerCase().trim()] = {rank: p.rank, school: p.school, position: p.position};
       }
-    }
-    // Union of ALL players across every source so chips from any source list
-    // (including PFF-only players absent from the CBS top-200) always get an entry.
-    const allKeys = new Set([
-      ...Object.keys(srcs.cbs), ...Object.keys(srcs.pff),
-      ...Object.keys(srcs.espn), ...Object.keys(srcs.nfl), ...Object.keys(srcs.fox),
-    ]);
-    const result: Record<string, {rank: number; school: string; position: string; sourceRanks: Record<string, number>}> = {};
-    for (const key of allKeys) {
-      const info = srcs.cbs[key] ?? srcs.pff[key] ?? srcs.espn[key] ?? srcs.nfl[key] ?? srcs.fox[key];
-      result[key] = {
-        rank:     srcs.cbs[key]?.rank  ?? 0,
-        school:   info.school,
-        position: info.position,
-        sourceRanks: {
-          cbs:  srcs.cbs[key]?.rank  ?? 0,
-          pff:  srcs.pff[key]?.rank  ?? 0,
-          espn: srcs.espn[key]?.rank ?? 0,
-          nfl:  srcs.nfl[key]?.rank  ?? 0,
-          fox:  srcs.fox[key]?.rank  ?? 0,
-        },
-      };
-    }
-    return result;
-  })())};
+      for (const src of ['pff', 'espn', 'nfl', 'fox'] as const) {
+        for (const p of getStaticPlayersBySource(year, src)) {
+          srcs[src][p.playerName.toLowerCase().trim()] = {rank: p.rank, school: p.school, position: p.position};
+        }
+      }
+      // Union of ALL players across every source so chips from any source list
+      // (including PFF-only players absent from the CBS top-200) always get an entry.
+      const allKeys = new Set([
+        ...Object.keys(srcs.cbs),
+        ...Object.keys(srcs.pff),
+        ...Object.keys(srcs.espn),
+        ...Object.keys(srcs.nfl),
+        ...Object.keys(srcs.fox),
+      ]);
+      const result: Record<
+        string,
+        {rank: number; school: string; position: string; sourceRanks: Record<string, number>}
+      > = {};
+      for (const key of allKeys) {
+        const info = srcs.cbs[key] ?? srcs.pff[key] ?? srcs.espn[key] ?? srcs.nfl[key] ?? srcs.fox[key];
+        result[key] = {
+          rank: srcs.cbs[key]?.rank ?? 0,
+          school: info.school,
+          position: info.position,
+          sourceRanks: {
+            cbs: srcs.cbs[key]?.rank ?? 0,
+            pff: srcs.pff[key]?.rank ?? 0,
+            espn: srcs.espn[key]?.rank ?? 0,
+            nfl: srcs.nfl[key]?.rank ?? 0,
+            fox: srcs.fox[key]?.rank ?? 0,
+          },
+        };
+      }
+      return result;
+    })(),
+  )};
   var SCOUTING = ${JSON.stringify(PLAYER_SCOUTING_2026)};
   var TEAM_NEEDS_MAP = ${JSON.stringify(getTeamNeeds(year))};
   var TEAMS_MAP = ${teamsJson};
@@ -1584,13 +1674,13 @@ export function draftLayout(picks: Pick[], draftable: DraftablePlayer[], draftSt
   });
 })();
   </script>`;
-  return baseLayout(content, "NFL Draft Predictor — LLL Experience", clerkPublishableKey);
+  return baseLayout(content, 'NFL Draft Predictor — LLL Experience', clerkPublishableKey);
 }
 
-type DraftRoom = "picks" | "leaderboard";
+type DraftRoom = 'picks' | 'leaderboard';
 
 function draftTopBar(year: number, active: DraftRoom, isAdmin = false): string {
-  const base = "/draft/" + year;
+  const base = '/draft/' + year;
   return `
   <header class="bg-slate-900 border-b border-slate-700">
     <div class="max-w-7xl mx-auto px-4 py-3">
@@ -1598,9 +1688,9 @@ function draftTopBar(year: number, active: DraftRoom, isAdmin = false): string {
         <a href="/apps" class="text-sm text-slate-400 hover:text-white shrink-0">← Apps</a>
         <h1 class="text-lg font-bold text-white truncate">NFL Draft Predictor — ${year}</h1>
         <nav class="flex items-center gap-1 shrink-0" aria-label="Draft rooms">
-          <a href="${base}" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === "picks" ? "bg-slate-600 text-white" : "text-slate-400 hover:bg-slate-700 hover:text-white"}">Picks</a>
-          <a href="${base}/leaderboard" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === "leaderboard" ? "bg-slate-600 text-white" : "text-slate-400 hover:bg-slate-700 hover:text-white"}">Leaderboard</a>
-          ${isAdmin ? `<a href="/admin/draft/${year}" class="px-3 py-1.5 rounded text-sm font-medium text-orange-400 hover:bg-slate-700 hover:text-orange-300 transition-colors">⚙ Admin</a>` : ""}
+          <a href="${base}" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === 'picks' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}">Picks</a>
+          <a href="${base}/leaderboard" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === 'leaderboard' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}">Leaderboard</a>
+          ${isAdmin ? `<a href="/admin/draft/${year}" class="px-3 py-1.5 rounded text-sm font-medium text-orange-400 hover:bg-slate-700 hover:text-orange-300 transition-colors">⚙ Admin</a>` : ''}
         </nav>
       </div>
     </div>
@@ -1608,13 +1698,15 @@ function draftTopBar(year: number, active: DraftRoom, isAdmin = false): string {
 }
 
 function yearSelector(year: number, availableYears: number[], pathSegment: string): string {
-  if (availableYears.length <= 1) return "";
+  if (availableYears.length <= 1) {
+    return '';
+  }
   return `<div class="flex items-center gap-2 mb-4"><span class="text-slate-400 text-sm">Year:</span><div class="flex gap-1">${availableYears
     .map(
       (y) =>
-        `<a href="/draft/${y}/${pathSegment}" class="px-3 py-1 rounded text-sm font-medium ${y === year ? "bg-slate-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}">${y}</a>`
+        `<a href="/draft/${y}/${pathSegment}" class="px-3 py-1 rounded text-sm font-medium ${y === year ? 'bg-slate-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}">${y}</a>`,
     )
-    .join("")}</div></div>`;
+    .join('')}</div></div>`;
 }
 
 export interface LeaderboardUser {
@@ -1634,41 +1726,48 @@ export interface HistoricalWinnerEntry {
 }
 
 function rankMedal(rank: number): string {
-  return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
+  return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
 }
 
-function displayName(u: { firstName: string | null; lastName: string | null; email?: string }): string {
-  const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
-  if (name) return name;
-  if (u.email) return u.email;
-  return "Player";
+function displayName(u: {firstName: string | null; lastName: string | null; email?: string}): string {
+  const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+  if (name) {
+    return name;
+  }
+  if (u.email) {
+    return u.email;
+  }
+  return 'Player';
 }
 
 export function leaderboardScoresFragment(
-  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null; email: string }; score: number }>,
+  leaderboard: Array<{
+    user: {id: number; firstName: string | null; lastName: string | null; email: string};
+    score: number;
+  }>,
   draftStarted: boolean,
   year: number,
-  showPicksLink = false
+  showPicksLink = false,
 ): string {
   const rows = leaderboard
-    .map(
-      (e, i) => {
-        const nameCell = `<td class="px-4 py-2.5">
+    .map((e, i) => {
+      const nameCell = `<td class="px-4 py-2.5">
           <div class="font-medium text-gray-900">${escapeHtml(displayName(e.user))}</div>
-          ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ""}
+          ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
         </td>`;
-        const trAttrs = showPicksLink ? ` class="border-b border-gray-200 cursor-pointer hover:bg-gray-50" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML"` : ` class="border-b border-gray-200"`;
-        return `<tr${trAttrs}>
+      const trAttrs = showPicksLink
+        ? ` class="border-b border-gray-200 cursor-pointer hover:bg-gray-50" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML"`
+        : ` class="border-b border-gray-200"`;
+      return `<tr${trAttrs}>
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
           ${nameCell}
-          <td class="px-4 py-2.5 font-bold ${e.score > 0 ? "text-green-700" : "text-gray-400"}">${e.score} pts</td>
+          <td class="px-4 py-2.5 font-bold ${e.score > 0 ? 'text-green-700' : 'text-gray-400'}">${e.score} pts</td>
         </tr>`;
-      }
-    )
-    .join("");
+    })
+    .join('');
   const pollingAttrs = draftStarted
     ? `hx-get="/draft/${year}/leaderboard/scores" hx-trigger="every 30s" hx-swap="outerHTML"`
-    : "";
+    : '';
   return `<div id="leaderboard-scores" ${pollingAttrs}>
   <table class="w-full">
     <thead><tr class="bg-gray-50 text-left border-b border-gray-200">
@@ -1694,7 +1793,7 @@ export function leaderboardPicksPlaceholderFragment(): string {
   <table class="w-full text-sm text-gray-400">
     <thead><tr class="bg-gray-50 border-b border-gray-200"><th class="px-3 py-2 text-left">#</th><th class="px-3 py-2 text-left">Team</th><th class="px-3 py-2 text-left">Pick</th></tr></thead>
     <tbody>
-      ${Array.from({ length: 5 }, (_, i) => `<tr class="border-b border-gray-100"><td class="px-3 py-1.5">${i + 1}</td><td class="px-3 py-1.5">—</td><td class="px-3 py-1.5">—</td></tr>`).join("")}
+      ${Array.from({length: 5}, (_, i) => `<tr class="border-b border-gray-100"><td class="px-3 py-1.5">${i + 1}</td><td class="px-3 py-1.5">—</td><td class="px-3 py-1.5">—</td></tr>`).join('')}
       <tr><td colspan="3" class="px-3 py-2 text-center text-gray-300">…</td></tr>
     </tbody>
   </table>
@@ -1703,9 +1802,9 @@ export function leaderboardPicksPlaceholderFragment(): string {
 
 /** Fragment showing one user's picks for the leaderboard right panel (after draft over). */
 export function leaderboardUserPicksFragment(
-  user: { firstName: string | null; lastName: string | null; email: string },
+  user: {firstName: string | null; lastName: string | null; email: string},
   picks: Pick[],
-  year: number
+  year: number,
 ): string {
   const teams = getFirstRoundTeams(year);
   const sorted = [...picks].sort((a, b) => a.pickNumber - b.pickNumber);
@@ -1714,12 +1813,12 @@ export function leaderboardUserPicksFragment(
       (p) =>
         `<tr class="border-b border-gray-100">
           <td class="px-3 py-1.5 font-medium text-gray-600 w-8">${p.pickNumber}</td>
-          <td class="px-3 py-1.5 text-gray-700">${escapeHtml(teams[p.pickNumber] ?? "—")}</td>
-          <td class="px-3 py-1.5">${escapeHtml(p.playerName ?? "—")}${p.position ? ` <span class="text-gray-500">(${escapeHtml(p.position)})</span>` : ""}</td>
-          <td class="px-3 py-1.5 text-center w-10">${p.doubleScorePick ? "2×" : ""}</td>
-        </tr>`
+          <td class="px-3 py-1.5 text-gray-700">${escapeHtml(teams[p.pickNumber] ?? '—')}</td>
+          <td class="px-3 py-1.5">${escapeHtml(p.playerName ?? '—')}${p.position ? ` <span class="text-gray-500">(${escapeHtml(p.position)})</span>` : ''}</td>
+          <td class="px-3 py-1.5 text-center w-10">${p.doubleScorePick ? '2×' : ''}</td>
+        </tr>`,
     )
-    .join("");
+    .join('');
   const name = displayName(user);
   return `<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
   <div class="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
@@ -1733,14 +1832,18 @@ export function leaderboardUserPicksFragment(
         <th class="px-3 py-2 font-semibold text-gray-600">Pick</th>
         <th class="px-3 py-2 font-semibold text-gray-600 text-center w-10">2×</th>
       </tr></thead>
-      <tbody>${rows || "<tr><td colspan=\"4\" class=\"px-3 py-4 text-center text-gray-500\">No picks.</td></tr>"}</tbody>
+      <tbody>${rows || '<tr><td colspan="4" class="px-3 py-4 text-center text-gray-500">No picks.</td></tr>'}</tbody>
     </table>
   </div>
 </div>`;
 }
 
 export function leaderboardPage(
-  leaderboard: Array<{ user: { id: number; firstName: string | null; lastName: string | null; email: string }; score: number; picks: Pick[] }>,
+  leaderboard: Array<{
+    user: {id: number; firstName: string | null; lastName: string | null; email: string};
+    score: number;
+    picks: Pick[];
+  }>,
   draftStarted: boolean,
   year: number,
   availableYears: number[],
@@ -1749,33 +1852,39 @@ export function leaderboardPage(
   historicalWinners?: HistoricalWinnerEntry[],
   mockComplete = false,
   isAdmin = false,
-  mockActive = false
+  mockActive = false,
 ): string {
-
   // ── Historical past-year view ──────────────────────────────────────────────
-  const pastYearContent = historicalWinners && historicalWinners.length > 0
-    ? `<h2 class="text-xl font-bold text-white mb-1">${year} Draft — Final Standings</h2>
+  const pastYearContent =
+    historicalWinners && historicalWinners.length > 0
+      ? `<h2 class="text-xl font-bold text-white mb-1">${year} Draft — Final Standings</h2>
        <p class="text-slate-400 text-sm mb-4">Results as entered by admin.</p>
        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
          <div class="divide-y divide-gray-100">
-           ${historicalWinners.sort((a, b) => a.rank - b.rank).map((w) => `
+           ${historicalWinners
+             .sort((a, b) => a.rank - b.rank)
+             .map(
+               (w) => `
            <div class="flex items-center gap-4 px-5 py-3.5">
              <span class="text-2xl w-8 shrink-0">${rankMedal(w.rank)}</span>
              <div class="flex-1 min-w-0">
                <div class="font-semibold text-gray-900">${escapeHtml(w.name)}</div>
-               ${w.email ? `<div class="text-xs text-gray-400">${escapeHtml(w.email)}</div>` : ""}
+               ${w.email ? `<div class="text-xs text-gray-400">${escapeHtml(w.email)}</div>` : ''}
              </div>
-             ${w.score != null ? `<div class="text-sm font-bold text-gray-700 shrink-0">${w.score} pts</div>` : ""}
-           </div>`).join("")}
+             ${w.score != null ? `<div class="text-sm font-bold text-gray-700 shrink-0">${w.score} pts</div>` : ''}
+           </div>`,
+             )
+             .join('')}
          </div>
        </div>`
-    : historicalWinners
-      ? `<p class="text-slate-400 mt-4">No results on record for ${year}.</p>`
-      : "";
+      : historicalWinners
+        ? `<p class="text-slate-400 mt-4">No results on record for ${year}.</p>`
+        : '';
 
   // ── Pre-draft: who's playing ───────────────────────────────────────────────
-  const preDraftContent = !draftStarted && allUsers && allUsers.length > 0
-    ? `<h2 class="text-xl font-bold text-white mb-1">${year} Draft — Who's In</h2>
+  const preDraftContent =
+    !draftStarted && allUsers && allUsers.length > 0
+      ? `<h2 class="text-xl font-bold text-white mb-1">${year} Draft — Who's In</h2>
        <p class="text-slate-300 text-sm mb-4">
          Picks are hidden until the draft starts. Make yours at
          <a href="/draft/${year}" class="text-blue-400 hover:underline">the draft room →</a>
@@ -1787,72 +1896,79 @@ export function leaderboardPage(
              <th class="px-4 py-2 font-semibold text-gray-600 text-right">Picks</th>
            </tr></thead>
            <tbody>
-             ${allUsers.sort((a, b) => b.pickCount - a.pickCount || (displayName(a) < displayName(b) ? -1 : 1)).map((u) => {
-               const name = displayName(u);
-               const complete = u.pickCount >= 32;
-               const none = u.pickCount === 0;
-               const status = complete
-                 ? `<span class="text-green-600 font-semibold">✓ Submitted</span>`
-                 : none
-                 ? `<span class="text-gray-400">— Not started</span>`
-                 : `<span class="text-yellow-600">${u.pickCount}/32</span>`;
-               return `<tr class="border-b border-gray-100 last:border-0">
+             ${allUsers
+               .sort((a, b) => b.pickCount - a.pickCount || (displayName(a) < displayName(b) ? -1 : 1))
+               .map((u) => {
+                 const name = displayName(u);
+                 const complete = u.pickCount >= 32;
+                 const none = u.pickCount === 0;
+                 const status = complete
+                   ? `<span class="text-green-600 font-semibold">✓ Submitted</span>`
+                   : none
+                     ? `<span class="text-gray-400">— Not started</span>`
+                     : `<span class="text-yellow-600">${u.pickCount}/32</span>`;
+                 return `<tr class="border-b border-gray-100 last:border-0">
                  <td class="px-4 py-2.5">
                    <div class="font-medium text-gray-900">${escapeHtml(name)}</div>
-                   ${u.email ? `<div class="text-xs text-gray-500">${escapeHtml(u.email)}</div>` : ""}
+                   ${u.email ? `<div class="text-xs text-gray-500">${escapeHtml(u.email)}</div>` : ''}
                  </td>
                  <td class="px-4 py-2.5 text-right text-sm">${status}</td>
                </tr>`;
-             }).join("")}
+               })
+               .join('')}
            </tbody>
          </table>
        </div>`
-    : "";
+      : '';
 
   // ── Live / post-draft scoring (or mock results) ─────────────────────────────
-  const scoringContent = (draftStarted || mockComplete || mockActive || (!allUsers && !historicalWinners))
-    ? `${mockComplete
-        ? `<h2 class="text-xl font-bold text-white mb-1">Mock results</h2>
+  const scoringContent =
+    draftStarted || mockComplete || mockActive || (!allUsers && !historicalWinners)
+      ? `${
+          mockComplete
+            ? `<h2 class="text-xl font-bold text-white mb-1">Mock results</h2>
            <p class="text-slate-400 text-sm mb-2">Standings based on Daniel Jeremiah 2.0 mock draft simulation. Not the real draft.</p>
-           ${isAdmin
-             ? `<div class="mb-4"><button type="button" class="px-3 py-1.5 rounded text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white"
+           ${
+             isAdmin
+               ? `<div class="mb-4"><button type="button" class="px-3 py-1.5 rounded text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white"
                  hx-post="/draft/${year}/mock/reset"
                  hx-target="body"
                  hx-swap="none"
                  hx-redirect="/draft/${year}/leaderboard"
                  hx-confirm="Reset mock simulation?"
                >Reset mock</button></div>`
-             : ""}`
-        : mockActive
-        ? `<h2 class="text-xl font-bold text-white mb-1">Simulation standings</h2>
+               : ''
+           }`
+            : mockActive
+              ? `<h2 class="text-xl font-bold text-white mb-1">Simulation standings</h2>
            <p class="text-slate-400 text-sm mb-4">Live scores vs. current Daniel Jeremiah 2.0 simulation (updates every 30s). Only users with full pick sheets are shown.</p>`
-        : `<p class="text-slate-300 text-sm mb-4">
-             ${draftStarted
-               ? "Scores update live as official picks come in — refreshes every 30 seconds. Click a name to view their picks on the right."
-               : "Scores will update once the draft starts and official results are in."}
-           </p>`}
+              : `<p class="text-slate-300 text-sm mb-4">
+             ${
+               draftStarted
+                 ? 'Scores update live as official picks come in — refreshes every 30 seconds. Click a name to view their picks on the right.'
+                 : 'Scores will update once the draft starts and official results are in.'
+             }
+           </p>`
+        }
        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
          ${leaderboardScoresFragment(leaderboard, (draftStarted || mockActive) && !mockComplete, year, draftStarted && !mockActive && !mockComplete)}
        </div>`
-    : "";
+      : '';
 
-  const mainContent = historicalWinners !== undefined
-    ? pastYearContent
-    : !draftStarted && allUsers
-    ? preDraftContent
-    : scoringContent;
+  const mainContent =
+    historicalWinners !== undefined ? pastYearContent : !draftStarted && allUsers ? preDraftContent : scoringContent;
 
   const showRightPanel = !historicalWinners && (!!allUsers || !!leaderboard.length);
   const rightPanel = showRightPanel
     ? `<div class="lg:w-96 shrink-0">${leaderboardPicksPlaceholderFragment()}</div>`
-    : "";
+    : '';
 
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
-    ${draftTopBar(year, "leaderboard")}
+    ${draftTopBar(year, 'leaderboard')}
     <div class="max-w-5xl mx-auto py-8 px-4">
-      ${yearSelector(year, availableYears, "leaderboard")}
-      <div class="${showRightPanel ? "grid grid-cols-1 lg:grid-cols-[1fr_24rem] gap-6 items-start" : ""}">
+      ${yearSelector(year, availableYears, 'leaderboard')}
+      <div class="${showRightPanel ? 'grid grid-cols-1 lg:grid-cols-[1fr_24rem] gap-6 items-start' : ''}">
         <div class="min-w-0">${mainContent}</div>
         ${rightPanel}
       </div>
@@ -1862,14 +1978,14 @@ export function leaderboardPage(
 }
 
 export function submittedMocksPage(
-  entries: Array<{ user: { firstName: string | null; lastName: string | null }; picks: Pick[] }>,
+  entries: Array<{user: {firstName: string | null; lastName: string | null}; picks: Pick[]}>,
   draftStarted: boolean,
   year: number,
   availableYears: number[],
-  clerkPublishableKey?: string
+  clerkPublishableKey?: string,
 ): string {
-  const displayName = (u: { firstName: string | null; lastName: string | null }) =>
-    [u.firstName, u.lastName].filter(Boolean).join(" ") || "Player";
+  const displayName = (u: {firstName: string | null; lastName: string | null}) =>
+    [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Player';
   if (!draftStarted) {
     const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
@@ -1893,34 +2009,34 @@ export function submittedMocksPage(
             .sort((a, b) => a.pickNumber - b.pickNumber)
             .map(
               (p) =>
-                `<tr><td class="pr-2">${p.pickNumber}</td><td class="pr-2">${escapeHtml(p.teamName || "")}</td><td>${escapeHtml(p.playerName || "—")} ${p.position ? `(${escapeHtml(p.position)})` : ""}</td><td>${p.doubleScorePick ? "✓" : ""}</td></tr>`
+                `<tr><td class="pr-2">${p.pickNumber}</td><td class="pr-2">${escapeHtml(p.teamName || '')}</td><td>${escapeHtml(p.playerName || '—')} ${p.position ? `(${escapeHtml(p.position)})` : ''}</td><td>${p.doubleScorePick ? '✓' : ''}</td></tr>`,
             )
-            .join("")}</tbody>
+            .join('')}</tbody>
         </table>
       </div>
-    </div>`
+    </div>`,
     )
-    .join("");
+    .join('');
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
     <div class="max-w-4xl mx-auto py-8 px-4">
       <a href="/draft/${year}" class="text-sm text-slate-300 hover:text-white">← Back to draft</a>
       <h1 class="text-2xl font-bold mt-2">${year} — Submitted mocks</h1>
-      ${yearSelector(year, availableYears, "submitted")}
+      ${yearSelector(year, availableYears, 'submitted')}
       <p class="text-slate-300 text-sm mt-1">Read-only. Picks are visible after the draft starts.</p>
-      ${blocks || "<p class=\"text-slate-300 mt-4\">No submitted mocks yet.</p>"}
+      ${blocks || '<p class="text-slate-300 mt-4">No submitted mocks yet.</p>'}
     </div>
   </div>`;
   return baseLayout(content, `${year} Submitted mocks — NFL Draft`, clerkPublishableKey);
 }
 
 export function resultsPage(
-  leaderboard: Array<{ user: { firstName: string | null; lastName: string | null; email: string }; score: number }>,
-  officialRows: Array<{ pickNumber: number; playerName: string | null; teamName: string | null }>,
+  leaderboard: Array<{user: {firstName: string | null; lastName: string | null; email: string}; score: number}>,
+  officialRows: Array<{pickNumber: number; playerName: string | null; teamName: string | null}>,
   draftStarted: boolean,
   year: number,
   availableYears: number[],
-  clerkPublishableKey?: string
+  clerkPublishableKey?: string,
 ): string {
   const scoreRows = leaderboard
     .map(
@@ -1929,32 +2045,32 @@ export function resultsPage(
           <td class="px-4 py-2 font-medium">${i + 1}</td>
           <td class="px-4 py-2">
             <div>${escapeHtml(displayName(e.user))}</div>
-            ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ""}
+            ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
           </td>
           <td class="px-4 py-2 font-semibold">${e.score}</td>
-        </tr>`
+        </tr>`,
     )
-    .join("");
+    .join('');
   const officialRowsHtml =
     officialRows.length > 0
       ? officialRows
           .map(
             (r) =>
-              `<tr class="border-b border-gray-200"><td class="px-4 py-2">${r.pickNumber}</td><td class="px-4 py-2">${escapeHtml(r.teamName || "")}</td><td class="px-4 py-2">${escapeHtml(r.playerName || "—")}</td></tr>`
+              `<tr class="border-b border-gray-200"><td class="px-4 py-2">${r.pickNumber}</td><td class="px-4 py-2">${escapeHtml(r.teamName || '')}</td><td class="px-4 py-2">${escapeHtml(r.playerName || '—')}</td></tr>`,
           )
-          .join("")
-      : "<tr><td colspan=\"3\" class=\"px-4 py-6 text-center text-gray-500\">No official results yet. Results will update when the draft runs and data is entered (or synced from the NFL).</td></tr>";
+          .join('')
+      : '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">No official results yet. Results will update when the draft runs and data is entered (or synced from the NFL).</td></tr>';
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
     <div class="max-w-4xl mx-auto py-8 px-4">
       <a href="/draft/${year}" class="text-sm text-slate-300 hover:text-white">← Back to draft</a>
       <h1 class="text-2xl font-bold mt-2">${year} — Results</h1>
-      ${yearSelector(year, availableYears, "results")}
+      ${yearSelector(year, availableYears, 'results')}
       <p class="text-slate-300 text-sm mt-1">Scoring: 3 pts exact slot, 2 pts one spot away, 1 pt two spots away. Double-score pick doubles points for that slot. Results can be updated from official NFL draft data when available.</p>
       <div class="mt-6 grid gap-6 md:grid-cols-2">
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <h2 class="px-4 py-2 bg-gray-100 font-semibold text-gray-900">Scoreboard</h2>
-          <table class="w-full"><thead><tr class="text-left text-gray-600 text-sm"><th class="px-4 py-2">#</th><th class="px-4 py-2">Player</th><th class="px-4 py-2">Score</th></tr></thead><tbody>${scoreRows || "<tr><td colspan=\"3\" class=\"px-4 py-4 text-center text-gray-500\">No entries.</td></tr>"}</tbody></table>
+          <table class="w-full"><thead><tr class="text-left text-gray-600 text-sm"><th class="px-4 py-2">#</th><th class="px-4 py-2">Player</th><th class="px-4 py-2">Score</th></tr></thead><tbody>${scoreRows || '<tr><td colspan="3" class="px-4 py-4 text-center text-gray-500">No entries.</td></tr>'}</tbody></table>
         </div>
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <h2 class="px-4 py-2 bg-gray-100 font-semibold text-gray-900">Official draft results</h2>

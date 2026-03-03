@@ -1,5 +1,5 @@
-import { baseLayout, escapeHtml, type Pick } from "./templates.js";
-import { getFirstRoundTeams, CURRENT_DRAFT_YEAR } from "../config/draft-data.js";
+import {baseLayout, escapeHtml, type Pick} from './templates.js';
+import {getFirstRoundTeams, CURRENT_DRAFT_YEAR} from '../config/draft-data.js';
 
 export interface HistoricalWinner {
   id: number;
@@ -38,10 +38,10 @@ export function adminPickRow(
   pickNumber: number,
   teamName: string,
   official: OfficialPick | null,
-  year: number
+  year: number,
 ): string {
-  const playerVal = escapeHtml(official?.playerName ?? "");
-  const posVal = escapeHtml(official?.position ?? "");
+  const playerVal = escapeHtml(official?.playerName ?? '');
+  const posVal = escapeHtml(official?.position ?? '');
   const inputId = `player-${pickNumber}`;
   const posId = `pos-${pickNumber}`;
   const teamId = `team-${pickNumber}`;
@@ -70,14 +70,18 @@ export function adminPickRow(
       class="px-2 py-1 text-xs bg-orange-500 hover:bg-orange-600 text-white rounded font-medium transition-colors">
       Save
     </button>
-    ${hasData ? `<button type="button"
+    ${
+      hasData
+        ? `<button type="button"
       hx-delete="/admin/draft/${year}/official-picks/${pickNumber}"
       hx-target="#admin-pick-row-${pickNumber}"
       hx-swap="outerHTML"
       hx-confirm="Clear pick ${pickNumber}?"
       class="ml-1 px-2 py-1 text-xs bg-gray-200 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded font-medium transition-colors">
       Clear
-    </button>` : ""}
+    </button>`
+        : ''
+    }
   </td>
   <td class="px-3 py-2 text-center">
     ${hasData ? `<span class="text-green-600 text-sm">✓</span>` : `<span class="text-gray-300 text-sm">–</span>`}
@@ -87,18 +91,15 @@ export function adminPickRow(
 
 // ─── Official picks editor fragment ─────────────────────────────────────────
 
-export function officialPicksEditorFragment(
-  officialPicks: OfficialPick[],
-  year: number
-): string {
+export function officialPicksEditorFragment(officialPicks: OfficialPick[], year: number): string {
   const teams = getFirstRoundTeams(year);
   const officialMap = new Map(officialPicks.map((p) => [p.pickNumber, p]));
   const filledCount = officialPicks.filter((p) => p.playerName).length;
 
-  const rows = Array.from({ length: 32 }, (_, i) => {
+  const rows = Array.from({length: 32}, (_, i) => {
     const num = i + 1;
     return adminPickRow(num, teams[num] ?? `Pick ${num}`, officialMap.get(num) ?? null, year);
-  }).join("");
+  }).join('');
 
   return `<div id="official-picks-editor">
   <div class="flex items-center justify-between mb-3">
@@ -141,14 +142,16 @@ export function officialPicksEditorFragment(
 // ─── Historical winners editor ───────────────────────────────────────────────
 
 export function historicalWinnersFragment(winners: HistoricalWinner[], year: number): string {
-  const rankLabel = (r: number) => r === 1 ? "🥇 1st" : r === 2 ? "🥈 2nd" : r === 3 ? "🥉 3rd" : `${r}th`;
+  const rankLabel = (r: number) => (r === 1 ? '🥇 1st' : r === 2 ? '🥈 2nd' : r === 3 ? '🥉 3rd' : `${r}th`);
 
-  const existingRows = winners.map((w) => `
+  const existingRows = winners
+    .map(
+      (w) => `
   <tr id="hw-row-${w.id}" class="border-b border-gray-100 hover:bg-gray-50">
     <td class="px-3 py-2 text-sm font-medium w-20">${rankLabel(w.rank)}</td>
     <td class="px-3 py-2 text-sm font-medium text-gray-900">${escapeHtml(w.name)}</td>
-    <td class="px-3 py-2 text-sm text-gray-500">${w.email ? escapeHtml(w.email) : "—"}</td>
-    <td class="px-3 py-2 text-sm text-gray-500 w-20">${w.score != null ? `${w.score} pts` : "—"}</td>
+    <td class="px-3 py-2 text-sm text-gray-500">${w.email ? escapeHtml(w.email) : '—'}</td>
+    <td class="px-3 py-2 text-sm text-gray-500 w-20">${w.score != null ? `${w.score} pts` : '—'}</td>
     <td class="px-3 py-2 w-20">
       <button type="button"
         hx-delete="/admin/draft/${year}/historical-winners/${w.id}"
@@ -159,7 +162,9 @@ export function historicalWinnersFragment(winners: HistoricalWinner[], year: num
         Remove
       </button>
     </td>
-  </tr>`).join("");
+  </tr>`,
+    )
+    .join('');
 
   return `
   <table class="w-full text-sm mb-4 border border-gray-200 rounded-lg overflow-hidden">
@@ -220,7 +225,7 @@ export function adminDashboardPage(
   submissionCount: number,
   adminEmails: string[],
   clerkPublishableKey?: string,
-  pastYears: number[] = []
+  pastYears: number[] = [],
 ): string {
   const statusBadge = draftStarted
     ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">● Draft started — picks locked</span>`
@@ -246,7 +251,7 @@ export function adminDashboardPage(
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-4 flex-wrap">
           ${statusBadge}
-          <span class="text-sm text-gray-500">${submissionCount} full submission${submissionCount !== 1 ? "s" : ""}</span>
+          <span class="text-sm text-gray-500">${submissionCount} full submission${submissionCount !== 1 ? 's' : ''}</span>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
           ${startBtn}
@@ -261,17 +266,23 @@ export function adminDashboardPage(
       </div>
 
       <!-- Historical Winners -->
-      ${pastYears.length > 0 ? `<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      ${
+        pastYears.length > 0
+          ? `<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <h2 class="text-base font-bold text-gray-900 mb-1">Past Year Winners</h2>
         <p class="text-xs text-gray-500 mb-3">Record the final standings from previous drafts. Shown on the public leaderboard for each past year.</p>
         <div class="flex gap-0 mb-4 border-b border-gray-200" id="hw-year-tabs">
-          ${pastYears.map((y, i) => `<button type="button"
-            class="hw-tab-btn px-4 py-2 text-sm font-medium transition-colors ${i === 0 ? "border-b-2 border-orange-500 text-orange-600 -mb-px" : "text-gray-500 hover:text-gray-700"}"
+          ${pastYears
+            .map(
+              (y, i) => `<button type="button"
+            class="hw-tab-btn px-4 py-2 text-sm font-medium transition-colors ${i === 0 ? 'border-b-2 border-orange-500 text-orange-600 -mb-px' : 'text-gray-500 hover:text-gray-700'}"
             hx-get="/admin/draft/${y}/historical-winners"
             hx-target="#hw-content"
             hx-swap="innerHTML"
             onclick="document.querySelectorAll('.hw-tab-btn').forEach(b=>{b.classList.remove('border-b-2','border-orange-500','text-orange-600');b.classList.add('text-gray-500')});this.classList.add('border-b-2','border-orange-500','text-orange-600');this.classList.remove('text-gray-500')"
-            >${y}</button>`).join("")}
+            >${y}</button>`,
+            )
+            .join('')}
         </div>
         <div id="hw-content"
           hx-get="/admin/draft/${pastYears[0]}/historical-winners"
@@ -279,14 +290,16 @@ export function adminDashboardPage(
           hx-swap="innerHTML">
           <div class="py-4 text-center text-gray-400 text-sm">Loading…</div>
         </div>
-      </div>` : ""}
+      </div>`
+          : ''
+      }
 
       <!-- Admin config info -->
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <h2 class="text-base font-bold text-gray-900 mb-2">Admin Users</h2>
         <p class="text-xs text-gray-500 mb-2">Set via <code class="bg-gray-100 px-1 rounded">ADMIN_EMAILS</code> environment variable (comma-separated).</p>
         <div class="flex flex-wrap gap-2">
-          ${adminEmails.map((e) => `<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-sm">${escapeHtml(e)}</span>`).join("") || '<span class="text-gray-400 text-sm">No admin emails configured</span>'}
+          ${adminEmails.map((e) => `<span class="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-sm">${escapeHtml(e)}</span>`).join('') || '<span class="text-gray-400 text-sm">No admin emails configured</span>'}
         </div>
       </div>
 
@@ -306,7 +319,7 @@ export interface SimPick {
 }
 
 function normSim(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function simPickRow(
@@ -314,67 +327,76 @@ function simPickRow(
   teamName: string,
   userPick: Pick | null,
   simPick: SimPick | null,
-  officialByPlayer: Map<string, number>
+  officialByPlayer: Map<string, number>,
 ): string {
   const userPlayer = userPick?.playerName ?? null;
   const officialPlayer = simPick?.playerName ?? null;
 
   // Compute score + row color matching the main picks table scheme
-  let rowBg = "bg-gray-50";
-  let accentBorder = "";
+  let rowBg = 'bg-gray-50';
+  let accentBorder = '';
   let scorePts: number | null = null;
 
   if (!simPick) {
     // No official pick yet for this slot — muted pending
-    rowBg = "bg-gray-50";
+    rowBg = 'bg-gray-50';
   } else if (userPlayer) {
     const officialPickNum = officialByPlayer.get(normSim(userPlayer));
     if (officialPickNum != null) {
       const diff = Math.abs(pickNumber - officialPickNum);
       const base = diff === 0 ? 3 : diff === 1 ? 2 : diff === 2 ? 1 : 0;
       scorePts = base * (userPick?.doubleScorePick ? 2 : 1);
-      if (diff === 0) { rowBg = "bg-green-100";  accentBorder = "border-l-4 border-green-500"; }
-      else if (diff === 1) { rowBg = "bg-yellow-100"; accentBorder = "border-l-4 border-yellow-400"; }
-      else if (diff === 2) { rowBg = "bg-red-100";    accentBorder = "border-l-4 border-red-400"; }
-      else { rowBg = "bg-gray-100"; scorePts = 0; }
+      if (diff === 0) {
+        rowBg = 'bg-green-100';
+        accentBorder = 'border-l-4 border-green-500';
+      } else if (diff === 1) {
+        rowBg = 'bg-yellow-100';
+        accentBorder = 'border-l-4 border-yellow-400';
+      } else if (diff === 2) {
+        rowBg = 'bg-red-100';
+        accentBorder = 'border-l-4 border-red-400';
+      } else {
+        rowBg = 'bg-gray-100';
+        scorePts = 0;
+      }
     } else {
       // User's player not yet officially picked
-      rowBg = "bg-gray-50";
+      rowBg = 'bg-gray-50';
     }
   } else {
     // No user pick in this slot
-    rowBg = "bg-gray-100";
+    rowBg = 'bg-gray-100';
   }
 
-  const scoreBadge = (scorePts != null && scorePts > 0)
-    ? ` <span class="ml-1 text-[10px] font-bold ${scorePts >= 4 ? "text-green-700" : scorePts >= 2 ? "text-yellow-600" : "text-red-500"}">+${scorePts}</span>`
-    : "";
+  const scoreBadge =
+    scorePts != null && scorePts > 0
+      ? ` <span class="ml-1 text-[10px] font-bold ${scorePts >= 4 ? 'text-green-700' : scorePts >= 2 ? 'text-yellow-600' : 'text-red-500'}">+${scorePts}</span>`
+      : '';
 
-  const numTextClass  = rowBg === "bg-gray-100" ? "text-gray-400" : "text-gray-500";
-  const teamTextClass = rowBg === "bg-gray-100" ? "text-gray-400" : "text-gray-700";
+  const numTextClass = rowBg === 'bg-gray-100' ? 'text-gray-400' : 'text-gray-500';
+  const teamTextClass = rowBg === 'bg-gray-100' ? 'text-gray-400' : 'text-gray-700';
 
   return `<tr class="border-b border-gray-100 ${rowBg}">
   <td class="px-3 py-2 font-medium w-8 ${numTextClass} ${accentBorder}">${pickNumber}</td>
   <td class="px-3 py-2 text-sm ${teamTextClass}">${escapeHtml(teamName)}</td>
   <td class="px-3 py-2 text-sm">
-    ${userPlayer
-      ? `<span class="font-medium ${rowBg === "bg-gray-100" ? "text-gray-400" : "text-gray-900"}">${escapeHtml(userPlayer)}</span>${userPick?.position ? ` <span class="text-gray-400 text-xs">${escapeHtml(userPick.position)}</span>` : ""}${scoreBadge}`
-      : `<span class="text-gray-400 italic">—</span>`}
+    ${
+      userPlayer
+        ? `<span class="font-medium ${rowBg === 'bg-gray-100' ? 'text-gray-400' : 'text-gray-900'}">${escapeHtml(userPlayer)}</span>${userPick?.position ? ` <span class="text-gray-400 text-xs">${escapeHtml(userPick.position)}</span>` : ''}${scoreBadge}`
+        : `<span class="text-gray-400 italic">—</span>`
+    }
   </td>
   <td class="px-3 py-2 text-sm">
-    ${officialPlayer
-      ? `<span class="font-semibold ${rowBg === "bg-gray-100" ? "text-gray-400" : "text-blue-800"}">${escapeHtml(officialPlayer)}</span>${simPick?.position ? ` <span class="text-gray-400 text-xs">${escapeHtml(simPick.position)}</span>` : ""}`
-      : `<span class="text-gray-300">–</span>`}
+    ${
+      officialPlayer
+        ? `<span class="font-semibold ${rowBg === 'bg-gray-100' ? 'text-gray-400' : 'text-blue-800'}">${escapeHtml(officialPlayer)}</span>${simPick?.position ? ` <span class="text-gray-400 text-xs">${escapeHtml(simPick.position)}</span>` : ''}`
+        : `<span class="text-gray-300">–</span>`
+    }
   </td>
 </tr>`;
 }
 
-export function simulatorPicksFragment(
-  userPicks: Pick[],
-  simPicks: SimPick[],
-  year: number,
-  score: number
-): string {
+export function simulatorPicksFragment(userPicks: Pick[], simPicks: SimPick[], year: number, score: number): string {
   const teams = getFirstRoundTeams(year);
   const userMap = new Map(userPicks.map((p) => [p.pickNumber, p]));
   const simMap = new Map(simPicks.map((p) => [p.pickNumber, p]));
@@ -382,13 +404,21 @@ export function simulatorPicksFragment(
   // Build officialByPlayer map from sim picks
   const officialByPlayer = new Map<string, number>();
   simPicks.forEach((p) => {
-    if (p.playerName) officialByPlayer.set(p.playerName.trim().toLowerCase().replace(/\s+/g, " "), p.pickNumber);
+    if (p.playerName) {
+      officialByPlayer.set(p.playerName.trim().toLowerCase().replace(/\s+/g, ' '), p.pickNumber);
+    }
   });
 
-  const rows = Array.from({ length: 32 }, (_, i) => {
+  const rows = Array.from({length: 32}, (_, i) => {
     const num = i + 1;
-    return simPickRow(num, teams[num] ?? `Pick ${num}`, userMap.get(num) ?? null, simMap.get(num) ?? null, officialByPlayer);
-  }).join("");
+    return simPickRow(
+      num,
+      teams[num] ?? `Pick ${num}`,
+      userMap.get(num) ?? null,
+      simMap.get(num) ?? null,
+      officialByPlayer,
+    );
+  }).join('');
 
   const nextPickNum = simPicks.length + 1;
   const isDone = simPicks.length >= 32;
@@ -406,13 +436,17 @@ export function simulatorPicksFragment(
       <span class="text-gray-400 text-sm font-normal ml-2">${simPicks.length}/32 picks revealed</span>
     </div>
     <div class="flex gap-2">
-      ${!isDone ? `<button type="button"
+      ${
+        !isDone
+          ? `<button type="button"
         hx-post="/admin/draft/${year}/simulator/next"
         hx-target="#simulator-picks-fragment"
         hx-swap="outerHTML"
         class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-medium text-sm transition-colors">
         ▶ Pick #${nextPickNum}
-      </button>` : `<span class="px-4 py-2 bg-gray-600 text-gray-300 rounded text-sm">All 32 picks done</span>`}
+      </button>`
+          : `<span class="px-4 py-2 bg-gray-600 text-gray-300 rounded text-sm">All 32 picks done</span>`
+      }
       <button type="button"
         hx-delete="/admin/draft/${year}/simulator"
         hx-target="#simulator-picks-fragment"
@@ -444,7 +478,7 @@ export function simulatorPage(
   simPicks: SimPick[],
   year: number,
   score: number,
-  clerkPublishableKey?: string
+  clerkPublishableKey?: string,
 ): string {
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">

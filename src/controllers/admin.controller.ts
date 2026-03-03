@@ -1,6 +1,6 @@
-import { Elysia, t } from "elysia";
-import { authGuard } from "../guards/auth-guard.js";
-import { getDB } from "../db/index.js";
+import {Elysia, t} from 'elysia';
+import {authGuard} from '../guards/auth-guard.js';
+import {getDB} from '../db/index.js';
 import {
   apps,
   users,
@@ -9,11 +9,11 @@ import {
   draftablePlayers,
   officialDraftResults,
   draftHistoricalWinners,
-} from "../db/schema.js";
-import { eq, and, sql, asc } from "drizzle-orm";
-import { UsersModel } from "../models/users.model.js";
-import { getFirstRoundTeams, CURRENT_DRAFT_YEAR, CONSENSUS_PLAYERS_2026 } from "../config/draft-data.js";
-import { getClerkProfile, getEmailForUserId, isAdminEmail, isAdminUserId } from "../lib/clerk-email.js";
+} from '../db/schema.js';
+import {eq, and, sql, asc} from 'drizzle-orm';
+import {UsersModel} from '../models/users.model.js';
+import {getFirstRoundTeams, CURRENT_DRAFT_YEAR, CONSENSUS_PLAYERS_2026} from '../config/draft-data.js';
+import {getClerkProfile, getEmailForUserId, isAdminEmail, isAdminUserId} from '../lib/clerk-email.js';
 import {
   adminDashboardPage,
   officialPicksEditorFragment,
@@ -21,32 +21,33 @@ import {
   historicalWinnersFragment,
   type OfficialPick,
   type HistoricalWinner,
-} from "../views/admin-templates.js";
-import { type Pick } from "../views/templates.js";
+} from '../views/admin-templates.js';
+import {type Pick} from '../views/templates.js';
 
 const usersModel = new UsersModel();
 
 // ─── Admin auth ──────────────────────────────────────────────────────────────
 
 function getAdminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
+  return (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 }
 
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseYear(param: string | undefined): number | null {
-  if (param == null) return null;
+  if (param == null) {
+    return null;
+  }
   const y = Number(param);
   return Number.isInteger(y) && y >= 2020 && y <= 2040 ? y : null;
 }
 
 async function getApp() {
   const db = getDB();
-  const result = await db.select().from(apps).where(eq(apps.slug, "nfl-draft")).limit(1);
+  const result = await db.select().from(apps).where(eq(apps.slug, 'nfl-draft')).limit(1);
   return result[0] ?? null;
 }
 
@@ -74,7 +75,7 @@ async function getOrCreateUser(auth: any) {
   const db = getDB();
   const clerkId = String(auth.userId);
   const profile = await getClerkProfile(clerkId);
-  return usersModel.findOrCreate(db, clerkId, {
+  return await usersModel.findOrCreate(db, clerkId, {
     email: profile.email || `${clerkId}@clerk.local`,
     firstName: profile.firstName,
     lastName: profile.lastName,
@@ -93,30 +94,42 @@ async function getUserPicks(userId: number, appId: number, year: number): Promis
 
 // ─── Official picks sync (multi-source: ESPN Core, ESPN Site, ESPN Alternate) ───
 
-async function syncOfficialPicks(appId: number, year: number): Promise<{ synced: number; source: string; error?: string }> {
+async function syncOfficialPicks(
+  appId: number,
+  year: number,
+): Promise<{synced: number; source: string; error?: string}> {
   try {
-    const { syncOfficialPicksFromMultipleSources } = await import("../services/draft-auto.js");
+    const {syncOfficialPicksFromMultipleSources} = await import('../services/draft-auto.js');
     const result = await syncOfficialPicksFromMultipleSources(appId, year);
-    if (result.synced > 0) return { synced: result.synced, source: result.source };
-    return { synced: 0, source: "none", error: "No first-round picks from any source (ESPN Core, ESPN Site, ESPN Alternate). Try again during the live draft." };
+    if (result.synced > 0) {
+      return {synced: result.synced, source: result.source};
+    }
+    return {
+      synced: 0,
+      source: 'none',
+      error:
+        'No first-round picks from any source (ESPN Core, ESPN Site, ESPN Alternate). Try again during the live draft.',
+    };
   } catch (err: any) {
-    return { synced: 0, source: "none", error: err?.message ?? "Unknown error during sync" };
+    return {synced: 0, source: 'none', error: err?.message ?? 'Unknown error during sync'};
   }
 }
 
 // ─── Controller ───────────────────────────────────────────────────────────────
 
-export const adminController = new Elysia({ prefix: "/admin" })
+export const adminController = new Elysia({prefix: '/admin'})
   .onBeforeHandle(async (ctx: any) => {
     const authResult = authGuard(ctx);
-    if (authResult) return authResult;
+    if (authResult) {
+      return authResult;
+    }
 
     const auth = ctx.auth();
-    const userId = String(auth?.userId ?? "");
-    console.log("[ADMIN] Checking admin access", { userId, sessionClaims: auth?.sessionClaims ?? null });
-    if (!await isAdminUserId(userId)) {
+    const userId = String(auth?.userId ?? '');
+    console.log('[ADMIN] Checking admin access', {userId, sessionClaims: auth?.sessionClaims ?? null});
+    if (!(await isAdminUserId(userId))) {
       ctx.set.status = 403;
-      ctx.set.headers["Content-Type"] = "text/html";
+      ctx.set.headers['Content-Type'] = 'text/html';
       return `<!DOCTYPE html><html><body style="font-family:sans-serif;max-width:500px;margin:80px auto;padding:20px;text-align:center">
         <h1 style="font-size:22px;font-weight:bold;color:#111">Access Denied</h1>
         <p style="color:#666;margin-top:8px">You don't have admin access. Your email must be in ADMIN_EMAILS.</p>
@@ -126,21 +139,27 @@ export const adminController = new Elysia({ prefix: "/admin" })
   })
 
   // GET /admin/draft — redirect to current year
-  .get("/draft", ({ redirect }) => redirect(`/admin/draft/${CURRENT_DRAFT_YEAR}`))
+  .get('/draft', ({redirect}) => redirect(`/admin/draft/${CURRENT_DRAFT_YEAR}`))
 
   // GET /admin/draft/:year — admin dashboard
-  .get("/draft/:year", async (ctx: any) => {
+  .get('/draft/:year', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
+    if (year == null) {
+      ctx.set.status = 404;
+      return 'Not found';
+    }
 
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
 
     const [draftStarted, officialPicks, submissionsResult] = await Promise.all([
       getDraftStarted(app.id, year),
       getOfficialPicks(app.id, year),
       getDB()
-        .select({ userId: draftPicks.userId, count: sql<number>`count(*)::int` })
+        .select({userId: draftPicks.userId, count: sql<number>`count(*)::int`})
         .from(draftPicks)
         .where(and(eq(draftPicks.appId, app.id), eq(draftPicks.year, year)))
         .groupBy(draftPicks.userId),
@@ -151,17 +170,23 @@ export const adminController = new Elysia({ prefix: "/admin" })
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;
     const pastYears = [CURRENT_DRAFT_YEAR - 1, CURRENT_DRAFT_YEAR - 2, CURRENT_DRAFT_YEAR - 3];
 
-    ctx.set.headers["Content-Type"] = "text/html";
+    ctx.set.headers['Content-Type'] = 'text/html';
     return adminDashboardPage(officialPicks, draftStarted, year, submissionCount, adminEmails, clerkKey, pastYears);
   })
 
   // POST /admin/draft/:year/start — lock picks and mark draft started
-  .post("/draft/:year/start", async (ctx: any) => {
+  .post('/draft/:year/start', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
+    if (year == null) {
+      ctx.set.status = 404;
+      return 'Not found';
+    }
 
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
 
     const db = getDB();
     const existing = await db
@@ -173,61 +198,77 @@ export const adminController = new Elysia({ prefix: "/admin" })
     if (existing.length > 0) {
       await db
         .update(draftSettings)
-        .set({ draftStartedAt: new Date() })
+        .set({draftStartedAt: new Date()})
         .where(and(eq(draftSettings.appId, app.id), eq(draftSettings.year, year)));
     } else {
-      await db.insert(draftSettings).values({ appId: app.id, year, draftStartedAt: new Date() });
+      await db.insert(draftSettings).values({appId: app.id, year, draftStartedAt: new Date()});
     }
-    return { ok: true, year };
+    return {ok: true, year};
   })
 
   // POST /admin/draft/:year/sync — pull live picks from ESPN
-  .post("/draft/:year/sync", async (ctx: any) => {
+  .post('/draft/:year/sync', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
+    if (year == null) {
+      ctx.set.status = 404;
+      return 'Not found';
+    }
 
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
 
-    const { synced, source, error } = await syncOfficialPicks(app.id, year);
+    const {synced, source, error} = await syncOfficialPicks(app.id, year);
     const officialPicks = await getOfficialPicks(app.id, year);
 
-    ctx.set.headers["Content-Type"] = "text/html";
+    ctx.set.headers['Content-Type'] = 'text/html';
     const fragment = officialPicksEditorFragment(officialPicks, year);
 
     // Prepend a status banner
     const banner = error
       ? `<div class="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">⚠ Sync error: ${escapeHtmlInline(error)}</div>`
-      : `<div class="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ Synced ${synced} pick${synced !== 1 ? "s" : ""} from ${escapeHtmlInline(source)}</div>`;
+      : `<div class="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">✓ Synced ${synced} pick${synced !== 1 ? 's' : ''} from ${escapeHtmlInline(source)}</div>`;
 
     return banner + fragment;
   })
 
   // GET /admin/draft/:year/official-picks — refresh editor fragment
-  .get("/draft/:year/official-picks", async (ctx: any) => {
+  .get('/draft/:year/official-picks', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
+    if (year == null) {
+      ctx.set.status = 404;
+      return 'Not found';
+    }
 
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
 
     const officialPicks = await getOfficialPicks(app.id, year);
-    ctx.set.headers["Content-Type"] = "text/html";
+    ctx.set.headers['Content-Type'] = 'text/html';
     return officialPicksEditorFragment(officialPicks, year);
   })
 
   // POST /admin/draft/:year/official-picks/:pickNumber — upsert one pick
   .post(
-    "/draft/:year/official-picks/:pickNumber",
+    '/draft/:year/official-picks/:pickNumber',
     async (ctx: any) => {
       const year = parseYear(ctx.params?.year);
       const pickNumber = Number(ctx.params?.pickNumber);
       if (year == null || !pickNumber || pickNumber < 1 || pickNumber > 32) {
-        ctx.set.status = 400; return "Bad request";
+        ctx.set.status = 400;
+        return 'Bad request';
       }
 
       const app = await getApp();
-      if (!app) { ctx.set.status = 404; return "App not found"; }
+      if (!app) {
+        ctx.set.status = 404;
+        return 'App not found';
+      }
 
       const playerName = (ctx.body?.playerName as string)?.trim() || null;
       const position = (ctx.body?.position as string)?.trim() || null;
@@ -237,139 +278,196 @@ export const adminController = new Elysia({ prefix: "/admin" })
       const existing = await db
         .select()
         .from(officialDraftResults)
-        .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year), eq(officialDraftResults.pickNumber, pickNumber)))
+        .where(
+          and(
+            eq(officialDraftResults.appId, app.id),
+            eq(officialDraftResults.year, year),
+            eq(officialDraftResults.pickNumber, pickNumber),
+          ),
+        )
         .limit(1);
 
       if (existing.length > 0) {
         await db
           .update(officialDraftResults)
-          .set({ playerName, teamName })
-          .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year), eq(officialDraftResults.pickNumber, pickNumber)));
+          .set({playerName, teamName})
+          .where(
+            and(
+              eq(officialDraftResults.appId, app.id),
+              eq(officialDraftResults.year, year),
+              eq(officialDraftResults.pickNumber, pickNumber),
+            ),
+          );
       } else if (playerName) {
-        await db.insert(officialDraftResults).values({ appId: app.id, year, pickNumber, playerName, teamName });
+        await db.insert(officialDraftResults).values({appId: app.id, year, pickNumber, playerName, teamName});
       }
 
       const updated = await db
         .select()
         .from(officialDraftResults)
-        .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year), eq(officialDraftResults.pickNumber, pickNumber)))
+        .where(
+          and(
+            eq(officialDraftResults.appId, app.id),
+            eq(officialDraftResults.year, year),
+            eq(officialDraftResults.pickNumber, pickNumber),
+          ),
+        )
         .limit(1);
 
       const pick: OfficialPick | null = updated[0]
-        ? { pickNumber, playerName: updated[0].playerName, teamName: updated[0].teamName, position }
+        ? {pickNumber, playerName: updated[0].playerName, teamName: updated[0].teamName, position}
         : null;
 
-      ctx.set.headers["Content-Type"] = "text/html";
+      ctx.set.headers['Content-Type'] = 'text/html';
       return adminPickRow(pickNumber, teamName ?? `Pick ${pickNumber}`, pick, year);
     },
-    { body: t.Object({ playerName: t.Optional(t.String()), position: t.Optional(t.String()), teamName: t.Optional(t.String()) }) }
+    {
+      body: t.Object({
+        playerName: t.Optional(t.String()),
+        position: t.Optional(t.String()),
+        teamName: t.Optional(t.String()),
+      }),
+    },
   )
 
   // DELETE /admin/draft/:year/official-picks/:pickNumber — clear one pick
   .delete(
-    "/draft/:year/official-picks/:pickNumber",
+    '/draft/:year/official-picks/:pickNumber',
     async (ctx: any) => {
       const year = parseYear(ctx.params?.year);
       const pickNumber = Number(ctx.params?.pickNumber);
-      if (year == null || !pickNumber) { ctx.set.status = 400; return "Bad request"; }
+      if (year == null || !pickNumber) {
+        ctx.set.status = 400;
+        return 'Bad request';
+      }
 
       const app = await getApp();
-      if (!app) { ctx.set.status = 404; return "App not found"; }
+      if (!app) {
+        ctx.set.status = 404;
+        return 'App not found';
+      }
 
       const db = getDB();
       await db
         .delete(officialDraftResults)
-        .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year), eq(officialDraftResults.pickNumber, pickNumber)));
+        .where(
+          and(
+            eq(officialDraftResults.appId, app.id),
+            eq(officialDraftResults.year, year),
+            eq(officialDraftResults.pickNumber, pickNumber),
+          ),
+        );
 
       const teams = getFirstRoundTeams(year);
-      ctx.set.headers["Content-Type"] = "text/html";
+      ctx.set.headers['Content-Type'] = 'text/html';
       return adminPickRow(pickNumber, teams[pickNumber] ?? `Pick ${pickNumber}`, null, year);
     },
-    { params: t.Object({ year: t.String(), pickNumber: t.String() }) }
+    {params: t.Object({year: t.String(), pickNumber: t.String()})},
   )
 
   // POST /admin/draft/:year/refresh-players — upsert CBS consensus list from static data into DB
-  .post("/draft/:year/refresh-players", async (ctx: any) => {
+  .post('/draft/:year/refresh-players', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    if (year == null) { ctx.set.status = 404; return "Not found"; }
+    if (year == null) {
+      ctx.set.status = 404;
+      return 'Not found';
+    }
 
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
 
     const players = year === 2026 ? CONSENSUS_PLAYERS_2026 : [];
     if (players.length === 0) {
       ctx.set.status = 400;
-      return { ok: false, error: `No static player data available for year ${year}` };
+      return {ok: false, error: `No static player data available for year ${year}`};
     }
 
     const db = getDB();
     await db.delete(draftablePlayers).where(and(eq(draftablePlayers.appId, app.id), eq(draftablePlayers.year, year)));
     await db.insert(draftablePlayers).values(
       players.map((p) => ({
-        appId: app!.id,
+        appId: app.id,
         year,
         rank: p.rank,
         playerName: p.playerName,
         school: p.school,
         position: p.position,
-      }))
+      })),
     );
 
-    return { ok: true, year, count: players.length, message: `Refreshed ${players.length} CBS players for ${year}` };
+    return {ok: true, year, count: players.length, message: `Refreshed ${players.length} CBS players for ${year}`};
   })
 
   // GET /admin/draft/:year/historical-winners — fragment for HTMX tab content
-  .get("/draft/:year/historical-winners", async (ctx: any) => {
+  .get('/draft/:year/historical-winners', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
     if (year == null || year >= CURRENT_DRAFT_YEAR || year < CURRENT_DRAFT_YEAR - 3) {
-      ctx.set.status = 400; return "Invalid year for historical winners";
+      ctx.set.status = 400;
+      return 'Invalid year for historical winners';
     }
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
     const db = getDB();
     const winners: HistoricalWinner[] = await db
       .select()
       .from(draftHistoricalWinners)
       .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
       .orderBy(asc(draftHistoricalWinners.rank));
-    ctx.set.headers["Content-Type"] = "text/html";
+    ctx.set.headers['Content-Type'] = 'text/html';
     return historicalWinnersFragment(winners, year);
   })
 
   // POST /admin/draft/:year/historical-winners — add a winner
-  .post("/draft/:year/historical-winners", async (ctx: any) => {
+  .post('/draft/:year/historical-winners', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
     if (year == null || year >= CURRENT_DRAFT_YEAR || year < CURRENT_DRAFT_YEAR - 3) {
-      ctx.set.status = 400; return "Invalid year";
+      ctx.set.status = 400;
+      return 'Invalid year';
     }
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
     const body = ctx.body as Record<string, string>;
-    const rank = parseInt(body.rank ?? "1");
-    const name = (body.name ?? "").trim();
-    const email = (body.email ?? "").trim() || null;
+    const rank = parseInt(body.rank ?? '1');
+    const name = (body.name ?? '').trim();
+    const email = (body.email ?? '').trim() || null;
     const score = body.score ? parseInt(body.score) : null;
     if (!name || isNaN(rank) || rank < 1 || rank > 3) {
-      ctx.set.status = 400; return "Name and valid rank (1–3) required";
+      ctx.set.status = 400;
+      return 'Name and valid rank (1–3) required';
     }
     const db = getDB();
-    await db.insert(draftHistoricalWinners).values({ appId: app.id, year, rank, name, email, score });
+    await db.insert(draftHistoricalWinners).values({appId: app.id, year, rank, name, email, score});
     const winners: HistoricalWinner[] = await db
       .select()
       .from(draftHistoricalWinners)
       .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
       .orderBy(asc(draftHistoricalWinners.rank));
-    ctx.set.headers["Content-Type"] = "text/html";
+    ctx.set.headers['Content-Type'] = 'text/html';
     return historicalWinnersFragment(winners, year);
   })
 
   // DELETE /admin/draft/:year/historical-winners/:id — remove a winner
-  .delete("/draft/:year/historical-winners/:id", async (ctx: any) => {
+  .delete('/draft/:year/historical-winners/:id', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
-    const id = parseInt(ctx.params?.id ?? "");
-    if (year == null || isNaN(id)) { ctx.set.status = 400; return "Invalid params"; }
+    const id = parseInt(ctx.params?.id ?? '');
+    if (year == null || isNaN(id)) {
+      ctx.set.status = 400;
+      return 'Invalid params';
+    }
     const app = await getApp();
-    if (!app) { ctx.set.status = 404; return "App not found"; }
+    if (!app) {
+      ctx.set.status = 404;
+      return 'App not found';
+    }
     const db = getDB();
     await db
       .delete(draftHistoricalWinners)
@@ -379,10 +477,10 @@ export const adminController = new Elysia({ prefix: "/admin" })
       .from(draftHistoricalWinners)
       .where(and(eq(draftHistoricalWinners.appId, app.id), eq(draftHistoricalWinners.year, year)))
       .orderBy(asc(draftHistoricalWinners.rank));
-    ctx.set.headers["Content-Type"] = "text/html";
+    ctx.set.headers['Content-Type'] = 'text/html';
     return historicalWinnersFragment(winners, year);
   });
 
 function escapeHtmlInline(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
