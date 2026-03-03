@@ -1,0 +1,3 @@
+#!/bin/sh
+
+node_modules/@josh803316/shared-config/.husky/pre-commit "$@"

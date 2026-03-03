@@ -5,7 +5,11 @@
   "scripts": {
     "dev": "NODE_ENV=development bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "lint": "bunx tsc --noEmit",
+    "build": "bun run lint",
+    "lint": "eslint . && tsc --noEmit",
+    "fmt": "prettier -wu",
+    "format": "prettier -wu .",
+    "prepare": "husky",
     "db:generate": "drizzle-kit generate --schema=./src/db/schema.ts --dialect=postgresql",
     "db:studio": "drizzle-kit studio --dialect=postgresql",
     "db:migrate": "bun run src/db/migrate.ts",
@@ -22,8 +26,17 @@
     "postgres": "^3.4.8"
   },
   "devDependencies": {
+    "@josh803316/shared-config": "^1.0.0",
     "bun-types": "latest",
     "drizzle-kit": "^0.31.9"
+  },
+  "trustedDependencies": [
+    "@clerk/shared",
+    "@josh803316/shared-config",
+    "esbuild"
+  ],
+  "engines": {
+    "npm": "****** PLEASE USE 'bun install', NPM IS NOT SUPPORTED ******"
   },
   "overrides": {
     "@clerk/backend": "2.32.0"

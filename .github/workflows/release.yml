@@ -1,4 +1,5 @@
 name: Release
+
 on:
   push:
     branches:
@@ -9,8 +10,20 @@ permissions:
   packages: read
 
 jobs:
+  deploy:
+    uses: josh803316/shared-ci-workflows/.github/workflows/vercel-production.yml@main
+    with:
+      app-name: lll-experience
+      vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+      vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+      build-command: 'bun run build'
+    secrets:
+      vercel-token: ${{ secrets.VERCEL_TOKEN }}
+      github-packages-token: ${{ secrets.BUN_AUTH_TOKEN }}
+
   release:
     name: Release
+    needs: deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,7 +42,7 @@ jobs:
         with:
           node-version: 22
 
-      # Install release tooling — not in package.json to avoid needing GitHub Packages auth elsewhere
+      # Install release tooling — not in package.json to avoid Vercel needing GitHub Packages auth
       # GITHUB_TOKEN must be set here so Bun can expand ${GITHUB_TOKEN} in .npmrc
       - name: Install release dependencies
         run: bun add @josh803316/semantic-release-helper semantic-release
