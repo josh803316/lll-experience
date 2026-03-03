@@ -966,7 +966,12 @@ export const draftController = new Elysia({prefix: '/draft'})
     '/admin/start',
     async (ctx: any) => {
       const secret = process.env.DRAFT_ADMIN_SECRET;
-      if (secret && ctx.request.headers.get('X-Admin-Secret') !== secret) {
+      if (!secret) {
+        ctx.set.status = 503;
+        return 'Admin secret not configured';
+      }
+      const provided = ctx.request.headers.get('X-Admin-Secret');
+      if (!provided || provided !== secret) {
         ctx.set.status = 403;
         return 'Forbidden';
       }
@@ -1000,7 +1005,12 @@ export const draftController = new Elysia({prefix: '/draft'})
     '/admin/official-results',
     async (ctx: any) => {
       const secret = process.env.DRAFT_ADMIN_SECRET;
-      if (secret && ctx.request.headers.get('X-Admin-Secret') !== secret) {
+      if (!secret) {
+        ctx.set.status = 503;
+        return 'Admin secret not configured';
+      }
+      const provided = ctx.request.headers.get('X-Admin-Secret');
+      if (!provided || provided !== secret) {
         ctx.set.status = 403;
         return 'Forbidden';
       }

@@ -15,7 +15,18 @@ util.inspect.defaultOptions = {
 export function useLogger(app: Elysia) {
   const logger = createPinoLogger({
     redact: {
-      paths: ['body.password', 'body.token', 'headers.authorization'],
+      paths: [
+        'body.password',
+        'body.token',
+        'headers.authorization',
+        'headers.Authorization',
+        'headers.x-admin-secret',
+        'headers.X-Admin-Secret',
+        'request.headers.authorization',
+        'request.headers.Authorization',
+        'request.headers.x-admin-secret',
+        'request.headers.X-Admin-Secret',
+      ],
       censor: '[Redacted]',
     },
     ...(!isProductionMode
