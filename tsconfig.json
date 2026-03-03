@@ -4,7 +4,8 @@
     "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    "noUncheckedIndexedAccess": false
   },
   "exclude": ["dist/", "node_modules/"]
 }

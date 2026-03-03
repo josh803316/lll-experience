@@ -38,7 +38,7 @@ async function fetchFromESPNCore(year: number): Promise<OfficialPickEntry[]> {
     return [];
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as any;
   const items: any[] = data?.items ?? [];
   const firstRound = items.filter((item: any) => item?.round === 1 || (!item?.round && (item?.pick ?? 0) <= 32));
 
@@ -63,7 +63,7 @@ async function fetchFromESPNSite(year: number): Promise<OfficialPickEntry[]> {
     return [];
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as any;
   const rounds = data?.rounds ?? [];
   const round1 = Array.isArray(rounds)
     ? (rounds.find((r: any) => r?.number === 1 || r?.round === 1) ?? rounds[0])
@@ -90,7 +90,7 @@ async function fetchFromESPNAlternate(year: number): Promise<OfficialPickEntry[]
     return [];
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as any;
   const items: any[] = data?.items ?? [];
   const out: OfficialPickEntry[] = [];
   for (const item of items) {

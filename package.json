@@ -26,7 +26,7 @@
     "postgres": "^3.4.8"
   },
   "devDependencies": {
-    "@josh803316/shared-config": "^1.0.0",
+    "@josh803316/shared-config": "^1.1.0",
     "bun-types": "latest",
     "drizzle-kit": "^0.31.9"
   },

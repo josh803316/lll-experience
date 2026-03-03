@@ -26,7 +26,7 @@ async function fetchESPNProspects(year: number): Promise<RankedPlayer[]> {
     return [];
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as any;
   const items: any[] = data?.items ?? [];
   if (!items.length) {
     return [];
@@ -55,7 +55,7 @@ async function fetchESPNSiteProspects(year: number): Promise<RankedPlayer[]> {
     return [];
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as any;
   const prospects: any[] = data?.prospects ?? data?.players ?? [];
   if (!prospects.length) {
     return [];

@@ -15,7 +15,7 @@
         "postgres": "^3.4.8",
       },
       "devDependencies": {
-        "@josh803316/shared-config": "^1.0.0",
+        "@josh803316/shared-config": "^1.1.0",
         "bun-types": "latest",
         "drizzle-kit": "^0.31.9",
       },
@@ -151,7 +151,7 @@
 
     "@inquirer/type": ["@inquirer/type@3.0.10", "", { "peerDependencies": { "@types/node": ">=18" }, "optionalPeers": ["@types/node"] }, "sha512-BvziSRxfz5Ov8ch0z/n3oijRSEcEsHnhggm4xFZe93DHcUCTlutlq9Ox4SVENAfcRD22UQq7T/atg9Wr3k09eA=="],
 
-    "@josh803316/shared-config": ["@josh803316/shared-config@1.0.1", "https://npm.pkg.github.com/download/@josh803316/shared-config/1.0.1/e44906fb9ea9f16ccf9a2560fddc188e2ce38dfe", { "dependencies": { "@eslint/config-inspector": "^1.2.0", "@eslint/js": "^9.35.0", "@types/bun": "^1.2.22", "@types/eslint__js": "^9.14.0", "@types/node": "^24.5.0", "eslint": "^9.35.0", "eslint-formatter-summary": "^2.0.2", "eslint-nibble": "^9.0.0", "globals": "^16.4.0", "husky": "^9.1.7", "lint-staged": "^16.1.6", "prettier": "^3.6.2", "typescript": "^5.9.2", "typescript-eslint": "^8.44.0" } }, "sha512-kJjwSykiZTGswEISc5PTtHi45SDCtaW+p/VZQWynMqN2mbfZX48Hu4YKcqvWWqH71sFRGoPUYm9zBA5+KoIxfQ=="],
+    "@josh803316/shared-config": ["@josh803316/shared-config@1.1.0", "https://npm.pkg.github.com/download/@josh803316/shared-config/1.1.0/3aa440a32b4ee367b635f4c3d76cc68d11526ac3", { "dependencies": { "@eslint/config-inspector": "^1.2.0", "@eslint/js": "^9.35.0", "@types/bun": "^1.2.22", "@types/eslint__js": "^9.14.0", "@types/node": "^24.5.0", "eslint": "^9.35.0", "eslint-formatter-summary": "^2.0.2", "eslint-nibble": "^9.0.0", "globals": "^16.4.0", "husky": "^9.1.7", "lint-staged": "^16.1.6", "prettier": "^3.6.2", "typescript": "^5.9.2", "typescript-eslint": "^8.44.0" } }, "sha512-1m5B6l2/UhzhnARcX1+xrs+N0By9dDyujJr2ZZQM/lTSmRmZ8kvgqRWiy4Rd+BDt0JnS6T2HlpyKfHC1VAlbuw=="],
 
     "@pinojs/redact": ["@pinojs/redact@0.4.0", "", {}, "sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg=="],
 

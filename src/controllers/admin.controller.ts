@@ -22,7 +22,7 @@ import {
   type OfficialPick,
   type HistoricalWinner,
 } from '../views/admin-templates.js';
-import {type Pick} from '../views/templates.js';
+import type {Pick} from '../views/templates.js';
 
 const usersModel = new UsersModel();
 
