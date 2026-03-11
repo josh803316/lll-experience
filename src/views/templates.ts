@@ -56,7 +56,7 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
       ? `<script
     crossorigin="anonymous"
     data-clerk-publishable-key="${clerkPublishableKey}"
-    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@4/dist/clerk.browser.js"
     type="text/javascript"
   ></script>`
       : ''
