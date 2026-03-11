@@ -54,7 +54,6 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
   ${
     clerkPublishableKey
       ? `<script
-    async
     crossorigin="anonymous"
     data-clerk-publishable-key="${clerkPublishableKey}"
     src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
@@ -112,9 +111,15 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
       ? `<script>
     window.__clerkToken = null;
 
-    window.addEventListener('load', async () => {
-      await window.Clerk?.load();
-      const clerk = window.Clerk;
+    function _waitForClerk(cb, retries) {
+      if (window.Clerk) { cb(window.Clerk); return; }
+      if (retries <= 0) return;
+      setTimeout(function() { _waitForClerk(cb, retries - 1); }, 100);
+    }
+
+    window.addEventListener('load', function() {
+      _waitForClerk(async function(clerk) {
+      await clerk.load();
       if (!clerk) return;
 
       async function _refreshClerkToken() {
@@ -140,6 +145,7 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
           }
         }
       });
+      }, 50);
     });
   </script>`
       : ''
@@ -161,15 +167,15 @@ export function landingPage(clerkPublishableKey?: string): string {
     <div id="sign-in-root"></div>
   </div>
   <script>
-    window.addEventListener('load', async () => {
-      await window.Clerk?.load();
-      const clerk = window.Clerk;
-      if (!clerk) return;
-      if (clerk.user) {
-        window.location.href = '/apps';
-      } else {
-        clerk.mountSignIn(document.getElementById('sign-in-root'));
-      }
+    window.addEventListener('load', function() {
+      _waitForClerk(async function(clerk) {
+        await clerk.load();
+        if (clerk.user) {
+          window.location.href = '/apps';
+        } else {
+          clerk.mountSignIn(document.getElementById('sign-in-root'));
+        }
+      }, 50);
     });
   </script>`;
   return baseLayout(content, 'LLL Experience', clerkPublishableKey);
