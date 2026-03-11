@@ -50,13 +50,14 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏈</text></svg>">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
   ${
     clerkPublishableKey
       ? `<script
+    async
     crossorigin="anonymous"
     data-clerk-publishable-key="${clerkPublishableKey}"
-    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@4/dist/clerk.browser.js"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
     type="text/javascript"
   ></script>`
       : ''
