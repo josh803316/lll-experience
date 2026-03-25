@@ -71,7 +71,7 @@ const app = baseApp
   .onError(({error, code, request}) => {
     const url = new URL(request.url);
     const msg = getErrorMessage(error);
-    if (code === 'NOT_FOUND') {
+    if (String(code) === 'NOT_FOUND') {
       console.log(`[404] ${request.method} ${url.pathname}`);
       return new Response(`<html><body><h1>404 — Not Found</h1><a href="/">Go home</a></body></html>`, {
         status: 404,
