@@ -591,7 +591,7 @@ export const draftController = new Elysia({prefix: '/draft'})
         teamName?: string;
         doubleScorePick?: boolean;
       };
-      let parsed: PickPayload[] = [];
+      let parsed: PickPayload[];
       try {
         parsed = JSON.parse(ctx.body.picks as string) as PickPayload[];
       } catch {

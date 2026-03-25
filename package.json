@@ -20,15 +20,15 @@
     "@elysiajs/cors": "^1.4.1",
     "@elysiajs/swagger": "^1.3.1",
     "drizzle-orm": "^0.45.1",
-    "elysia": "^1.4.25",
-    "elysia-clerk": "^0.13.2",
+    "elysia": "^1.4.28",
+    "elysia-clerk": "^1.0.0",
     "pino-pretty": "^13.1.3",
     "postgres": "^3.4.8"
   },
   "devDependencies": {
-    "@josh803316/shared-config": "^1.1.0",
+    "@josh803316/shared-config": "^2.0.0",
     "bun-types": "latest",
-    "drizzle-kit": "^0.31.9"
+    "drizzle-kit": "^0.31.10"
   },
   "trustedDependencies": [
     "@clerk/shared",

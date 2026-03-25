@@ -4,6 +4,7 @@
     "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
     "downlevelIteration": true,
+    "ignoreDeprecations": "6.0",
     "types": ["bun-types"],
     "noUncheckedIndexedAccess": false
   },

@@ -25,6 +25,8 @@ const config = [
       '@typescript-eslint/return-await': 'warn',
       '@typescript-eslint/no-base-to-string': 'warn',
       '@typescript-eslint/no-restricted-types': 'warn',
+      // False positive: rule fails to recognise Error constructor with bun-types
+      '@typescript-eslint/only-throw-error': 'warn',
     },
   },
   {

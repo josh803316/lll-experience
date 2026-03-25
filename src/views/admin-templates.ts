@@ -333,7 +333,7 @@ function simPickRow(
   const officialPlayer = simPick?.playerName ?? null;
 
   // Compute score + row color matching the main picks table scheme
-  let rowBg = 'bg-gray-50';
+  let rowBg: string;
   let accentBorder = '';
   let scorePts: number | null = null;
 

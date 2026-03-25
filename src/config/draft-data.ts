@@ -524,7 +524,10 @@ export function computeConsensusRanking(
       if (!scores.has(p.playerName)) {
         scores.set(p.playerName, {score: 0, school: p.school, position: p.position});
       }
-      scores.get(p.playerName)!.score += 1 / (K + p.rank);
+      const scoreEntry = scores.get(p.playerName);
+      if (scoreEntry) {
+        scoreEntry.score += 1 / (K + p.rank);
+      }
     }
   }
 
@@ -572,9 +575,11 @@ export function computeAveragePositionRanking(
       if (!rankSum.has(p.playerName)) {
         rankSum.set(p.playerName, {sum: 0, count: 0, school: p.school, position: p.position});
       }
-      const entry = rankSum.get(p.playerName)!;
-      entry.sum += p.rank;
-      entry.count += 1;
+      const entry = rankSum.get(p.playerName);
+      if (entry) {
+        entry.sum += p.rank;
+        entry.count += 1;
+      }
     }
   }
 
