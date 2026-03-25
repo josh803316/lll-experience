@@ -301,10 +301,10 @@ function pickTableRow(
   const hasPlayer = pick?.playerName;
   const slotContent = draftLocked
     ? hasPlayer
-      ? `<div class="draft-player-chip flex items-center gap-1 draft-chip-readonly" data-player-name="${escapeHtml(pick.playerName!)}" data-position="${escapeHtml(pick.position || '')}"><span class="chip-name">${escapeHtml(pick.playerName!)}</span>${pick.position ? ` <span class="text-xs opacity-70">${escapeHtml(pick.position)}</span>` : ''}</div>`
+      ? `<div class="draft-player-chip flex items-center gap-1 draft-chip-readonly" data-player-name="${escapeHtml(pick.playerName)}" data-position="${escapeHtml(pick.position || '')}"><span class="chip-name">${escapeHtml(pick.playerName)}</span>${pick.position ? ` <span class="text-xs opacity-70">${escapeHtml(pick.position)}</span>` : ''}</div>`
       : '<span class="text-gray-400 italic">—</span>'
     : hasPlayer
-      ? `<div class="draft-player-chip flex items-center gap-1" data-player-name="${escapeHtml(pick.playerName!)}" data-position="${escapeHtml(pick.position || '')}"><span class="chip-name">${escapeHtml(pick.playerName!)}</span>${pick.position ? ` <span class="chip-pos text-xs opacity-70">${escapeHtml(pick.position)}</span>` : ''} <button type="button" class="draft-clear-slot ml-1 opacity-40 hover:opacity-100" title="Clear">×</button></div>`
+      ? `<div class="draft-player-chip flex items-center gap-1" data-player-name="${escapeHtml(pick.playerName)}" data-position="${escapeHtml(pick.position || '')}"><span class="chip-name">${escapeHtml(pick.playerName)}</span>${pick.position ? ` <span class="chip-pos text-xs opacity-70">${escapeHtml(pick.position)}</span>` : ''} <button type="button" class="draft-clear-slot ml-1 opacity-40 hover:opacity-100" title="Clear">×</button></div>`
       : `<span class="lg:hidden text-xs text-gray-300 italic pointer-events-none select-none">tap to assign</span>`;
 
   // Score badge: +N in number cell (draft-row-score-badge + data-pts for client-side double toggle)
