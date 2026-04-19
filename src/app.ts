@@ -12,6 +12,8 @@ import {getDB} from './db/index.js';
 import {apps} from './db/schema.js';
 import {eq} from 'drizzle-orm';
 import {landingPage, appsPage} from './views/templates.js';
+import {refreshRankingsFromAi} from './services/rankings-cron.js';
+import {CURRENT_DRAFT_YEAR} from './config/draft-data.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
@@ -64,6 +66,24 @@ const app = baseApp
   })
 
   .get('/nfl-draft', ({redirect}) => redirect('/draft'))
+
+  // Vercel Cron: daily rankings refresh via You.com Research API
+  .get('/api/cron/refresh-rankings', async ({request, set}) => {
+    const authHeader = request.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      set.status = 401;
+      return {error: 'Unauthorized'};
+    }
+    try {
+      const result = await refreshRankingsFromAi(CURRENT_DRAFT_YEAR);
+      return result;
+    } catch (err: any) {
+      console.error('[CRON] refresh-rankings error:', err?.message ?? err);
+      set.status = 500;
+      return {error: err?.message ?? 'Unknown error'};
+    }
+  })
 
   .use(draftController)
   .use(adminController)

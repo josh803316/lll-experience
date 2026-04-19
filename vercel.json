@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "bunVersion": "1.x",
-  "buildCommand": "node scripts/patch-clerk.cjs && bun run scripts/check-module.ts"
+  "buildCommand": "node scripts/patch-clerk.cjs && bun run scripts/check-module.ts",
+  "crons": [
+    {
+      "path": "/api/cron/refresh-rankings",
+      "schedule": "0 8 * * *"
+    }
+  ]
 }

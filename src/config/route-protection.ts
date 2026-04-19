@@ -1,4 +1,4 @@
-export const publicPaths = ['/', '/health'];
+export const publicPaths = ['/', '/health', '/api/cron'];
 
 export const isProtectedRoute = (path: string): boolean => {
   const isPublic = publicPaths.some((publicPath) => {
