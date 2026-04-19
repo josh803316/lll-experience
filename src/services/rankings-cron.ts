@@ -92,7 +92,16 @@ function parseRankingsResponse(content: string): ParsedPlayer[] {
       const playerName = parts[2].trim();
       const school = parts[3].trim();
       const position = normPosition(parts[4]);
-      if (rank >= 1 && rank <= BATCH_SIZE * 4 && playerName && school && position) {
+      // Require at least first + last name, real school, valid position
+      if (
+        rank >= 1 &&
+        rank <= BATCH_SIZE * 4 &&
+        playerName &&
+        playerName.includes(' ') &&
+        school &&
+        school.toLowerCase() !== 'unknown' &&
+        position
+      ) {
         const key = playerName.toLowerCase();
         if (!seen.has(key)) {
           seen.add(key);
@@ -112,7 +121,15 @@ function parseRankingsResponse(content: string): ParsedPlayer[] {
       const playerName = match[2].trim();
       const school = match[3].trim();
       const position = normPosition(match[4]);
-      if (rank >= 1 && rank <= BATCH_SIZE * 4 && playerName && school && VALID_POSITIONS.has(position)) {
+      if (
+        rank >= 1 &&
+        rank <= BATCH_SIZE * 4 &&
+        playerName &&
+        playerName.includes(' ') &&
+        school &&
+        school.toLowerCase() !== 'unknown' &&
+        VALID_POSITIONS.has(position)
+      ) {
         const key = playerName.toLowerCase();
         if (!seen.has(key)) {
           seen.add(key);
