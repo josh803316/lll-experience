@@ -1462,9 +1462,9 @@ export function draftLayout(
     // Render markdown-lite: bold, line breaks, paragraphs
     function renderContent(text) {
       return escHtml(text)
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n\n/g, '</p><p class="mt-2">')
-        .replace(/\n/g, '<br>');
+        .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
+        .replace(new RegExp('\\\\n\\\\n', 'g'), '</p><p class="mt-2">')
+        .replace(new RegExp('\\\\n', 'g'), '<br>');
     }
 
     function addAiBubble(content, picks, sources) {
