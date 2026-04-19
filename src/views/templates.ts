@@ -856,23 +856,27 @@ export function draftLayout(
     };
   }
 
-  function getUsedPlayerNames() {
-    const names = new Set();
+  function getUsedPlayerNorms() {
+    const norms = new Set();
     document.querySelectorAll('#picks-table-body .draft-slot-container .draft-player-chip, #picks-table-body .draft-slot-container .draftable-player-chip').forEach(function(el) {
       const name = el.getAttribute('data-player-name');
-      if (name) {
-        names.add(name);
-        names.add(normNameForDup(name));
+      if (name && name.trim()) {
+        var n = normNameForDup(name);
+        if (n) norms.add(n);
       }
     });
-    return names;
+    return norms;
   }
 
+  // Backwards-compat alias used elsewhere
+  function getUsedPlayerNames() { return getUsedPlayerNorms(); }
+
   function markUsedPlayers() {
-    const used = getUsedPlayerNames();
+    const usedNorms = getUsedPlayerNorms();
     document.querySelectorAll('#draftable-players-list .draftable-player-chip').forEach(function(chip) {
       const name = chip.getAttribute('data-player-name');
-      if (used.has(name) || used.has(normNameForDup(name))) {
+      const norm = name ? normNameForDup(name) : '';
+      if (norm && usedNorms.has(norm)) {
         chip.classList.add('in-use', 'opacity-50', 'text-gray-400', 'cursor-not-allowed');
         chip.classList.remove('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing', 'active:bg-blue-50');
       } else {
@@ -1029,8 +1033,9 @@ export function draftLayout(
           if (!slotEl.querySelector('.draft-player-chip')) switchTab('players');
           return;
         }
-        var used = getUsedPlayerNames();
-        if (used.has(mobileSelectedPlayer.playerName || '') || used.has(normNameForDup(mobileSelectedPlayer.playerName || ''))) {
+        var usedNorms = getUsedPlayerNorms();
+        var selNorm = normNameForDup(mobileSelectedPlayer.playerName || '');
+        if (selNorm && usedNorms.has(selNorm)) {
           setMobileSelected(null);
           return;
         }
