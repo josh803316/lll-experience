@@ -860,7 +860,10 @@ export function draftLayout(
     const names = new Set();
     document.querySelectorAll('#picks-table-body .draft-slot-container .draft-player-chip, #picks-table-body .draft-slot-container .draftable-player-chip').forEach(function(el) {
       const name = el.getAttribute('data-player-name');
-      if (name) names.add(name);
+      if (name) {
+        names.add(name);
+        names.add(normNameForDup(name));
+      }
     });
     return names;
   }
@@ -869,7 +872,7 @@ export function draftLayout(
     const used = getUsedPlayerNames();
     document.querySelectorAll('#draftable-players-list .draftable-player-chip').forEach(function(chip) {
       const name = chip.getAttribute('data-player-name');
-      if (used.has(name)) {
+      if (used.has(name) || used.has(normNameForDup(name))) {
         chip.classList.add('in-use', 'opacity-50', 'text-gray-400', 'cursor-not-allowed');
         chip.classList.remove('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing', 'active:bg-blue-50');
       } else {
@@ -1027,7 +1030,7 @@ export function draftLayout(
           return;
         }
         var used = getUsedPlayerNames();
-        if (used.has(mobileSelectedPlayer.playerName || '')) {
+        if (used.has(mobileSelectedPlayer.playerName || '') || used.has(normNameForDup(mobileSelectedPlayer.playerName || ''))) {
           setMobileSelected(null);
           return;
         }
