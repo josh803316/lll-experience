@@ -613,28 +613,37 @@ export function draftLayout(
       <!-- AI Draft Chat Panel -->
       <div id="ai-chat-panel" class="mb-4 hidden">
         <div class="bg-white rounded-xl border border-indigo-200 shadow overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
+          <div id="ai-chat-header" class="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white cursor-pointer select-none" title="Tap to minimize/expand">
             <div class="flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
               <span class="font-semibold text-sm">AI Draft Assistant</span>
+              <span id="ai-chat-minimize-hint" class="text-xs text-white/60 hidden sm:inline">(tap to minimize)</span>
             </div>
-            <button type="button" id="ai-chat-close" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors" title="Close chat">&times;</button>
-          </div>
-          <div id="ai-chat-messages" class="overflow-y-auto p-4 space-y-3" style="max-height:45vh;min-height:120px;">
-            <div class="flex gap-2">
-              <div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-              </div>
-              <div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-800 max-w-[85%]">
-                Hey! I'm your AI Draft Assistant. Ask me anything about the 2026 NFL Draft &mdash; prospects, team needs, mock draft strategy, or who should go where. I can also suggest picks you can apply directly to your board.
-              </div>
+            <div class="flex items-center gap-1">
+              <button type="button" id="ai-chat-clear" class="px-2 py-0.5 rounded text-xs font-medium hover:bg-white/20 text-white/70 hover:text-white transition-colors" title="Clear chat history">Clear</button>
+              <button type="button" id="ai-chat-minimize" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors" title="Minimize">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <button type="button" id="ai-chat-close" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors" title="Close chat">&times;</button>
             </div>
           </div>
-          <div class="border-t border-gray-200 px-3 py-2.5 bg-gray-50">
-            <form id="ai-chat-form" class="flex gap-2">
-              <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
-              <button type="submit" id="ai-chat-send" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-colors">Send</button>
-            </form>
+          <div id="ai-chat-body">
+            <div id="ai-chat-messages" class="overflow-y-auto p-4 space-y-3" style="max-height:45vh;min-height:120px;">
+              <div class="flex gap-2">
+                <div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                </div>
+                <div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-800 max-w-[85%]">
+                  Hey! I'm your AI Draft Assistant. Ask me anything about the 2026 NFL Draft &mdash; prospects, team needs, mock draft strategy, or who should go where. I can also suggest picks you can apply directly to your board.
+                </div>
+              </div>
+            </div>
+            <div class="border-t border-gray-200 px-3 py-2.5 bg-gray-50">
+              <form id="ai-chat-form" class="flex gap-2">
+                <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
+                <button type="submit" id="ai-chat-send" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-colors">Send</button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -1417,21 +1426,67 @@ export function draftLayout(
     var chatMessages = document.getElementById('ai-chat-messages');
     var chatSend = document.getElementById('ai-chat-send');
     var chatClose = document.getElementById('ai-chat-close');
+    var chatBody = document.getElementById('ai-chat-body');
+    var chatMinimize = document.getElementById('ai-chat-minimize');
+    var chatClear = document.getElementById('ai-chat-clear');
+    var chatHeader = document.getElementById('ai-chat-header');
+    var chatMinHint = document.getElementById('ai-chat-minimize-hint');
     if (!aiBtn || !chatPanel || !chatForm) return;
 
     var chatHistory = [];
     var sending = false;
+    var minimized = false;
 
-    // Toggle chat panel
+    function setMinimized(min) {
+      minimized = min;
+      if (chatBody) chatBody.style.display = min ? 'none' : '';
+      if (chatMinimize) {
+        chatMinimize.querySelector('svg').style.transform = min ? 'rotate(180deg)' : '';
+        chatMinimize.title = min ? 'Expand' : 'Minimize';
+      }
+      if (chatMinHint) chatMinHint.textContent = min ? '(tap to expand)' : '(tap to minimize)';
+    }
+
+    var welcomeHtml = chatMessages ? chatMessages.innerHTML : '';
+
+    function resetChat() {
+      chatHistory = [];
+      if (chatMessages) chatMessages.innerHTML = welcomeHtml;
+      setMinimized(false);
+    }
+
+    // Toggle chat panel open/closed
     aiBtn.addEventListener('click', function() {
       var isHidden = chatPanel.classList.contains('hidden');
       chatPanel.classList.toggle('hidden', !isHidden);
-      if (isHidden && chatInput) {
-        setTimeout(function() { chatInput.focus(); }, 100);
+      if (isHidden) {
+        setMinimized(false);
+        if (chatInput) setTimeout(function() { chatInput.focus(); }, 100);
       }
     });
-    if (chatClose) chatClose.addEventListener('click', function() {
+
+    // Close (hide entirely)
+    if (chatClose) chatClose.addEventListener('click', function(e) {
+      e.stopPropagation();
       chatPanel.classList.add('hidden');
+    });
+
+    // Minimize/expand toggle
+    if (chatMinimize) chatMinimize.addEventListener('click', function(e) {
+      e.stopPropagation();
+      setMinimized(!minimized);
+    });
+
+    // Tap header to toggle minimize
+    if (chatHeader) chatHeader.addEventListener('click', function(e) {
+      if (e.target.closest('#ai-chat-close') || e.target.closest('#ai-chat-clear') || e.target.closest('#ai-chat-minimize')) return;
+      setMinimized(!minimized);
+    });
+
+    // Clear chat history
+    if (chatClear) chatClear.addEventListener('click', function(e) {
+      e.stopPropagation();
+      resetChat();
     });
 
     async function getToken() {
