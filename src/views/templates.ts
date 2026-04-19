@@ -666,7 +666,7 @@ export function draftLayout(
               </div>
               <div class="border-t border-gray-200 px-3 py-2.5 bg-gray-50">
                 <form id="ai-chat-form" class="flex gap-2">
-                  <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
+                  <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
                   <button type="submit" id="ai-chat-send" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-colors">Send</button>
                 </form>
               </div>
