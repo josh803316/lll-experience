@@ -3,6 +3,7 @@ import {
   NFL_PLAYERS_2026_TOP50,
   FOX_PLAYERS_2026_TOP50,
   PFF_PLAYERS_2026_TOP50,
+  BRUGLER_PLAYERS_2026_TOP50,
 } from './rankings.js';
 
 /** 2026 first-round draft order (pick number → team). Source: ESPN & NFL Operations (includes traded picks). */
@@ -381,7 +382,7 @@ export function getPositionForPlayer(name: string, year: number = 2026): string 
   return null;
 }
 
-export type RankingSource = 'cbs' | 'espn' | 'nfl' | 'fox' | 'pff' | 'all' | 'avg';
+export type RankingSource = 'cbs' | 'espn' | 'nfl' | 'fox' | 'pff' | 'brugler' | 'all' | 'avg';
 
 // ---------------------------------------------------------------------------
 // Name normalization helpers
@@ -469,7 +470,9 @@ export function getStaticPlayersBySource(
         ? NFL_PLAYERS_2026_TOP50
         : source === 'pff'
           ? PFF_PLAYERS_2026_TOP50
-          : FOX_PLAYERS_2026_TOP50;
+          : source === 'brugler'
+            ? BRUGLER_PLAYERS_2026_TOP50
+            : FOX_PLAYERS_2026_TOP50;
 
   // Normalize names in the source-specific top-50 against CBS so that
   // differently-spelled names for the same prospect (same last name + school +
@@ -503,7 +506,7 @@ export function computeConsensusRanking(
 ): Array<{rank: number; playerName: string; school: string; position: string}> {
   const K = 60;
 
-  // Build the five source lists. CBS comes from the DB-supplied array; the rest are static
+  // Build source lists. CBS comes from the DB-supplied array; the rest are static
   // but share the same player universe (top-50 source-specific, 51-200 CBS fallback).
   // Normalize all non-CBS lists against CBS so that alternate name spellings for
   // the same prospect (same last name + school + position) are collapsed to the
@@ -515,6 +518,7 @@ export function computeConsensusRanking(
     normalizeNames(getStaticPlayersBySource(year, 'espn'), canonicalMap),
     normalizeNames(getStaticPlayersBySource(year, 'nfl'), canonicalMap),
     normalizeNames(getStaticPlayersBySource(year, 'fox'), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, 'brugler'), canonicalMap),
   ];
 
   const scores = new Map<string, {score: number; school: string; position: string}>();
@@ -565,6 +569,7 @@ export function computeAveragePositionRanking(
     normalizeNames(getStaticPlayersBySource(year, 'espn'), canonicalMap),
     normalizeNames(getStaticPlayersBySource(year, 'nfl'), canonicalMap),
     normalizeNames(getStaticPlayersBySource(year, 'fox'), canonicalMap),
+    normalizeNames(getStaticPlayersBySource(year, 'brugler'), canonicalMap),
   ];
 
   // rankSum[playerName] = { sum of overall ranks, count, school, position }

@@ -484,13 +484,18 @@ export function draftablePlayersFragment(players: DraftablePlayer[], positionFil
     {key: 'espn', label: 'ESPN', url: 'https://www.espn.com/nfl/draft/bestavailable'},
     {
       key: 'nfl',
-      label: 'NFL',
-      url: 'https://www.nfl.com/news/daniel-jeremiah-s-top-50-2026-nfl-draft-prospect-rankings-1-0',
+      label: 'DJ',
+      url: 'https://www.nfl.com/news/daniel-jeremiah-s-top-50-2026-nfl-draft-prospect-rankings-4-0',
+    },
+    {
+      key: 'brugler',
+      label: 'Brugler',
+      url: 'https://www.nytimes.com/athletic/interactive/the-beast-2026/top-100-prospect-rankings/',
     },
     {
       key: 'fox',
       label: 'Fox',
-      url: 'https://www.foxsports.com/articles/nfl/2026-nfl-draft-big-board-top-prospects-rankings',
+      url: 'https://www.foxsports.com/stories/nfl/2026-nfl-draft-big-board-8-qbs-rank-among-top-150-overall-prospects',
     },
   ];
   const activeSource = sources.find((s) => s.key === source) ?? sources[0];
