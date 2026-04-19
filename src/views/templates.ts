@@ -610,6 +610,35 @@ export function draftLayout(
       <!-- Mobile save button -->
       ${saveSection('save-picks-mobile') ? `<div class="lg:hidden mb-3">${saveSection('save-picks-mobile')}<p class="text-xs text-gray-500 mt-1">Fill all 32 picks to appear on the leaderboard.</p></div>` : ''}
 
+      <!-- AI Draft Chat Panel -->
+      <div id="ai-chat-panel" class="mb-4 hidden">
+        <div class="bg-white rounded-xl border border-indigo-200 shadow overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
+            <div class="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+              <span class="font-semibold text-sm">AI Draft Assistant</span>
+            </div>
+            <button type="button" id="ai-chat-close" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors" title="Close chat">&times;</button>
+          </div>
+          <div id="ai-chat-messages" class="overflow-y-auto p-4 space-y-3" style="max-height:45vh;min-height:120px;">
+            <div class="flex gap-2">
+              <div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+              </div>
+              <div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-800 max-w-[85%]">
+                Hey! I'm your AI Draft Assistant. Ask me anything about the 2026 NFL Draft &mdash; prospects, team needs, mock draft strategy, or who should go where. I can also suggest picks you can apply directly to your board.
+              </div>
+            </div>
+          </div>
+          <div class="border-t border-gray-200 px-3 py-2.5 bg-gray-50">
+            <form id="ai-chat-form" class="flex gap-2">
+              <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
+              <button type="submit" id="ai-chat-send" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-colors">Send</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- Main grid: 3-col on desktop, tab-controlled on mobile -->
       <div class="lg:grid lg:grid-cols-3 lg:gap-6">
 
@@ -641,34 +670,6 @@ export function draftLayout(
                 hx-swap="outerHTML"
               >
                 <div class="text-gray-500 py-8 text-center">Loading picks…</div>
-              </div>
-            </div>
-          </div>
-          <!-- AI Draft Chat Panel -->
-          <div id="ai-chat-panel" class="mt-4 hidden">
-            <div class="bg-white rounded-xl border border-indigo-200 shadow overflow-hidden">
-              <div class="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
-                <div class="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-                  <span class="font-semibold text-sm">AI Draft Assistant</span>
-                </div>
-                <button type="button" id="ai-chat-close" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors" title="Close chat">&times;</button>
-              </div>
-              <div id="ai-chat-messages" class="overflow-y-auto p-4 space-y-3" style="max-height:45vh;min-height:120px;">
-                <div class="flex gap-2">
-                  <div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-                  </div>
-                  <div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-800 max-w-[85%]">
-                    Hey! I'm your AI Draft Assistant. Ask me anything about the 2026 NFL Draft &mdash; prospects, team needs, mock draft strategy, or who should go where. I can also suggest picks you can apply directly to your board.
-                  </div>
-                </div>
-              </div>
-              <div class="border-t border-gray-200 px-3 py-2.5 bg-gray-50">
-                <form id="ai-chat-form" class="flex gap-2">
-                  <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 bg-white text-gray-900 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
-                  <button type="submit" id="ai-chat-send" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-colors">Send</button>
-                </form>
               </div>
             </div>
           </div>
