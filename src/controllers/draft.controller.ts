@@ -26,6 +26,7 @@ import {
 } from '../config/draft-data.js';
 import {getClerkProfile, isAdminUserId} from '../lib/clerk-email.js';
 import {refreshESPNProspects, getCachedESPNProspects} from '../services/rankings-refresh.js';
+import {getAiRecommendation, type AiPick} from '../services/ai-recommend.js';
 import {
   draftLayout,
   picksTableFragment,
@@ -39,6 +40,7 @@ import {
   type DraftablePlayer,
   type LeaderboardUser,
   type HistoricalWinnerEntry,
+  aiRecommendFragment,
 } from '../views/templates.js';
 
 const usersModel = new UsersModel();
@@ -564,6 +566,31 @@ export const draftController = new Elysia({prefix: '/draft'})
 
     ctx.set.headers['Content-Type'] = 'text/html';
     return draftablePlayersFragment(draftable, positionFilter, source);
+  })
+
+  // POST /draft/:year/ai-recommend — Ask AI for a full mock draft recommendation
+  .post('/:year/ai-recommend', async (ctx: any) => {
+    const year = parseYear(ctx.params?.year);
+    if (year == null) {
+      ctx.set.status = 404;
+      return 'Not found';
+    }
+
+    ctx.set.headers['Content-Type'] = 'text/html';
+
+    try {
+      const result = await getAiRecommendation(year);
+      return aiRecommendFragment(result.picks, result.summary, result.sources, year);
+    } catch (err: any) {
+      const msg = err?.message ?? 'Unknown error';
+      console.error('[AI-RECOMMEND] Error:', msg);
+      return `<div id="ai-recommend-results" class="p-4">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+          <p class="font-semibold">AI recommendation failed</p>
+          <p class="mt-1">${msg.includes('YOU_API_KEY') ? 'API key not configured. Please set YOU_API_KEY in your environment.' : 'Could not get a recommendation right now. Please try again.'}</p>
+        </div>
+      </div>`;
+    }
   })
 
   // POST /draft/:year/picks

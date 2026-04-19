@@ -16,7 +16,7 @@ export const FIRST_ROUND_TEAMS_2026: Record<number, string> = {
   7: 'Washington Commanders',
   8: 'New Orleans Saints',
   9: 'Kansas City Chiefs',
-  10: 'Cincinnati Bengals',
+  10: 'New York Giants', // from Bengals (Dexter Lawrence trade)
   11: 'Miami Dolphins',
   12: 'Dallas Cowboys',
   13: 'Los Angeles Rams',
@@ -35,8 +35,8 @@ export const FIRST_ROUND_TEAMS_2026: Record<number, string> = {
   26: 'Buffalo Bills',
   27: 'San Francisco 49ers',
   28: 'Houston Texans',
-  29: 'Los Angeles Rams',
-  30: 'Denver Broncos',
+  29: 'Kansas City Chiefs', // from Rams (Trent McDuffie trade)
+  30: 'Miami Dolphins', // from Broncos (Jaylen Waddle trade)
   31: 'New England Patriots',
   32: 'Seattle Seahawks',
 };
@@ -88,7 +88,7 @@ export const TEAM_NEEDS_2026: Record<number, string> = {
   7: 'WR, EDGE, LB, Slot WR, LG', // Washington Commanders
   8: 'LG, DT, EDGE, WR, Slot CB, LB, RB', // New Orleans Saints
   9: 'CB, FS, RB, EDGE, X WR', // Kansas City Chiefs
-  10: 'DT, FS, RG, CB, LB, EDGE', // Cincinnati Bengals
+  10: 'RT, RG, WR, CB, LB, DT', // New York Giants (from Bengals — Dexter Lawrence trade)
   11: 'QB, EDGE, WR, CB, Slot CB, RG', // Miami Dolphins
   12: 'CB, WR, EDGE, RB, LB, FS', // Dallas Cowboys
   13: 'CB, FS, WR, RT, C', // Los Angeles Rams
@@ -107,8 +107,8 @@ export const TEAM_NEEDS_2026: Record<number, string> = {
   26: 'EDGE, LG, C, WR, DT, Slot CB, LB', // Buffalo Bills
   27: 'WR, LG, DT, C, CB', // San Francisco 49ers
   28: 'RG, DT, RB, SS, RT, C', // Houston Texans
-  29: 'CB, FS, WR, RT, C', // Los Angeles Rams (2nd pick)
-  30: 'DT, LB, TE, RB, Slot WR', // Denver Broncos
+  29: 'CB, FS, RB, EDGE, X WR', // Kansas City Chiefs (from Rams — Trent McDuffie trade)
+  30: 'QB, EDGE, WR, CB, Slot CB, RG', // Miami Dolphins (from Broncos — Jaylen Waddle trade)
   31: 'EDGE, FS, RT, C, TE, NT', // New England Patriots
   32: 'CB, EDGE, RB, FS, RG', // Seattle Seahawks
 };

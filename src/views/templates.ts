@@ -67,8 +67,8 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
   }
   <style>
     .htmx-indicator { display: none; }
-    .htmx-request .htmx-indicator { display: inline-block; }
-    .htmx-request.htmx-indicator { display: inline-block; }
+    .htmx-request .htmx-indicator { display: block; }
+    .htmx-request.htmx-indicator { display: block; }
     .htmx-added { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -523,6 +523,72 @@ export function draftablePlayersFragment(players: DraftablePlayer[], positionFil
 </div>`;
 }
 
+export interface AiPickDisplay {
+  pickNumber: number;
+  teamName: string;
+  playerName: string;
+  position: string;
+  reasoning?: string;
+}
+
+export function aiRecommendFragment(
+  picks: AiPickDisplay[],
+  summary: string,
+  sources: Array<{url: string; title?: string}>,
+  year: number,
+): string {
+  const rows = picks
+    .map(
+      (p) =>
+        `<tr class="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
+      <td class="px-2 py-1.5 text-center font-bold text-gray-500 text-sm">${p.pickNumber}</td>
+      <td class="px-2 py-1.5 text-sm text-gray-600 hidden sm:table-cell">${escapeHtml(p.teamName)}</td>
+      <td class="px-2 py-1.5">
+        <span class="font-semibold text-gray-900 text-sm">${escapeHtml(p.playerName)}</span>
+        <span class="text-xs text-gray-500 ml-1">${escapeHtml(p.position)}</span>
+      </td>
+      <td class="px-2 py-1.5 text-xs text-gray-500 hidden md:table-cell">${escapeHtml(p.reasoning ?? '')}</td>
+    </tr>`,
+    )
+    .join('');
+
+  const sourceLinks = sources
+    .slice(0, 5)
+    .map(
+      (s) =>
+        `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" class="text-blue-600 hover:underline truncate max-w-[200px] inline-block align-bottom">${escapeHtml(s.title || s.url)}</a>`,
+    )
+    .join(' &middot; ');
+
+  return `<div id="ai-recommend-results" class="p-4">
+  <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-indigo-200 flex items-center justify-between">
+      <div>
+        <h3 class="font-bold text-indigo-900 text-base">AI Mock Draft Recommendation</h3>
+        ${summary ? `<p class="text-xs text-indigo-700 mt-0.5">${escapeHtml(summary)}</p>` : ''}
+      </div>
+      <button type="button" id="ai-copy-to-picks" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
+        Copy to selections
+      </button>
+    </div>
+    <div class="overflow-auto max-h-[50vh]">
+      <table class="w-full text-left">
+        <thead class="bg-indigo-100/60 sticky top-0">
+          <tr>
+            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800 w-8">#</th>
+            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800 hidden sm:table-cell">Team</th>
+            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800">Player</th>
+            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800 hidden md:table-cell">Why</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${sourceLinks ? `<div class="px-4 py-2 border-t border-indigo-200 text-xs text-gray-500">Sources: ${sourceLinks}</div>` : ''}
+  </div>
+</div>`;
+}
+
 export type MockInfo = {active: boolean; revealedCount: number; complete: boolean};
 
 export function draftLayout(
@@ -618,7 +684,23 @@ export function draftLayout(
           <div class="bg-white rounded-xl border border-gray-200 shadow overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
               <h2 class="text-lg font-bold text-gray-900">First round — your picks</h2>
-              ${!draftLocked ? `<button type="button" id="clear-all-picks-btn" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors" title="Clear all picks and start over">Clear all</button>` : ''}
+              <div class="flex items-center gap-3">
+                ${
+                  !draftLocked
+                    ? `<button type="button" id="ai-recommend-btn"
+                  hx-post="/draft/${year}/ai-recommend"
+                  hx-target="#ai-recommend-panel"
+                  hx-swap="innerHTML"
+                  hx-indicator="#ai-loading-indicator"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+                  title="Get AI-powered mock draft recommendations">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg>
+                  Ask AI
+                </button>`
+                    : ''
+                }
+                ${!draftLocked ? `<button type="button" id="clear-all-picks-btn" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors" title="Clear all picks and start over">Clear all</button>` : ''}
+              </div>
             </div>
             ${simulateResetBtn}
             <p class="text-xs text-gray-500 px-4 pb-1">Scoring: 3 pts exact, 2 pts ±1 spot, 1 pt ±2 spots. Double-score doubles that slot. Team needs from <a href="https://underdognetwork.com/football/news/2026-nfl-team-needs" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Underdog Network</a>. Rankings: <a href="https://www.cbssports.com/nfl/draft/prospect-rankings/" target="_blank" rel="noopener" class="text-blue-600 hover:underline">CBS</a> · <a href="https://www.pff.com/news/draft-2026-nfl-draft-big-board" target="_blank" rel="noopener" class="text-blue-600 hover:underline">PFF</a> · <a href="https://www.espn.com/nfl/draft/bestavailable" target="_blank" rel="noopener" class="text-blue-600 hover:underline">ESPN</a> · <a href="https://www.nfl.com/draft/tracker/prospects" target="_blank" rel="noopener" class="text-blue-600 hover:underline">NFL.com</a></p>
@@ -632,6 +714,22 @@ export function draftLayout(
               </div>
             </div>
           </div>
+          <!-- AI Recommendation Panel -->
+          <div id="ai-loading-indicator" class="htmx-indicator mt-4">
+            <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-6">
+              <div class="flex items-center gap-3">
+                <div class="relative w-8 h-8 shrink-0">
+                  <div class="absolute inset-0 rounded-full border-2 border-indigo-200"></div>
+                  <div class="absolute inset-0 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></div>
+                </div>
+                <div>
+                  <p class="font-semibold text-indigo-900 text-sm">AI is researching the latest mock drafts...</p>
+                  <p class="text-xs text-indigo-600 mt-0.5">Analyzing expert picks, combine results, and team needs. This takes 15-30 seconds.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="ai-recommend-panel" class="mt-4"></div>
         </div>
 
         <!-- Players panel (hidden by default on mobile, sticky on desktop) -->
@@ -1348,6 +1446,73 @@ export function draftLayout(
     });
     markUsedPlayers();
     updateDirtyUI();
+  });
+
+  // ---- AI RECOMMEND: COPY TO SELECTIONS ----
+  document.addEventListener('click', function(e) {
+    if (!e.target || !e.target.closest('#ai-copy-to-picks')) return;
+    var rows = document.querySelectorAll('#ai-recommend-results tbody tr');
+    if (!rows.length) return;
+    rows.forEach(function(row) {
+      var cells = row.querySelectorAll('td');
+      if (cells.length < 3) return;
+      var pickNum = cells[0].textContent.trim();
+      var playerCell = cells[2] || cells[1];
+      var nameEl = playerCell.querySelector('.font-semibold');
+      var posEl = playerCell.querySelector('.text-xs');
+      var playerName = nameEl ? nameEl.textContent.trim() : '';
+      var position = posEl ? posEl.textContent.trim() : '';
+      if (!playerName || !pickNum) return;
+
+      // Find the slot for this pick number in the picks table
+      var slot = document.querySelector('#picks-table-body .draft-slot-container[data-pick-number="' + pickNum + '"]');
+      if (!slot) return;
+
+      // Clear existing content
+      while (slot.firstChild) slot.removeChild(slot.firstChild);
+
+      // Create chip
+      var chip = document.createElement('div');
+      chip.className = 'draft-player-chip flex items-center gap-1';
+      chip.setAttribute('data-player-name', playerName);
+      chip.setAttribute('data-position', position);
+      chip.setAttribute('data-pick-number', pickNum);
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'chip-name';
+      nameSpan.textContent = playerName;
+      chip.appendChild(nameSpan);
+      if (position) {
+        var posSpan = document.createElement('span');
+        posSpan.className = 'chip-pos text-xs opacity-70';
+        posSpan.textContent = position;
+        chip.appendChild(posSpan);
+      }
+      var clearBtn = document.createElement('button');
+      clearBtn.type = 'button';
+      clearBtn.className = 'draft-clear-slot ml-1 opacity-40 hover:opacity-100 text-base leading-none';
+      clearBtn.title = 'Clear';
+      clearBtn.textContent = '\u00d7';
+      chip.appendChild(clearBtn);
+      slot.appendChild(chip);
+      slot.setAttribute('data-current-player', playerName);
+      slot.setAttribute('data-current-position', position);
+      setDraftStatePick(pickNum, playerName, position);
+    });
+    markUsedPlayers();
+    updateDirtyUI();
+
+    // Visual feedback on button
+    var btn = document.getElementById('ai-copy-to-picks');
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+      btn.classList.add('bg-green-600');
+      setTimeout(function() {
+        btn.textContent = 'Copy to selections';
+        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+        btn.classList.remove('bg-green-600');
+      }, 2000);
+    }
   });
 
   // ---- MOBILE TAB & BANNER SETUP ----
