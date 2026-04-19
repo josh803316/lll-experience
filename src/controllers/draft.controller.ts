@@ -591,10 +591,17 @@ export const draftController = new Elysia({prefix: '/draft'})
         history = [];
       }
 
+      let currentPicks: Array<{pickNumber: number; playerName: string; position?: string; teamName?: string}>;
+      try {
+        currentPicks = JSON.parse((ctx.body?.currentPicks as string) || '[]');
+      } catch {
+        currentPicks = [];
+      }
+
       ctx.set.headers['Content-Type'] = 'application/json';
 
       try {
-        const result = await chatWithAi(message, history, year);
+        const result = await chatWithAi(message, history, year, currentPicks);
         return JSON.stringify({
           content: result.content,
           picks: result.picks,
@@ -615,6 +622,7 @@ export const draftController = new Elysia({prefix: '/draft'})
       body: t.Object({
         message: t.String(),
         history: t.Optional(t.String()),
+        currentPicks: t.Optional(t.String()),
       }),
     },
   )

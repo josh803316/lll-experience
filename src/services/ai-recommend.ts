@@ -48,7 +48,19 @@ Top 50 prospects:
 ${playerPool}`;
 }
 
-function buildChatPrompt(userMessage: string, history: ChatMessage[], year: number): string {
+export interface CurrentPick {
+  pickNumber: number;
+  playerName: string;
+  position?: string;
+  teamName?: string;
+}
+
+function buildChatPrompt(
+  userMessage: string,
+  history: ChatMessage[],
+  year: number,
+  currentPicks: CurrentPick[],
+): string {
   const context = buildDraftContext(year);
 
   // Include recent conversation history (last 6 messages to stay within limits)
@@ -60,17 +72,35 @@ function buildChatPrompt(userMessage: string, history: ChatMessage[], year: numb
         '\n'
       : '';
 
+  // Show the user's current board state
+  let boardBlock: string;
+  if (currentPicks.length > 0) {
+    const lines = currentPicks
+      .sort((a, b) => a.pickNumber - b.pickNumber)
+      .map((p) => `  #${p.pickNumber} ${p.teamName ?? ''}: ${p.playerName} (${p.position ?? '?'})`)
+      .join('\n');
+    const filledCount = currentPicks.length;
+    const emptyCount = TOTAL_PICKS - filledCount;
+    boardBlock = `\n\nThe user's CURRENT mock draft board (${filledCount} of 32 picks filled, ${emptyCount} empty):
+${lines}
+Players already on the board should NOT be suggested again for other slots.`;
+  } else {
+    boardBlock = '\n\nThe user has not made any picks yet — their board is empty.';
+  }
+
   return `You are an expert NFL Draft analyst chatbot embedded in a ${year} NFL Draft prediction game. Your ONLY purpose is to help users with NFL football topics: the ${year} NFL Draft, prospect evaluations, team needs, draft strategy, trade analysis, and mock drafts.
 
 If the user asks about anything unrelated to NFL football or the draft, respond ONLY with: "I can only help with NFL Draft and football questions. Try asking about a prospect, team, or draft strategy!"
 
 Here is the current draft data for reference:
 ${context}
+${boardBlock}
 ${historyBlock}
 The user's question: ${userMessage}
 
 INSTRUCTIONS:
 - Give a helpful, conversational answer based on the latest ${year} draft research.
+- Be aware of the user's current board state. Reference their existing picks when relevant. Do NOT suggest players they have already placed on the board.
 - When recommending specific picks, format each one on its own line as:
   PICK|<pick number>|<team name>|<player name>|<position>|<reasoning>
   This allows the user to apply your suggestions directly to their mock draft board.
@@ -122,13 +152,18 @@ export function cleanContentForDisplay(content: string): string {
     .trim();
 }
 
-export async function chatWithAi(userMessage: string, history: ChatMessage[], year: number): Promise<AiChatResult> {
+export async function chatWithAi(
+  userMessage: string,
+  history: ChatMessage[],
+  year: number,
+  currentPicks: CurrentPick[] = [],
+): Promise<AiChatResult> {
   const apiKey = process.env.YOU_API_KEY;
   if (!apiKey) {
     throw new Error('YOU_API_KEY environment variable is not set');
   }
 
-  const prompt = buildChatPrompt(userMessage, history, year);
+  const prompt = buildChatPrompt(userMessage, history, year, currentPicks);
 
   const res = await fetch(YOU_API_URL, {
     method: 'POST',

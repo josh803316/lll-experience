@@ -1481,20 +1481,21 @@ export function draftLayout(
 
       // Render pick suggestions if any
       if (picks && picks.length > 0) {
-        body += '<div class="bg-white border border-indigo-200 rounded-lg overflow-hidden">';
+        body += '<div class="bg-white border border-indigo-200 rounded-lg overflow-hidden ai-picks-card">';
         body += '<div class="px-3 py-1.5 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between">';
-        body += '<span class="text-xs font-semibold text-indigo-800">Suggested Picks (' + picks.length + ')</span>';
-        body += '<button type="button" class="ai-apply-picks-btn px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded transition-colors">Apply to board</button>';
+        body += '<label class="flex items-center gap-1.5 text-xs font-semibold text-indigo-800 cursor-pointer"><input type="checkbox" class="ai-select-all-picks rounded border-gray-300 text-indigo-600" checked /> Select all (' + picks.length + ')</label>';
+        body += '<button type="button" class="ai-apply-picks-btn px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded transition-colors">Apply selected</button>';
         body += '</div>';
         body += '<div class="max-h-[200px] overflow-y-auto">';
         for (var i = 0; i < picks.length; i++) {
           var p = picks[i];
-          body += '<div class="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-gray-100 last:border-0 ai-pick-row" data-pick-number="' + p.pickNumber + '" data-player-name="' + escHtml(p.playerName) + '" data-position="' + escHtml(p.position) + '">';
+          body += '<label class="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-gray-100 last:border-0 ai-pick-row cursor-pointer hover:bg-indigo-50/40" data-pick-number="' + p.pickNumber + '" data-player-name="' + escHtml(p.playerName) + '" data-position="' + escHtml(p.position) + '">';
+          body += '<input type="checkbox" class="ai-pick-checkbox rounded border-gray-300 text-indigo-600" checked />';
           body += '<span class="font-bold text-gray-500 w-5">' + p.pickNumber + '</span>';
           body += '<span class="text-gray-500 truncate w-24 hidden sm:inline">' + escHtml(p.teamName) + '</span>';
           body += '<span class="font-semibold text-gray-900">' + escHtml(p.playerName) + '</span>';
           body += '<span class="text-gray-500">' + escHtml(p.position) + '</span>';
-          body += '</div>';
+          body += '</label>';
         }
         body += '</div></div>';
       }
@@ -1565,15 +1566,38 @@ export function draftLayout(
       updateDirtyUI();
     }
 
-    // Handle "Apply to board" clicks (event delegation)
+    // Handle "Select all" checkbox toggle (event delegation)
+    document.addEventListener('change', function(e) {
+      if (!e.target || !e.target.classList.contains('ai-select-all-picks')) return;
+      var card = e.target.closest('.ai-picks-card');
+      if (!card) return;
+      var checked = e.target.checked;
+      card.querySelectorAll('.ai-pick-checkbox').forEach(function(cb) { cb.checked = checked; });
+    });
+
+    // Keep "Select all" in sync when individual checkboxes change
+    document.addEventListener('change', function(e) {
+      if (!e.target || !e.target.classList.contains('ai-pick-checkbox')) return;
+      var card = e.target.closest('.ai-picks-card');
+      if (!card) return;
+      var all = card.querySelectorAll('.ai-pick-checkbox');
+      var allChecked = true;
+      all.forEach(function(cb) { if (!cb.checked) allChecked = false; });
+      var selectAll = card.querySelector('.ai-select-all-picks');
+      if (selectAll) selectAll.checked = allChecked;
+    });
+
+    // Handle "Apply selected" clicks (event delegation)
     document.addEventListener('click', function(e) {
       var applyBtn = e.target && e.target.closest('.ai-apply-picks-btn');
       if (!applyBtn) return;
-      var container = applyBtn.closest('.bg-white');
-      if (!container) return;
-      var pickRows = container.querySelectorAll('.ai-pick-row');
+      var card = applyBtn.closest('.ai-picks-card');
+      if (!card) return;
+      var pickRows = card.querySelectorAll('.ai-pick-row');
       var picks = [];
       pickRows.forEach(function(row) {
+        var cb = row.querySelector('.ai-pick-checkbox');
+        if (!cb || !cb.checked) return;
         picks.push({
           pickNumber: parseInt(row.getAttribute('data-pick-number'), 10),
           playerName: row.getAttribute('data-player-name'),
@@ -1582,11 +1606,11 @@ export function draftLayout(
       });
       if (picks.length > 0) {
         applyPicksToBoard(picks);
-        applyBtn.textContent = 'Applied!';
+        applyBtn.textContent = 'Applied ' + picks.length + '!';
         applyBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
         applyBtn.classList.add('bg-green-600');
         setTimeout(function() {
-          applyBtn.textContent = 'Apply to board';
+          applyBtn.textContent = 'Apply selected';
           applyBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
           applyBtn.classList.remove('bg-green-600');
         }, 2000);
@@ -1605,6 +1629,14 @@ export function draftLayout(
       addUserBubble(msg);
       addLoadingBubble();
 
+      // Gather current board state so AI knows what's already picked
+      var boardState = getState().filter(function(p) { return p.playerName; }).map(function(p) {
+        return { pickNumber: p.pickNumber, playerName: p.playerName, position: p.position, teamName: p.teamName };
+      });
+      var reqBody = 'message=' + encodeURIComponent(msg)
+        + '&history=' + encodeURIComponent(JSON.stringify(chatHistory))
+        + '&currentPicks=' + encodeURIComponent(JSON.stringify(boardState));
+
       try {
         var tok = await getToken();
         var resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-chat', {
@@ -1613,7 +1645,7 @@ export function draftLayout(
             'Content-Type': 'application/x-www-form-urlencoded',
             ...(tok ? { 'Authorization': 'Bearer ' + tok } : {})
           },
-          body: 'message=' + encodeURIComponent(msg) + '&history=' + encodeURIComponent(JSON.stringify(chatHistory))
+          body: reqBody
         });
 
         // Retry on 401
@@ -1626,7 +1658,7 @@ export function draftLayout(
               'Content-Type': 'application/x-www-form-urlencoded',
               ...(tok ? { 'Authorization': 'Bearer ' + tok } : {})
             },
-            body: 'message=' + encodeURIComponent(msg) + '&history=' + encodeURIComponent(JSON.stringify(chatHistory))
+            body: reqBody
           });
         }
 
