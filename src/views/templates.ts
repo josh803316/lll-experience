@@ -1211,8 +1211,9 @@ export function draftLayout(
       draftState = getState();
       savedStateJson = getStateJson();
       updateDirtyUI();
-      markUsedPlayers();
     }
+    // Always sync used-player state after any swap (picks or players panel)
+    markUsedPlayers();
     const playersPanel = document.getElementById('draftable-players-panel');
     if (playersPanel || (t && (t.id === 'draftable-players-panel' || t.querySelector?.('#draftable-players-list')))) {
       const list = document.getElementById('draftable-players-list');
@@ -1697,6 +1698,20 @@ export function draftLayout(
   document.getElementById('tab-btn-picks')?.addEventListener('click', function() { switchTab('picks'); });
   document.getElementById('tab-btn-players')?.addEventListener('click', function() { switchTab('players'); });
   document.getElementById('mobile-clear-selection')?.addEventListener('click', function() { setMobileSelected(null); });
+
+  // ---- DEFERRED SYNC: ensure used-player state is correct after both panels load ----
+  // Both panels load via HTMX in parallel; whichever arrives first can't mark the other.
+  // Run markUsedPlayers on a short interval until both panels are present, then stop.
+  var _syncTimer = setInterval(function() {
+    var hasPicks = document.getElementById('picks-table-body');
+    var hasPlayers = document.getElementById('draftable-players-list');
+    if (hasPicks && hasPlayers) {
+      markUsedPlayers();
+      clearInterval(_syncTimer);
+    }
+  }, 250);
+  // Safety: stop after 10s regardless
+  setTimeout(function() { clearInterval(_syncTimer); }, 10000);
 })();
 
 // ---- PLAYER INFO TOOLTIP & MODAL ----
