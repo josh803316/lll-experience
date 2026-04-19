@@ -569,46 +569,55 @@ export const draftController = new Elysia({prefix: '/draft'})
   })
 
   // POST /draft/:year/ai-chat — Conversational AI draft assistant
-  .post('/:year/ai-chat', async (ctx: any) => {
-    const year = parseYear(ctx.params?.year);
-    if (year == null) {
-      ctx.set.status = 404;
-      return 'Not found';
-    }
+  .post(
+    '/:year/ai-chat',
+    async (ctx: any) => {
+      const year = parseYear(ctx.params?.year);
+      if (year == null) {
+        ctx.set.status = 404;
+        return 'Not found';
+      }
 
-    const message = (ctx.body?.message as string)?.trim();
-    if (!message) {
-      ctx.set.status = 400;
-      return JSON.stringify({error: 'Message is required'});
-    }
+      const message = (ctx.body?.message as string)?.trim();
+      if (!message) {
+        ctx.set.status = 400;
+        return JSON.stringify({error: 'Message is required'});
+      }
 
-    let history: ChatMessage[];
-    try {
-      history = JSON.parse((ctx.body?.history as string) || '[]') as ChatMessage[];
-    } catch {
-      history = [];
-    }
+      let history: ChatMessage[];
+      try {
+        history = JSON.parse((ctx.body?.history as string) || '[]') as ChatMessage[];
+      } catch {
+        history = [];
+      }
 
-    ctx.set.headers['Content-Type'] = 'application/json';
+      ctx.set.headers['Content-Type'] = 'application/json';
 
-    try {
-      const result = await chatWithAi(message, history, year);
-      return JSON.stringify({
-        content: result.content,
-        picks: result.picks,
-        sources: result.sources,
-      });
-    } catch (err: any) {
-      const msg = err?.message ?? 'Unknown error';
-      console.error('[AI-CHAT] Error:', msg);
-      ctx.set.status = 500;
-      return JSON.stringify({
-        error: msg.includes('YOU_API_KEY')
-          ? 'API key not configured.'
-          : 'Could not get a response right now. Please try again.',
-      });
-    }
-  })
+      try {
+        const result = await chatWithAi(message, history, year);
+        return JSON.stringify({
+          content: result.content,
+          picks: result.picks,
+          sources: result.sources,
+        });
+      } catch (err: any) {
+        const msg = err?.message ?? 'Unknown error';
+        console.error('[AI-CHAT] Error:', msg);
+        ctx.set.status = 500;
+        return JSON.stringify({
+          error: msg.includes('YOU_API_KEY')
+            ? 'API key not configured.'
+            : 'Could not get a response right now. Please try again.',
+        });
+      }
+    },
+    {
+      body: t.Object({
+        message: t.String(),
+        history: t.Optional(t.String()),
+      }),
+    },
+  )
 
   // POST /draft/:year/picks
   .post(
