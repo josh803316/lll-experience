@@ -857,14 +857,15 @@ export function draftLayout(
   }
 
   function getUsedPlayerNorms() {
+    // Use in-memory draftState (always up-to-date) instead of DOM queries
     const norms = new Set();
-    document.querySelectorAll('#picks-table-body .draft-slot-container .draft-player-chip, #picks-table-body .draft-slot-container .draftable-player-chip').forEach(function(el) {
-      const name = el.getAttribute('data-player-name');
-      if (name && name.trim()) {
-        var n = normNameForDup(name);
+    for (var i = 0; i < draftState.length; i++) {
+      var pName = draftState[i] && draftState[i].playerName;
+      if (pName && typeof pName === 'string' && pName.trim()) {
+        var n = normNameForDup(pName);
         if (n) norms.add(n);
       }
-    });
+    }
     return norms;
   }
 
@@ -873,7 +874,8 @@ export function draftLayout(
 
   function markUsedPlayers() {
     const usedNorms = getUsedPlayerNorms();
-    document.querySelectorAll('#draftable-players-list .draftable-player-chip').forEach(function(chip) {
+    var playerChips = document.querySelectorAll('#draftable-players-list .draftable-player-chip');
+    playerChips.forEach(function(chip) {
       const name = chip.getAttribute('data-player-name');
       const norm = name ? normNameForDup(name) : '';
       if (norm && usedNorms.has(norm)) {
