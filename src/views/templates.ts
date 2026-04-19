@@ -687,16 +687,7 @@ export function draftLayout(
               <div class="flex items-center gap-3">
                 ${
                   !draftLocked
-                    ? `<button type="button" id="ai-recommend-btn"
-                  hx-post="/draft/${year}/ai-recommend"
-                  hx-target="#ai-recommend-panel"
-                  hx-swap="innerHTML"
-                  hx-indicator="#ai-loading-indicator"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
-                  title="Get AI-powered mock draft recommendations">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg>
-                  Ask AI
-                </button>`
+                    ? `<button type="button" id="ai-recommend-btn" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm" title="Get AI-powered mock draft recommendations"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" /></svg> Ask AI</button>`
                     : ''
                 }
                 ${!draftLocked ? `<button type="button" id="clear-all-picks-btn" class="text-xs text-red-500 hover:text-red-700 font-medium transition-colors" title="Clear all picks and start over">Clear all</button>` : ''}
@@ -715,20 +706,6 @@ export function draftLayout(
             </div>
           </div>
           <!-- AI Recommendation Panel -->
-          <div id="ai-loading-indicator" class="htmx-indicator mt-4">
-            <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-6">
-              <div class="flex items-center gap-3">
-                <div class="relative w-8 h-8 shrink-0">
-                  <div class="absolute inset-0 rounded-full border-2 border-indigo-200"></div>
-                  <div class="absolute inset-0 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></div>
-                </div>
-                <div>
-                  <p class="font-semibold text-indigo-900 text-sm">AI is researching the latest mock drafts...</p>
-                  <p class="text-xs text-indigo-600 mt-0.5">Analyzing expert picks, combine results, and team needs. This takes 15-30 seconds.</p>
-                </div>
-              </div>
-            </div>
-          </div>
           <div id="ai-recommend-panel" class="mt-4"></div>
         </div>
 
@@ -1448,72 +1425,124 @@ export function draftLayout(
     updateDirtyUI();
   });
 
-  // ---- AI RECOMMEND: COPY TO SELECTIONS ----
-  document.addEventListener('click', function(e) {
-    if (!e.target || !e.target.closest('#ai-copy-to-picks')) return;
-    var rows = document.querySelectorAll('#ai-recommend-results tbody tr');
-    if (!rows.length) return;
-    rows.forEach(function(row) {
-      var cells = row.querySelectorAll('td');
-      if (cells.length < 3) return;
-      var pickNum = cells[0].textContent.trim();
-      var playerCell = cells[2] || cells[1];
-      var nameEl = playerCell.querySelector('.font-semibold');
-      var posEl = playerCell.querySelector('.text-xs');
-      var playerName = nameEl ? nameEl.textContent.trim() : '';
-      var position = posEl ? posEl.textContent.trim() : '';
-      if (!playerName || !pickNum) return;
+  // ---- AI RECOMMEND: FETCH + COPY TO SELECTIONS ----
+  (function() {
+    var aiBtn = document.getElementById('ai-recommend-btn');
+    if (!aiBtn) return;
 
-      // Find the slot for this pick number in the picks table
-      var slot = document.querySelector('#picks-table-body .draft-slot-container[data-pick-number="' + pickNum + '"]');
-      if (!slot) return;
+    var aiPanel = document.getElementById('ai-recommend-panel');
+    var fetching = false;
 
-      // Clear existing content
-      while (slot.firstChild) slot.removeChild(slot.firstChild);
+    aiBtn.addEventListener('click', async function() {
+      if (fetching || !aiPanel) return;
+      fetching = true;
 
-      // Create chip
-      var chip = document.createElement('div');
-      chip.className = 'draft-player-chip flex items-center gap-1';
-      chip.setAttribute('data-player-name', playerName);
-      chip.setAttribute('data-position', position);
-      chip.setAttribute('data-pick-number', pickNum);
-      var nameSpan = document.createElement('span');
-      nameSpan.className = 'chip-name';
-      nameSpan.textContent = playerName;
-      chip.appendChild(nameSpan);
-      if (position) {
-        var posSpan = document.createElement('span');
-        posSpan.className = 'chip-pos text-xs opacity-70';
-        posSpan.textContent = position;
-        chip.appendChild(posSpan);
+      // Show loading indicator
+      aiPanel.innerHTML = '<div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-6">' +
+        '<div class="flex items-center gap-3">' +
+        '<div class="relative w-8 h-8 shrink-0">' +
+        '<div class="absolute inset-0 rounded-full border-2 border-indigo-200"></div>' +
+        '<div class="absolute inset-0 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></div>' +
+        '</div><div>' +
+        '<p class="font-semibold text-indigo-900 text-sm">AI is researching the latest mock drafts...</p>' +
+        '<p class="text-xs text-indigo-600 mt-0.5">Analyzing expert picks, combine results, and team needs. This takes 15-30 seconds.</p>' +
+        '</div></div></div>';
+      aiBtn.disabled = true;
+      aiBtn.classList.add('opacity-50', 'cursor-wait');
+
+      try {
+        var tok = window.__clerkToken;
+        if (!tok && window.Clerk && window.Clerk.session) {
+          tok = await window.Clerk.session.getToken();
+          if (tok) window.__clerkToken = tok;
+        }
+        var resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-recommend', {
+          method: 'POST',
+          headers: tok ? { 'Authorization': 'Bearer ' + tok } : {}
+        });
+        if (resp.status === 401 && window.Clerk && window.Clerk.session) {
+          tok = await window.Clerk.session.getToken({ skipCache: true });
+          if (tok) window.__clerkToken = tok;
+          resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-recommend', {
+            method: 'POST',
+            headers: tok ? { 'Authorization': 'Bearer ' + tok } : {}
+          });
+        }
+        var html = await resp.text();
+        aiPanel.innerHTML = html;
+      } catch (err) {
+        aiPanel.innerHTML = '<div class="p-4"><div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">' +
+          '<p class="font-semibold">Request failed</p><p class="mt-1">Could not reach the server. Please try again.</p></div></div>';
       }
-      var clearBtn = document.createElement('button');
-      clearBtn.type = 'button';
-      clearBtn.className = 'draft-clear-slot ml-1 opacity-40 hover:opacity-100 text-base leading-none';
-      clearBtn.title = 'Clear';
-      clearBtn.textContent = '\u00d7';
-      chip.appendChild(clearBtn);
-      slot.appendChild(chip);
-      slot.setAttribute('data-current-player', playerName);
-      slot.setAttribute('data-current-position', position);
-      setDraftStatePick(pickNum, playerName, position);
-    });
-    markUsedPlayers();
-    updateDirtyUI();
 
-    // Visual feedback on button
-    var btn = document.getElementById('ai-copy-to-picks');
-    if (btn) {
-      btn.textContent = 'Copied!';
-      btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
-      btn.classList.add('bg-green-600');
-      setTimeout(function() {
-        btn.textContent = 'Copy to selections';
-        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-        btn.classList.remove('bg-green-600');
-      }, 2000);
-    }
-  });
+      fetching = false;
+      aiBtn.disabled = false;
+      aiBtn.classList.remove('opacity-50', 'cursor-wait');
+    });
+
+    // Copy AI picks to selections (event delegation since panel content is dynamic)
+    document.addEventListener('click', function(e) {
+      if (!e.target || !e.target.closest('#ai-copy-to-picks')) return;
+      var rows = document.querySelectorAll('#ai-recommend-results tbody tr');
+      if (!rows.length) return;
+      rows.forEach(function(row) {
+        var cells = row.querySelectorAll('td');
+        if (cells.length < 3) return;
+        var pickNum = cells[0].textContent.trim();
+        var playerCell = cells[2] || cells[1];
+        var nameEl = playerCell.querySelector('.font-semibold');
+        var posEl = playerCell.querySelector('.text-xs');
+        var playerName = nameEl ? nameEl.textContent.trim() : '';
+        var position = posEl ? posEl.textContent.trim() : '';
+        if (!playerName || !pickNum) return;
+
+        var slot = document.querySelector('#picks-table-body .draft-slot-container[data-pick-number="' + pickNum + '"]');
+        if (!slot) return;
+
+        while (slot.firstChild) slot.removeChild(slot.firstChild);
+
+        var chip = document.createElement('div');
+        chip.className = 'draft-player-chip flex items-center gap-1';
+        chip.setAttribute('data-player-name', playerName);
+        chip.setAttribute('data-position', position);
+        chip.setAttribute('data-pick-number', pickNum);
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'chip-name';
+        nameSpan.textContent = playerName;
+        chip.appendChild(nameSpan);
+        if (position) {
+          var posSpan = document.createElement('span');
+          posSpan.className = 'chip-pos text-xs opacity-70';
+          posSpan.textContent = position;
+          chip.appendChild(posSpan);
+        }
+        var clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'draft-clear-slot ml-1 opacity-40 hover:opacity-100 text-base leading-none';
+        clearBtn.title = 'Clear';
+        clearBtn.textContent = '\u00d7';
+        chip.appendChild(clearBtn);
+        slot.appendChild(chip);
+        slot.setAttribute('data-current-player', playerName);
+        slot.setAttribute('data-current-position', position);
+        setDraftStatePick(pickNum, playerName, position);
+      });
+      markUsedPlayers();
+      updateDirtyUI();
+
+      var btn = document.getElementById('ai-copy-to-picks');
+      if (btn) {
+        btn.textContent = 'Copied!';
+        btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+        btn.classList.add('bg-green-600');
+        setTimeout(function() {
+          btn.textContent = 'Copy to selections';
+          btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+          btn.classList.remove('bg-green-600');
+        }, 2000);
+      }
+    });
+  })();
 
   // ---- MOBILE TAB & BANNER SETUP ----
   document.getElementById('tab-btn-picks')?.addEventListener('click', function() { switchTab('picks'); });
