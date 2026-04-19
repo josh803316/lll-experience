@@ -26,7 +26,7 @@ import {
 } from '../config/draft-data.js';
 import {getClerkProfile, isAdminUserId} from '../lib/clerk-email.js';
 import {refreshESPNProspects, getCachedESPNProspects} from '../services/rankings-refresh.js';
-import {getAiRecommendation, type AiPick} from '../services/ai-recommend.js';
+import {chatWithAi, type AiPick, type ChatMessage} from '../services/ai-recommend.js';
 import {
   draftLayout,
   picksTableFragment,
@@ -40,7 +40,7 @@ import {
   type DraftablePlayer,
   type LeaderboardUser,
   type HistoricalWinnerEntry,
-  aiRecommendFragment,
+  aiChatResponseFragment,
 } from '../views/templates.js';
 
 const usersModel = new UsersModel();
@@ -568,28 +568,45 @@ export const draftController = new Elysia({prefix: '/draft'})
     return draftablePlayersFragment(draftable, positionFilter, source);
   })
 
-  // POST /draft/:year/ai-recommend — Ask AI for a full mock draft recommendation
-  .post('/:year/ai-recommend', async (ctx: any) => {
+  // POST /draft/:year/ai-chat — Conversational AI draft assistant
+  .post('/:year/ai-chat', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
     if (year == null) {
       ctx.set.status = 404;
       return 'Not found';
     }
 
-    ctx.set.headers['Content-Type'] = 'text/html';
+    const message = (ctx.body?.message as string)?.trim();
+    if (!message) {
+      ctx.set.status = 400;
+      return JSON.stringify({error: 'Message is required'});
+    }
+
+    let history: ChatMessage[];
+    try {
+      history = JSON.parse((ctx.body?.history as string) || '[]') as ChatMessage[];
+    } catch {
+      history = [];
+    }
+
+    ctx.set.headers['Content-Type'] = 'application/json';
 
     try {
-      const result = await getAiRecommendation(year);
-      return aiRecommendFragment(result.picks, result.summary, result.sources, year);
+      const result = await chatWithAi(message, history, year);
+      return JSON.stringify({
+        content: result.content,
+        picks: result.picks,
+        sources: result.sources,
+      });
     } catch (err: any) {
       const msg = err?.message ?? 'Unknown error';
-      console.error('[AI-RECOMMEND] Error:', msg);
-      return `<div id="ai-recommend-results" class="p-4">
-        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-          <p class="font-semibold">AI recommendation failed</p>
-          <p class="mt-1">${msg.includes('YOU_API_KEY') ? 'API key not configured. Please set YOU_API_KEY in your environment.' : 'Could not get a recommendation right now. Please try again.'}</p>
-        </div>
-      </div>`;
+      console.error('[AI-CHAT] Error:', msg);
+      ctx.set.status = 500;
+      return JSON.stringify({
+        error: msg.includes('YOU_API_KEY')
+          ? 'API key not configured.'
+          : 'Could not get a response right now. Please try again.',
+      });
     }
   })
 

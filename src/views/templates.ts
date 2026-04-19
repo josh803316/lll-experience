@@ -523,70 +523,9 @@ export function draftablePlayersFragment(players: DraftablePlayer[], positionFil
 </div>`;
 }
 
-export interface AiPickDisplay {
-  pickNumber: number;
-  teamName: string;
-  playerName: string;
-  position: string;
-  reasoning?: string;
-}
-
-export function aiRecommendFragment(
-  picks: AiPickDisplay[],
-  summary: string,
-  sources: Array<{url: string; title?: string}>,
-  year: number,
-): string {
-  const rows = picks
-    .map(
-      (p) =>
-        `<tr class="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
-      <td class="px-2 py-1.5 text-center font-bold text-gray-500 text-sm">${p.pickNumber}</td>
-      <td class="px-2 py-1.5 text-sm text-gray-600 hidden sm:table-cell">${escapeHtml(p.teamName)}</td>
-      <td class="px-2 py-1.5">
-        <span class="font-semibold text-gray-900 text-sm">${escapeHtml(p.playerName)}</span>
-        <span class="text-xs text-gray-500 ml-1">${escapeHtml(p.position)}</span>
-      </td>
-      <td class="px-2 py-1.5 text-xs text-gray-500 hidden md:table-cell">${escapeHtml(p.reasoning ?? '')}</td>
-    </tr>`,
-    )
-    .join('');
-
-  const sourceLinks = sources
-    .slice(0, 5)
-    .map(
-      (s) =>
-        `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" class="text-blue-600 hover:underline truncate max-w-[200px] inline-block align-bottom">${escapeHtml(s.title || s.url)}</a>`,
-    )
-    .join(' &middot; ');
-
-  return `<div id="ai-recommend-results" class="p-4">
-  <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl overflow-hidden">
-    <div class="px-4 py-3 border-b border-indigo-200 flex items-center justify-between">
-      <div>
-        <h3 class="font-bold text-indigo-900 text-base">AI Mock Draft Recommendation</h3>
-        ${summary ? `<p class="text-xs text-indigo-700 mt-0.5">${escapeHtml(summary)}</p>` : ''}
-      </div>
-      <button type="button" id="ai-copy-to-picks" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
-        Copy to selections
-      </button>
-    </div>
-    <div class="overflow-auto max-h-[50vh]">
-      <table class="w-full text-left">
-        <thead class="bg-indigo-100/60 sticky top-0">
-          <tr>
-            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800 w-8">#</th>
-            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800 hidden sm:table-cell">Team</th>
-            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800">Player</th>
-            <th class="px-2 py-1.5 text-xs font-semibold text-indigo-800 hidden md:table-cell">Why</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    ${sourceLinks ? `<div class="px-4 py-2 border-t border-indigo-200 text-xs text-gray-500">Sources: ${sourceLinks}</div>` : ''}
-  </div>
-</div>`;
+/** Exported so the controller import doesn't break — chat responses are now JSON. */
+export function aiChatResponseFragment(): string {
+  return '';
 }
 
 export type MockInfo = {active: boolean; revealedCount: number; complete: boolean};
@@ -705,8 +644,34 @@ export function draftLayout(
               </div>
             </div>
           </div>
-          <!-- AI Recommendation Panel -->
-          <div id="ai-recommend-panel" class="mt-4"></div>
+          <!-- AI Draft Chat Panel -->
+          <div id="ai-chat-panel" class="mt-4 hidden">
+            <div class="bg-white rounded-xl border border-indigo-200 shadow overflow-hidden">
+              <div class="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white">
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                  <span class="font-semibold text-sm">AI Draft Assistant</span>
+                </div>
+                <button type="button" id="ai-chat-close" class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors" title="Close chat">&times;</button>
+              </div>
+              <div id="ai-chat-messages" class="overflow-y-auto p-4 space-y-3" style="max-height:45vh;min-height:120px;">
+                <div class="flex gap-2">
+                  <div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
+                  </div>
+                  <div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-800 max-w-[85%]">
+                    Hey! I'm your AI Draft Assistant. Ask me anything about the 2026 NFL Draft &mdash; prospects, team needs, mock draft strategy, or who should go where. I can also suggest picks you can apply directly to your board.
+                  </div>
+                </div>
+              </div>
+              <div class="border-t border-gray-200 px-3 py-2.5 bg-gray-50">
+                <form id="ai-chat-form" class="flex gap-2">
+                  <input type="text" id="ai-chat-input" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" placeholder="Ask about prospects, teams, or draft strategy..." autocomplete="off" />
+                  <button type="submit" id="ai-chat-send" class="shrink-0 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait text-white text-sm font-semibold rounded-lg transition-colors">Send</button>
+                </form>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Players panel (hidden by default on mobile, sticky on desktop) -->
@@ -1425,95 +1390,163 @@ export function draftLayout(
     updateDirtyUI();
   });
 
-  // ---- AI RECOMMEND: FETCH + COPY TO SELECTIONS ----
+  // ---- AI DRAFT CHAT ----
   (function() {
     var aiBtn = document.getElementById('ai-recommend-btn');
-    if (!aiBtn) return;
+    var chatPanel = document.getElementById('ai-chat-panel');
+    var chatForm = document.getElementById('ai-chat-form');
+    var chatInput = document.getElementById('ai-chat-input');
+    var chatMessages = document.getElementById('ai-chat-messages');
+    var chatSend = document.getElementById('ai-chat-send');
+    var chatClose = document.getElementById('ai-chat-close');
+    if (!aiBtn || !chatPanel || !chatForm) return;
 
-    var aiPanel = document.getElementById('ai-recommend-panel');
-    var fetching = false;
+    var chatHistory = [];
+    var sending = false;
 
-    aiBtn.addEventListener('click', async function() {
-      if (fetching || !aiPanel) return;
-      fetching = true;
-
-      // Show loading indicator
-      aiPanel.innerHTML = '<div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-6">' +
-        '<div class="flex items-center gap-3">' +
-        '<div class="relative w-8 h-8 shrink-0">' +
-        '<div class="absolute inset-0 rounded-full border-2 border-indigo-200"></div>' +
-        '<div class="absolute inset-0 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></div>' +
-        '</div><div>' +
-        '<p class="font-semibold text-indigo-900 text-sm">AI is researching the latest mock drafts...</p>' +
-        '<p class="text-xs text-indigo-600 mt-0.5">Analyzing expert picks, combine results, and team needs. This takes 15-30 seconds.</p>' +
-        '</div></div></div>';
-      aiBtn.disabled = true;
-      aiBtn.classList.add('opacity-50', 'cursor-wait');
-
-      try {
-        var tok = window.__clerkToken;
-        if (!tok && window.Clerk && window.Clerk.session) {
-          tok = await window.Clerk.session.getToken();
-          if (tok) window.__clerkToken = tok;
-        }
-        var resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-recommend', {
-          method: 'POST',
-          headers: tok ? { 'Authorization': 'Bearer ' + tok } : {}
-        });
-        if (resp.status === 401 && window.Clerk && window.Clerk.session) {
-          tok = await window.Clerk.session.getToken({ skipCache: true });
-          if (tok) window.__clerkToken = tok;
-          resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-recommend', {
-            method: 'POST',
-            headers: tok ? { 'Authorization': 'Bearer ' + tok } : {}
-          });
-        }
-        var html = await resp.text();
-        aiPanel.innerHTML = html;
-      } catch (err) {
-        aiPanel.innerHTML = '<div class="p-4"><div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">' +
-          '<p class="font-semibold">Request failed</p><p class="mt-1">Could not reach the server. Please try again.</p></div></div>';
+    // Toggle chat panel
+    aiBtn.addEventListener('click', function() {
+      var isHidden = chatPanel.classList.contains('hidden');
+      chatPanel.classList.toggle('hidden', !isHidden);
+      if (isHidden && chatInput) {
+        setTimeout(function() { chatInput.focus(); }, 100);
       }
-
-      fetching = false;
-      aiBtn.disabled = false;
-      aiBtn.classList.remove('opacity-50', 'cursor-wait');
+    });
+    if (chatClose) chatClose.addEventListener('click', function() {
+      chatPanel.classList.add('hidden');
     });
 
-    // Copy AI picks to selections (event delegation since panel content is dynamic)
-    document.addEventListener('click', function(e) {
-      if (!e.target || !e.target.closest('#ai-copy-to-picks')) return;
-      var rows = document.querySelectorAll('#ai-recommend-results tbody tr');
-      if (!rows.length) return;
-      rows.forEach(function(row) {
-        var cells = row.querySelectorAll('td');
-        if (cells.length < 3) return;
-        var pickNum = cells[0].textContent.trim();
-        var playerCell = cells[2] || cells[1];
-        var nameEl = playerCell.querySelector('.font-semibold');
-        var posEl = playerCell.querySelector('.text-xs');
-        var playerName = nameEl ? nameEl.textContent.trim() : '';
-        var position = posEl ? posEl.textContent.trim() : '';
-        if (!playerName || !pickNum) return;
+    async function getToken() {
+      var tok = window.__clerkToken;
+      if (!tok && window.Clerk && window.Clerk.session) {
+        tok = await window.Clerk.session.getToken();
+        if (tok) window.__clerkToken = tok;
+      }
+      return tok;
+    }
 
-        var slot = document.querySelector('#picks-table-body .draft-slot-container[data-pick-number="' + pickNum + '"]');
-        if (!slot) return;
+    function escHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function scrollToBottom() {
+      if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addUserBubble(text) {
+      var wrap = document.createElement('div');
+      wrap.className = 'flex gap-2 justify-end';
+      wrap.innerHTML = '<div class="bg-blue-600 text-white rounded-lg rounded-tr-none px-3 py-2 text-sm max-w-[85%]">' + escHtml(text) + '</div>';
+      chatMessages.appendChild(wrap);
+      scrollToBottom();
+    }
+
+    function addLoadingBubble() {
+      var wrap = document.createElement('div');
+      wrap.className = 'flex gap-2 ai-loading-bubble';
+      wrap.innerHTML = '<div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">' +
+        '<div class="w-3.5 h-3.5 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></div>' +
+        '</div>' +
+        '<div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-500 max-w-[85%]">Researching... this may take 15-30 seconds</div>';
+      chatMessages.appendChild(wrap);
+      scrollToBottom();
+    }
+
+    function removeLoadingBubble() {
+      var el = chatMessages.querySelector('.ai-loading-bubble');
+      if (el) el.remove();
+    }
+
+    // Render markdown-lite: bold, line breaks, paragraphs
+    function renderContent(text) {
+      return escHtml(text)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n\n/g, '</p><p class="mt-2">')
+        .replace(/\n/g, '<br>');
+    }
+
+    function addAiBubble(content, picks, sources) {
+      var wrap = document.createElement('div');
+      wrap.className = 'flex gap-2';
+
+      var icon = '<div class="shrink-0 w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>' +
+        '</div>';
+
+      var body = '<div class="max-w-[85%] space-y-2">';
+      body += '<div class="bg-indigo-50 rounded-lg rounded-tl-none px-3 py-2 text-sm text-gray-800"><p>' + renderContent(content) + '</p></div>';
+
+      // Render pick suggestions if any
+      if (picks && picks.length > 0) {
+        body += '<div class="bg-white border border-indigo-200 rounded-lg overflow-hidden">';
+        body += '<div class="px-3 py-1.5 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between">';
+        body += '<span class="text-xs font-semibold text-indigo-800">Suggested Picks (' + picks.length + ')</span>';
+        body += '<button type="button" class="ai-apply-picks-btn px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded transition-colors">Apply to board</button>';
+        body += '</div>';
+        body += '<div class="max-h-[200px] overflow-y-auto">';
+        for (var i = 0; i < picks.length; i++) {
+          var p = picks[i];
+          body += '<div class="flex items-center gap-2 px-3 py-1.5 text-xs border-b border-gray-100 last:border-0 ai-pick-row" data-pick-number="' + p.pickNumber + '" data-player-name="' + escHtml(p.playerName) + '" data-position="' + escHtml(p.position) + '">';
+          body += '<span class="font-bold text-gray-500 w-5">' + p.pickNumber + '</span>';
+          body += '<span class="text-gray-500 truncate w-24 hidden sm:inline">' + escHtml(p.teamName) + '</span>';
+          body += '<span class="font-semibold text-gray-900">' + escHtml(p.playerName) + '</span>';
+          body += '<span class="text-gray-500">' + escHtml(p.position) + '</span>';
+          body += '</div>';
+        }
+        body += '</div></div>';
+      }
+
+      // Source links
+      if (sources && sources.length > 0) {
+        body += '<div class="text-xs text-gray-400">';
+        var links = [];
+        for (var j = 0; j < Math.min(sources.length, 3); j++) {
+          var s = sources[j];
+          links.push('<a href="' + escHtml(s.url) + '" target="_blank" rel="noopener" class="text-indigo-500 hover:underline">' + escHtml(s.title || 'Source') + '</a>');
+        }
+        body += links.join(' &middot; ');
+        body += '</div>';
+      }
+
+      body += '</div>';
+      wrap.innerHTML = icon + body;
+      chatMessages.appendChild(wrap);
+      scrollToBottom();
+    }
+
+    function addErrorBubble(msg) {
+      var wrap = document.createElement('div');
+      wrap.className = 'flex gap-2';
+      wrap.innerHTML = '<div class="shrink-0 w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-red-500 text-xs font-bold">!</div>' +
+        '<div class="bg-red-50 border border-red-200 rounded-lg rounded-tl-none px-3 py-2 text-sm text-red-700 max-w-[85%]">' + escHtml(msg) + '</div>';
+      chatMessages.appendChild(wrap);
+      scrollToBottom();
+    }
+
+    // Apply picks to the draft board
+    function applyPicksToBoard(picks) {
+      for (var i = 0; i < picks.length; i++) {
+        var p = picks[i];
+        var slot = document.querySelector('#picks-table-body .draft-slot-container[data-pick-number="' + p.pickNumber + '"]');
+        if (!slot) continue;
 
         while (slot.firstChild) slot.removeChild(slot.firstChild);
 
         var chip = document.createElement('div');
         chip.className = 'draft-player-chip flex items-center gap-1';
-        chip.setAttribute('data-player-name', playerName);
-        chip.setAttribute('data-position', position);
-        chip.setAttribute('data-pick-number', pickNum);
+        chip.setAttribute('data-player-name', p.playerName);
+        chip.setAttribute('data-position', p.position);
+        chip.setAttribute('data-pick-number', String(p.pickNumber));
         var nameSpan = document.createElement('span');
         nameSpan.className = 'chip-name';
-        nameSpan.textContent = playerName;
+        nameSpan.textContent = p.playerName;
         chip.appendChild(nameSpan);
-        if (position) {
+        if (p.position) {
           var posSpan = document.createElement('span');
           posSpan.className = 'chip-pos text-xs opacity-70';
-          posSpan.textContent = position;
+          posSpan.textContent = p.position;
           chip.appendChild(posSpan);
         }
         var clearBtn = document.createElement('button');
@@ -1523,24 +1556,99 @@ export function draftLayout(
         clearBtn.textContent = '\u00d7';
         chip.appendChild(clearBtn);
         slot.appendChild(chip);
-        slot.setAttribute('data-current-player', playerName);
-        slot.setAttribute('data-current-position', position);
-        setDraftStatePick(pickNum, playerName, position);
-      });
+        slot.setAttribute('data-current-player', p.playerName);
+        slot.setAttribute('data-current-position', p.position);
+        setDraftStatePick(String(p.pickNumber), p.playerName, p.position);
+      }
       markUsedPlayers();
       updateDirtyUI();
+    }
 
-      var btn = document.getElementById('ai-copy-to-picks');
-      if (btn) {
-        btn.textContent = 'Copied!';
-        btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
-        btn.classList.add('bg-green-600');
+    // Handle "Apply to board" clicks (event delegation)
+    document.addEventListener('click', function(e) {
+      var applyBtn = e.target && e.target.closest('.ai-apply-picks-btn');
+      if (!applyBtn) return;
+      var container = applyBtn.closest('.bg-white');
+      if (!container) return;
+      var pickRows = container.querySelectorAll('.ai-pick-row');
+      var picks = [];
+      pickRows.forEach(function(row) {
+        picks.push({
+          pickNumber: parseInt(row.getAttribute('data-pick-number'), 10),
+          playerName: row.getAttribute('data-player-name'),
+          position: row.getAttribute('data-position')
+        });
+      });
+      if (picks.length > 0) {
+        applyPicksToBoard(picks);
+        applyBtn.textContent = 'Applied!';
+        applyBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+        applyBtn.classList.add('bg-green-600');
         setTimeout(function() {
-          btn.textContent = 'Copy to selections';
-          btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-          btn.classList.remove('bg-green-600');
+          applyBtn.textContent = 'Apply to board';
+          applyBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+          applyBtn.classList.remove('bg-green-600');
         }, 2000);
       }
+    });
+
+    // Send message
+    chatForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      var msg = (chatInput.value || '').trim();
+      if (!msg || sending) return;
+      sending = true;
+      chatInput.value = '';
+      chatSend.disabled = true;
+
+      addUserBubble(msg);
+      addLoadingBubble();
+
+      try {
+        var tok = await getToken();
+        var resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            ...(tok ? { 'Authorization': 'Bearer ' + tok } : {})
+          },
+          body: 'message=' + encodeURIComponent(msg) + '&history=' + encodeURIComponent(JSON.stringify(chatHistory))
+        });
+
+        // Retry on 401
+        if (resp.status === 401 && window.Clerk && window.Clerk.session) {
+          tok = await window.Clerk.session.getToken({ skipCache: true });
+          if (tok) window.__clerkToken = tok;
+          resp = await fetch('/draft/' + DRAFT_YEAR + '/ai-chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              ...(tok ? { 'Authorization': 'Bearer ' + tok } : {})
+            },
+            body: 'message=' + encodeURIComponent(msg) + '&history=' + encodeURIComponent(JSON.stringify(chatHistory))
+          });
+        }
+
+        removeLoadingBubble();
+
+        var data = await resp.json();
+        if (data.error) {
+          addErrorBubble(data.error);
+        } else {
+          chatHistory.push({ role: 'user', content: msg });
+          chatHistory.push({ role: 'assistant', content: data.content });
+          // Keep history manageable
+          if (chatHistory.length > 12) chatHistory = chatHistory.slice(-12);
+          addAiBubble(data.content, data.picks, data.sources);
+        }
+      } catch (err) {
+        removeLoadingBubble();
+        addErrorBubble('Could not reach the server. Please try again.');
+      }
+
+      sending = false;
+      chatSend.disabled = false;
+      chatInput.focus();
     });
   })();
 

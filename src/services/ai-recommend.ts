@@ -1,7 +1,8 @@
 /**
- * AI draft recommendation service powered by You.com Research API.
- * Builds a research prompt with team order + available players, sends it
- * to You.com, then parses the response into a structured pick list.
+ * AI draft chat service powered by You.com Research API.
+ * Supports conversational Q&A about the NFL Draft, prospects, teams, and strategy.
+ * When the AI suggests specific picks, they are parsed into structured data
+ * so the UI can offer "Apply to picks" actions.
  */
 
 import {getFirstRoundTeams, getTeamNeeds, getConsensusPlayers} from '../config/draft-data.js';
@@ -17,106 +18,117 @@ export interface AiPick {
   reasoning?: string;
 }
 
-export interface AiRecommendResult {
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AiChatResult {
+  content: string;
   picks: AiPick[];
-  summary: string;
   sources: Array<{url: string; title?: string}>;
 }
 
-function buildPrompt(year: number): string {
+function buildDraftContext(year: number): string {
   const teams = getFirstRoundTeams(year);
   const needs = getTeamNeeds(year);
-  const players = getConsensusPlayers(year).slice(0, 64);
+  const players = getConsensusPlayers(year).slice(0, 50);
 
   const teamLines = Array.from({length: TOTAL_PICKS}, (_, i) => {
     const num = i + 1;
     return `${num}. ${teams[num] ?? 'TBD'} — needs: ${needs[num] ?? 'N/A'}`;
   }).join('\n');
 
-  const playerPool = players.map((p) => `${p.playerName} (${p.position}, ${p.school})`).join(', ');
+  const playerPool = players.map((p) => `${p.rank}. ${p.playerName} (${p.position}, ${p.school})`).join('\n');
 
-  return `You are an NFL draft analyst. Your ONLY purpose is to answer questions about NFL football, the ${year} NFL Draft, draft prospect evaluations, and team draft strategy. Do NOT answer questions about any other topic. If asked about anything outside of NFL football and the draft, respond only with: "I can only help with NFL Draft research."
-
-Based on the latest ${year} NFL mock drafts, expert big boards, combine results, team needs analysis, and recent trades, provide your recommended first-round mock draft (picks 1-32).
-
-Here is the current ${year} first-round draft order with team needs:
+  return `${year} NFL Draft first-round order with team needs:
 ${teamLines}
 
-Here are the top prospects (but feel free to use any prospects from ${year} draft class based on your research):
-${playerPool}
-
-IMPORTANT INSTRUCTIONS:
-1. Research the latest mock drafts from ESPN, NFL.com, CBS, PFF, and other analysts.
-2. Consider team needs, best player available, and recent trades.
-3. Each player should only be picked ONCE.
-4. For EACH pick, output EXACTLY one line in this format:
-   PICK|<number>|<team name>|<player name>|<position>|<one-sentence reason>
-5. After all 32 picks, provide a brief 2-3 sentence summary of your mock draft themes.
-
-Example line:
-PICK|1|Las Vegas Raiders|Fernando Mendoza|QB|Raiders desperately need a franchise quarterback and Mendoza is the consensus top pick.
-
-Output all 32 PICK lines followed by SUMMARY|<your summary text>.`;
+Top 50 prospects:
+${playerPool}`;
 }
 
-function parsePicks(content: string, year: number): {picks: AiPick[]; summary: string} {
+function buildChatPrompt(userMessage: string, history: ChatMessage[], year: number): string {
+  const context = buildDraftContext(year);
+
+  // Include recent conversation history (last 6 messages to stay within limits)
+  const recentHistory = history.slice(-6);
+  const historyBlock =
+    recentHistory.length > 0
+      ? '\n\nConversation so far:\n' +
+        recentHistory.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 500)}`).join('\n') +
+        '\n'
+      : '';
+
+  return `You are an expert NFL Draft analyst chatbot embedded in a ${year} NFL Draft prediction game. Your ONLY purpose is to help users with NFL football topics: the ${year} NFL Draft, prospect evaluations, team needs, draft strategy, trade analysis, and mock drafts.
+
+If the user asks about anything unrelated to NFL football or the draft, respond ONLY with: "I can only help with NFL Draft and football questions. Try asking about a prospect, team, or draft strategy!"
+
+Here is the current draft data for reference:
+${context}
+${historyBlock}
+The user's question: ${userMessage}
+
+INSTRUCTIONS:
+- Give a helpful, conversational answer based on the latest ${year} draft research.
+- When recommending specific picks, format each one on its own line as:
+  PICK|<pick number>|<team name>|<player name>|<position>|<reasoning>
+  This allows the user to apply your suggestions directly to their mock draft board.
+- You don't have to suggest picks for every question — only when it's relevant.
+- Keep answers concise but informative. Cite specific analysts or mock drafts when possible.`;
+}
+
+export function parsePicks(content: string, year: number): AiPick[] {
   const teams = getFirstRoundTeams(year);
-  const lines = content.split('\n');
   const picks: AiPick[] = [];
-  let summary = '';
 
-  for (const line of lines) {
+  for (const line of content.split('\n')) {
     const trimmed = line.replace(/^\s*[-*>]*\s*/, '').trim();
-
-    if (trimmed.startsWith('SUMMARY|')) {
-      summary = trimmed.slice('SUMMARY|'.length).trim();
+    if (!trimmed.startsWith('PICK|')) {
       continue;
     }
 
-    if (trimmed.startsWith('PICK|')) {
-      const parts = trimmed.split('|');
-      if (parts.length >= 5) {
-        const pickNumber = parseInt(parts[1], 10);
-        if (pickNumber >= 1 && pickNumber <= TOTAL_PICKS) {
-          picks.push({
-            pickNumber,
-            teamName: parts[2].trim() || teams[pickNumber] || '',
-            playerName: parts[3].trim(),
-            position: parts[4].trim(),
-            reasoning: parts[5]?.trim() || undefined,
-          });
-        }
-      }
-    }
-  }
-
-  // If structured parsing got <20 picks, try a fallback regex for numbered lines
-  if (picks.length < 20) {
-    const numberedPattern = /(\d{1,2})\.\s*(.+?)\s*[-–:]\s*(.+?)\s*[,(]\s*([A-Z]{1,4})/g;
-    let match: RegExpExecArray | null;
-    while ((match = numberedPattern.exec(content)) !== null) {
-      const num = parseInt(match[1], 10);
-      if (num >= 1 && num <= TOTAL_PICKS && !picks.some((p) => p.pickNumber === num)) {
+    const parts = trimmed.split('|');
+    if (parts.length >= 5) {
+      const pickNumber = parseInt(parts[1], 10);
+      if (pickNumber >= 1 && pickNumber <= TOTAL_PICKS) {
         picks.push({
-          pickNumber: num,
-          teamName: teams[num] || match[2].trim(),
-          playerName: match[3].trim(),
-          position: match[4].trim(),
+          pickNumber,
+          teamName: parts[2].trim() || teams[pickNumber] || '',
+          playerName: parts[3].trim(),
+          position: parts[4].trim(),
+          reasoning: parts[5]?.trim() || undefined,
         });
       }
     }
   }
 
-  return {picks: picks.sort((a, b) => a.pickNumber - b.pickNumber), summary};
+  return picks.sort((a, b) => a.pickNumber - b.pickNumber);
 }
 
-export async function getAiRecommendation(year: number): Promise<AiRecommendResult> {
+/** Strip PICK| lines from the display text so the user sees clean prose. */
+export function cleanContentForDisplay(content: string): string {
+  return content
+    .split('\n')
+    .filter(
+      (line) =>
+        !line
+          .replace(/^\s*[-*>]*\s*/, '')
+          .trim()
+          .startsWith('PICK|'),
+    )
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export async function chatWithAi(userMessage: string, history: ChatMessage[], year: number): Promise<AiChatResult> {
   const apiKey = process.env.YOU_API_KEY;
   if (!apiKey) {
     throw new Error('YOU_API_KEY environment variable is not set');
   }
 
-  const prompt = buildPrompt(year);
+  const prompt = buildChatPrompt(userMessage, history, year);
 
   const res = await fetch(YOU_API_URL, {
     method: 'POST',
@@ -128,7 +140,7 @@ export async function getAiRecommendation(year: number): Promise<AiRecommendResu
       input: prompt,
       research_effort: 'standard',
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(90_000),
   });
 
   if (!res.ok) {
@@ -143,9 +155,10 @@ export async function getAiRecommendation(year: number): Promise<AiRecommendResu
     };
   };
 
-  const content = data.output?.content ?? '';
+  const rawContent = data.output?.content ?? '';
   const sources = (data.output?.sources ?? []).map((s) => ({url: s.url, title: s.title}));
-  const {picks, summary} = parsePicks(content, year);
+  const picks = parsePicks(rawContent, year);
+  const content = cleanContentForDisplay(rawContent);
 
-  return {picks, summary, sources};
+  return {content, picks, sources};
 }
