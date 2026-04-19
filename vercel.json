@@ -2,6 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "bunVersion": "1.x",
   "buildCommand": "node scripts/patch-clerk.cjs && bun run scripts/check-module.ts",
+  "functions": {
+    "src/app.ts": {
+      "maxDuration": 60
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/refresh-rankings",
