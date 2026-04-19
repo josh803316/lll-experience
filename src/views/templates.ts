@@ -826,9 +826,9 @@ export function draftLayout(
 
   function normNameForDup(name) {
     if (!name || typeof name !== 'string') return '';
-    var s = name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\./g, '');
-    s = s.replace(/\s+(jr|sr|ii|iii|iv)\s*$/gi, '').trim();
-    s = s.replace(/\breuben\b/g, 'rueben');
+    var s = name.trim().toLowerCase().replace(new RegExp('\\\\s+', 'g'), ' ').replace(new RegExp('\\\\.', 'g'), '');
+    s = s.replace(new RegExp('\\\\s+(jr|sr|ii|iii|iv)\\\\s*$', 'gi'), '').trim();
+    s = s.replace(new RegExp('\\\\breuben\\\\b', 'g'), 'rueben');
     return s;
   }
 
@@ -875,17 +875,23 @@ export function draftLayout(
   function markUsedPlayers() {
     const usedNorms = getUsedPlayerNorms();
     var playerChips = document.querySelectorAll('#draftable-players-list .draftable-player-chip');
+    console.log('[markUsed] draftState picks:', draftState.filter(function(d){return d.playerName;}).map(function(d){return d.playerName;}).join(', '));
+    console.log('[markUsed] usedNorms:', Array.from(usedNorms).join(', '));
+    console.log('[markUsed] playerChips count:', playerChips.length);
+    var markedCount = 0;
     playerChips.forEach(function(chip) {
       const name = chip.getAttribute('data-player-name');
       const norm = name ? normNameForDup(name) : '';
       if (norm && usedNorms.has(norm)) {
         chip.classList.add('in-use', 'opacity-50', 'text-gray-400', 'cursor-not-allowed');
         chip.classList.remove('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing', 'active:bg-blue-50');
+        markedCount++;
       } else {
         chip.classList.remove('in-use', 'opacity-50', 'text-gray-400', 'cursor-not-allowed');
         chip.classList.add('hover:bg-gray-50', 'cursor-grab', 'active:cursor-grabbing');
       }
     });
+    console.log('[markUsed] marked', markedCount, 'of', playerChips.length, 'as in-use');
   }
 
   // ---- DESKTOP: SORTABLE DRAG-AND-DROP ----
