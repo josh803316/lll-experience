@@ -35,7 +35,9 @@ function buildPrompt(year: number): string {
 
   const playerPool = players.map((p) => `${p.playerName} (${p.position}, ${p.school})`).join(', ');
 
-  return `You are an NFL draft analyst. Based on the latest ${year} NFL mock drafts, expert big boards, combine results, team needs analysis, and recent trades, provide your recommended first-round mock draft (picks 1-32).
+  return `You are an NFL draft analyst. Your ONLY purpose is to answer questions about NFL football, the ${year} NFL Draft, draft prospect evaluations, and team draft strategy. Do NOT answer questions about any other topic. If asked about anything outside of NFL football and the draft, respond only with: "I can only help with NFL Draft research."
+
+Based on the latest ${year} NFL mock drafts, expert big boards, combine results, team needs analysis, and recent trades, provide your recommended first-round mock draft (picks 1-32).
 
 Here is the current ${year} first-round draft order with team needs:
 ${teamLines}
