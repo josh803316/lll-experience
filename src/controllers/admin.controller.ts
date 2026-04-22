@@ -9,6 +9,7 @@ import {
   draftablePlayers,
   officialDraftResults,
   draftHistoricalWinners,
+  draftMockState,
 } from '../db/schema.js';
 import {eq, and, sql, asc} from 'drizzle-orm';
 import {UsersModel} from '../models/users.model.js';
@@ -203,6 +204,10 @@ export const adminController = new Elysia({prefix: '/admin'})
     } else {
       await db.insert(draftSettings).values({appId: app.id, year, draftStartedAt: new Date()});
     }
+
+    // Clear any mock simulation state so live scoring uses real official results
+    await db.delete(draftMockState).where(and(eq(draftMockState.appId, app.id), eq(draftMockState.year, year)));
+
     return {ok: true, year};
   })
 
@@ -220,11 +225,15 @@ export const adminController = new Elysia({prefix: '/admin'})
       return 'App not found';
     }
 
-    const {synced, source, error} = await syncOfficialPicks(app.id, year);
+    const [syncResult, draftStarted] = await Promise.all([
+      syncOfficialPicks(app.id, year),
+      getDraftStarted(app.id, year),
+    ]);
+    const {synced, source, error} = syncResult;
     const officialPicks = await getOfficialPicks(app.id, year);
 
     ctx.set.headers['Content-Type'] = 'text/html';
-    const fragment = officialPicksEditorFragment(officialPicks, year);
+    const fragment = officialPicksEditorFragment(officialPicks, year, draftStarted);
 
     // Prepend a status banner
     const banner = error
@@ -248,9 +257,12 @@ export const adminController = new Elysia({prefix: '/admin'})
       return 'App not found';
     }
 
-    const officialPicks = await getOfficialPicks(app.id, year);
+    const [officialPicks, draftStarted] = await Promise.all([
+      getOfficialPicks(app.id, year),
+      getDraftStarted(app.id, year),
+    ]);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return officialPicksEditorFragment(officialPicks, year);
+    return officialPicksEditorFragment(officialPicks, year, draftStarted);
   })
 
   // POST /admin/draft/:year/official-picks/:pickNumber — upsert one pick

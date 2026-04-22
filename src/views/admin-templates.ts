@@ -91,7 +91,7 @@ export function adminPickRow(
 
 // ─── Official picks editor fragment ─────────────────────────────────────────
 
-export function officialPicksEditorFragment(officialPicks: OfficialPick[], year: number): string {
+export function officialPicksEditorFragment(officialPicks: OfficialPick[], year: number, draftStarted = false): string {
   const teams = getFirstRoundTeams(year);
   const officialMap = new Map(officialPicks.map((p) => [p.pickNumber, p]));
   const filledCount = officialPicks.filter((p) => p.playerName).length;
@@ -101,9 +101,14 @@ export function officialPicksEditorFragment(officialPicks: OfficialPick[], year:
     return adminPickRow(num, teams[num] ?? `Pick ${num}`, officialMap.get(num) ?? null, year);
   }).join('');
 
-  return `<div id="official-picks-editor">
+  // When draft is live, auto-sync from ESPN every 60s so admin doesn't have to click manually
+  const autoSyncAttrs = draftStarted
+    ? ` hx-post="/admin/draft/${year}/sync" hx-trigger="every 60s" hx-target="#official-picks-editor" hx-swap="outerHTML"`
+    : '';
+
+  return `<div id="official-picks-editor"${autoSyncAttrs}>
   <div class="flex items-center justify-between mb-3">
-    <p class="text-sm text-gray-500">${filledCount}/32 picks entered</p>
+    <p class="text-sm text-gray-500">${filledCount}/32 picks entered${draftStarted ? ' · <span class="text-green-600 font-medium">Auto-syncing every 60s</span>' : ''}</p>
     <div class="flex gap-2">
       <button type="button"
         hx-post="/admin/draft/${year}/sync"
@@ -262,7 +267,7 @@ export function adminDashboardPage(
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <h2 class="text-base font-bold text-gray-900 mb-1">Official Draft Picks</h2>
         <p class="text-xs text-gray-500 mb-3">Enter picks as they are announced. Use "Sync from ESPN Live" during the actual draft to auto-fill. You can manually correct any entry.</p>
-        ${officialPicksEditorFragment(officialPicks, year)}
+        ${officialPicksEditorFragment(officialPicks, year, draftStarted)}
       </div>
 
       <!-- Historical Winners -->
