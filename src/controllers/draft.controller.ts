@@ -297,11 +297,7 @@ async function buildLeaderboard(appId: number, year: number, officialOverride?: 
     officialResults = new Map(officialRows.map((r) => [r.pickNumber, r.playerName]));
   }
 
-  const leaderboard: Array<{
-    user: {id: number; firstName: string | null; lastName: string | null; email: string};
-    score: number;
-    picks: Pick[];
-  }> = [];
+  const leaderboard: LeaderboardEntry[] = [];
   for (const uid of completeUserIds) {
     const [u] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
     if (!u) {
@@ -320,8 +316,62 @@ async function buildLeaderboard(appId: number, year: number, officialOverride?: 
       picks,
     });
   }
+
+  // Add pro/expert entries so users can compare against the pros
+  if (officialResults.size > 0) {
+    leaderboard.push(...buildProEntries(officialResults, year));
+  }
+
   leaderboard.sort((a, b) => b.score - a.score);
   return leaderboard;
+}
+
+// ─── Pro / expert virtual leaderboard entries ──────────────────────────────
+
+type LeaderboardEntry = {
+  user: {id: number; firstName: string | null; lastName: string | null; email: string};
+  score: number;
+  picks: Pick[];
+  isPro?: boolean;
+};
+
+const PRO_SOURCES: Array<{id: number; firstName: string; lastName: string; source: RankingSource}> = [
+  {id: -1, firstName: 'Daniel', lastName: 'Jeremiah', source: 'nfl'},
+  {id: -2, firstName: 'Dane', lastName: 'Brugler', source: 'brugler'},
+  {id: -3, firstName: 'ESPN', lastName: 'Board', source: 'espn'},
+  {id: -4, firstName: 'CBS', lastName: 'Board', source: 'cbs'},
+  {id: -5, firstName: 'PFF', lastName: 'Board', source: 'pff'},
+  {id: -6, firstName: 'Fox', lastName: 'Board', source: 'fox'},
+];
+
+function buildProEntries(officialResults: Map<number, string | null>, year: number): LeaderboardEntry[] {
+  const teams = getFirstRoundTeams(year);
+  const entries: LeaderboardEntry[] = [];
+
+  for (const pro of PRO_SOURCES) {
+    // DJ mock has a specific pick order; big boards use rank = pick slot
+    const sourceList = getStaticPlayersBySource(year, pro.source);
+    const picks: Pick[] = [];
+    for (let i = 0; i < TOTAL_PICKS; i++) {
+      const num = i + 1;
+      const player = sourceList[i];
+      picks.push({
+        id: -(num + pro.id * 100),
+        pickNumber: num,
+        teamName: teams[num] ?? null,
+        playerName: player?.playerName ?? null,
+        position: player?.position ?? null,
+        doubleScorePick: false,
+      });
+    }
+    entries.push({
+      user: {id: pro.id, firstName: pro.firstName, lastName: pro.lastName, email: ''},
+      score: computeScore(picks, officialResults, new Set()),
+      picks,
+      isPro: true,
+    });
+  }
+  return entries;
 }
 
 export const draftController = new Elysia({prefix: '/draft'})
@@ -907,7 +957,7 @@ export const draftController = new Elysia({prefix: '/draft'})
   .get('/:year/leaderboard/picks/:userId', async (ctx: any) => {
     const year = parseYear(ctx.params?.year);
     const userId = Number(ctx.params?.userId);
-    if (year == null || !Number.isInteger(userId) || userId < 1) {
+    if (year == null || !Number.isInteger(userId)) {
       ctx.set.status = 404;
       return 'Not found';
     }
@@ -923,6 +973,28 @@ export const draftController = new Elysia({prefix: '/draft'})
       ctx.set.status = 403;
       return 'Picks are hidden until the draft starts.';
     }
+
+    // Pro/expert picks (negative IDs)
+    if (userId < 0) {
+      const pro = PRO_SOURCES.find((p) => p.id === userId);
+      if (!pro) {
+        ctx.set.status = 404;
+        return 'Not found';
+      }
+      const teams = getFirstRoundTeams(year);
+      const sourceList = getStaticPlayersBySource(year, pro.source);
+      const picks: Pick[] = Array.from({length: TOTAL_PICKS}, (_, i) => ({
+        id: -(i + 1),
+        pickNumber: i + 1,
+        teamName: teams[i + 1] ?? null,
+        playerName: sourceList[i]?.playerName ?? null,
+        position: sourceList[i]?.position ?? null,
+        doubleScorePick: false,
+      }));
+      ctx.set.headers['Content-Type'] = 'text/html';
+      return leaderboardUserPicksFragment({firstName: pro.firstName, lastName: pro.lastName, email: ''}, picks, year);
+    }
+
     const db = getDB();
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!u) {

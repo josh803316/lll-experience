@@ -2181,6 +2181,7 @@ export function leaderboardScoresFragment(
   leaderboard: Array<{
     user: {id: number; firstName: string | null; lastName: string | null; email: string};
     score: number;
+    isPro?: boolean;
   }>,
   draftStarted: boolean,
   year: number,
@@ -2188,17 +2189,22 @@ export function leaderboardScoresFragment(
 ): string {
   const rows = leaderboard
     .map((e, i) => {
+      const isPro = !!(e as any).isPro;
+      const nameLabel = isPro
+        ? `<span class="font-medium text-blue-700">${escapeHtml(displayName(e.user))}</span> <span class="text-xs text-blue-500 font-normal">PRO</span>`
+        : `<span class="font-medium text-gray-900">${escapeHtml(displayName(e.user))}</span>`;
       const nameCell = `<td class="px-4 py-2.5">
-          <div class="font-medium text-gray-900">${escapeHtml(displayName(e.user))}</div>
-          ${e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
+          <div>${nameLabel}</div>
+          ${!isPro && e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
         </td>`;
-      const trAttrs = showPicksLink
-        ? ` class="border-b border-gray-200 cursor-pointer hover:bg-gray-50" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML"`
+      const clickable = showPicksLink || isPro;
+      const trAttrs = clickable
+        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML"`
         : ` class="border-b border-gray-200"`;
       return `<tr${trAttrs}>
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
           ${nameCell}
-          <td class="px-4 py-2.5 font-bold ${e.score > 0 ? 'text-green-700' : 'text-gray-400'}">${e.score} pts</td>
+          <td class="px-4 py-2.5 font-bold ${e.score > 0 ? (isPro ? 'text-blue-700' : 'text-green-700') : 'text-gray-400'}">${e.score} pts</td>
         </tr>`;
     })
     .join('');
@@ -2280,6 +2286,7 @@ export function leaderboardPage(
     user: {id: number; firstName: string | null; lastName: string | null; email: string};
     score: number;
     picks: Pick[];
+    isPro?: boolean;
   }>,
   draftStarted: boolean,
   year: number,
