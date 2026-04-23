@@ -22,6 +22,10 @@ import {
   getPositionForPlayer,
   CURRENT_DRAFT_YEAR,
   DANIEL_JEREMIAH_MOCK_2_0_2026,
+  PETER_SCHRAGER_MOCK_2026,
+  BUCKY_BROOKS_MOCK_2026,
+  LANCE_ZIERLEIN_MOCK_2026,
+  CHRIS_SIMMS_MOCK_2026,
   type RankingSource,
 } from '../config/draft-data.js';
 import {getClerkProfile, isAdminUserId} from '../lib/clerk-email.js';
@@ -335,35 +339,27 @@ type LeaderboardEntry = {
   isPro?: boolean;
 };
 
-const PRO_SOURCES: Array<{id: number; firstName: string; lastName: string; source: RankingSource}> = [
-  {id: -1, firstName: 'Daniel', lastName: 'Jeremiah', source: 'nfl'},
-  {id: -2, firstName: 'Dane', lastName: 'Brugler', source: 'brugler'},
-  {id: -3, firstName: 'ESPN', lastName: 'Board', source: 'espn'},
-  {id: -4, firstName: 'CBS', lastName: 'Board', source: 'cbs'},
-  {id: -5, firstName: 'PFF', lastName: 'Board', source: 'pff'},
-  {id: -6, firstName: 'Fox', lastName: 'Board', source: 'fox'},
+const PRO_MOCKS: Array<{id: number; firstName: string; lastName: string; picks: string[]}> = [
+  {id: -1, firstName: 'Daniel', lastName: 'Jeremiah', picks: DANIEL_JEREMIAH_MOCK_2_0_2026},
+  {id: -2, firstName: 'Peter', lastName: 'Schrager', picks: PETER_SCHRAGER_MOCK_2026},
+  {id: -3, firstName: 'Bucky', lastName: 'Brooks', picks: BUCKY_BROOKS_MOCK_2026},
+  {id: -4, firstName: 'Lance', lastName: 'Zierlein', picks: LANCE_ZIERLEIN_MOCK_2026},
+  {id: -5, firstName: 'Chris', lastName: 'Simms', picks: CHRIS_SIMMS_MOCK_2026},
 ];
 
 function buildProEntries(officialResults: Map<number, string | null>, year: number): LeaderboardEntry[] {
   const teams = getFirstRoundTeams(year);
   const entries: LeaderboardEntry[] = [];
 
-  for (const pro of PRO_SOURCES) {
-    // DJ mock has a specific pick order; big boards use rank = pick slot
-    const sourceList = getStaticPlayersBySource(year, pro.source);
-    const picks: Pick[] = [];
-    for (let i = 0; i < TOTAL_PICKS; i++) {
-      const num = i + 1;
-      const player = sourceList[i];
-      picks.push({
-        id: -(num + pro.id * 100),
-        pickNumber: num,
-        teamName: teams[num] ?? null,
-        playerName: player?.playerName ?? null,
-        position: player?.position ?? null,
-        doubleScorePick: false,
-      });
-    }
+  for (const pro of PRO_MOCKS) {
+    const picks: Pick[] = pro.picks.map((playerName, i) => ({
+      id: -(i + 1 + pro.id * 100),
+      pickNumber: i + 1,
+      teamName: teams[i + 1] ?? null,
+      playerName,
+      position: getPositionForPlayer(playerName, year) ?? null,
+      doubleScorePick: false,
+    }));
     entries.push({
       user: {id: pro.id, firstName: pro.firstName, lastName: pro.lastName, email: ''},
       score: computeScore(picks, officialResults, new Set()),
@@ -976,19 +972,18 @@ export const draftController = new Elysia({prefix: '/draft'})
 
     // Pro/expert picks (negative IDs)
     if (userId < 0) {
-      const pro = PRO_SOURCES.find((p) => p.id === userId);
+      const pro = PRO_MOCKS.find((p) => p.id === userId);
       if (!pro) {
         ctx.set.status = 404;
         return 'Not found';
       }
       const teams = getFirstRoundTeams(year);
-      const sourceList = getStaticPlayersBySource(year, pro.source);
-      const picks: Pick[] = Array.from({length: TOTAL_PICKS}, (_, i) => ({
+      const picks: Pick[] = pro.picks.map((playerName, i) => ({
         id: -(i + 1),
         pickNumber: i + 1,
         teamName: teams[i + 1] ?? null,
-        playerName: sourceList[i]?.playerName ?? null,
-        position: sourceList[i]?.position ?? null,
+        playerName,
+        position: getPositionForPlayer(playerName, year) ?? null,
         doubleScorePick: false,
       }));
       ctx.set.headers['Content-Type'] = 'text/html';
