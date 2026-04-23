@@ -2257,7 +2257,7 @@ export function leaderboardUserPicksFragment(
         `<tr class="border-b border-gray-100">
           <td class="px-3 py-1.5 font-medium text-gray-600 w-8">${p.pickNumber}</td>
           <td class="px-3 py-1.5 text-gray-700">${escapeHtml(teams[p.pickNumber] ?? '—')}</td>
-          <td class="px-3 py-1.5">${escapeHtml(p.playerName ?? '—')}${p.position ? ` <span class="text-gray-500">(${escapeHtml(p.position)})</span>` : ''}</td>
+          <td class="px-3 py-1.5 font-medium text-gray-900">${escapeHtml(p.playerName ?? '—')}${p.position ? ` <span class="text-gray-500 font-normal">(${escapeHtml(p.position)})</span>` : ''}</td>
           <td class="px-3 py-1.5 text-center w-10">${p.doubleScorePick ? '2×' : ''}</td>
         </tr>`,
     )
