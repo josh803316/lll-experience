@@ -131,7 +131,9 @@ async function loadReactionsForMessages(
   currentUserId: number,
 ): Promise<Map<number, ReactionGroup[]>> {
   const result = new Map<number, ReactionGroup[]>();
-  if (messageIds.length === 0) {return result;}
+  if (messageIds.length === 0) {
+    return result;
+  }
 
   const db = getDB();
   const rows = await db
@@ -229,7 +231,7 @@ async function loadMessages(
   return result;
 }
 
-async function buildTickerData(appId: number, year: number): Promise<{last2: TickerPick[]; next3: TickerPick[]}> {
+async function buildTickerData(appId: number, year: number): Promise<TickerPick[]> {
   const db = getDB();
   const official = await db
     .select()
@@ -238,34 +240,19 @@ async function buildTickerData(appId: number, year: number): Promise<{last2: Tic
     .orderBy(officialDraftResults.pickNumber);
 
   const teams = getFirstRoundTeams(year);
-  const completedPicks = official.filter((r) => r.playerName);
+  const officialMap = new Map(official.map((r) => [r.pickNumber, r]));
 
-  const last2: TickerPick[] = completedPicks
-    .sort((a, b) => b.pickNumber - a.pickNumber)
-    .slice(0, 2)
-    .reverse()
-    .map((r) => ({
-      pickNumber: r.pickNumber,
-      teamName: r.teamName || teams[r.pickNumber] || `Pick ${r.pickNumber}`,
-      playerName: r.playerName,
-      position: getPositionForPlayer(r.playerName ?? '', year) ?? null,
-    }));
-
-  const highestPick = completedPicks.length > 0 ? Math.max(...completedPicks.map((r) => r.pickNumber)) : 0;
-  const next3: TickerPick[] = [];
-  for (let i = 1; i <= 3; i++) {
-    const num = highestPick + i;
-    if (num <= 32) {
-      next3.push({
-        pickNumber: num,
-        teamName: teams[num] ?? `Pick ${num}`,
-        playerName: null,
-        position: null,
-      });
-    }
+  const picks: TickerPick[] = [];
+  for (let num = 1; num <= 32; num++) {
+    const result = officialMap.get(num);
+    picks.push({
+      pickNumber: num,
+      teamName: result?.teamName || teams[num] || `Pick ${num}`,
+      playerName: result?.playerName ?? null,
+      position: result?.playerName ? (getPositionForPlayer(result.playerName, year) ?? null) : null,
+    });
   }
-
-  return {last2, next3};
+  return picks;
 }
 
 // ─── Controller ──────────────────────────────────────────────────────────────
@@ -424,7 +411,7 @@ export const chatController = new Elysia({prefix: '/draft'})
 
     const ticker = await buildTickerData(app.id, year);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return chatTickerFragment(ticker.last2, ticker.next3);
+    return chatTickerFragment(ticker);
   })
 
   // POST /draft/:year/chat/groups — create a new group

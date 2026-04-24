@@ -153,54 +153,56 @@ export function chatMessagesFragment(messages: ChatMessageDisplay[]): string {
   return messages.map((m) => chatSingleMessageFragment(m)).join('');
 }
 
-// ─── Ticker fragment ─────────────────────────────────────────────────────────
+// ─── Ticker fragment (ESPN-style horizontal scroll) ─────────────────────────
 
-export function chatTickerFragment(last2: TickerPick[], next3: TickerPick[]): string {
-  if (last2.length === 0 && next3.length === 0) {
-    return `<div class="text-center text-slate-500 text-xs py-2">Draft hasn't started yet — picks will appear here during the draft.</div>`;
-  }
+export function chatTickerFragment(picks: TickerPick[]): string {
+  // Find the "on the clock" pick: first pick without a player
+  const onTheClockIdx = picks.findIndex((p) => !p.playerName);
 
-  const lastCards = last2
-    .map(
-      (p) => `
-    <div class="flex items-center gap-2 bg-green-900/40 border border-green-700/50 rounded-lg px-2.5 py-1.5 min-w-0">
-      <span class="text-green-400 font-bold text-xs shrink-0">#${p.pickNumber}</span>
-      <span class="text-white text-xs font-medium truncate">${escapeHtml(p.teamName)}</span>
-      <span class="text-green-300 text-xs truncate">${p.playerName ? escapeHtml(p.playerName) : '—'}</span>
-      ${p.position ? `<span class="text-green-500/70 text-[10px] shrink-0">${escapeHtml(p.position)}</span>` : ''}
-    </div>`,
-    )
-    .join('');
+  const cards = picks
+    .map((p, i) => {
+      const isComplete = !!p.playerName;
+      const isOnClock = i === onTheClockIdx;
 
-  const nextCards = next3
-    .map(
-      (p) => `
-    <div class="flex items-center gap-2 bg-amber-900/30 border border-amber-700/40 rounded-lg px-2.5 py-1.5 min-w-0">
-      <span class="text-amber-400 font-bold text-xs shrink-0">#${p.pickNumber}</span>
-      <span class="text-white text-xs font-medium truncate">${escapeHtml(p.teamName)}</span>
-      <span class="text-amber-300/50 text-xs">???</span>
-    </div>`,
-    )
+      if (isOnClock) {
+        return `
+        <div class="ticker-card shrink-0 w-28 bg-amber-600 rounded-lg px-2.5 py-2 text-center border-2 border-amber-400 shadow-lg shadow-amber-900/30" data-pick="${p.pickNumber}">
+          <div class="text-[10px] font-bold text-amber-100 uppercase tracking-wider">On The Clock</div>
+          <div class="text-white text-xs font-bold mt-0.5 truncate">${escapeHtml(p.teamName)}</div>
+          <div class="text-[10px] text-amber-200 mt-0.5">Pick #${p.pickNumber}</div>
+        </div>`;
+      }
+
+      if (isComplete) {
+        return `
+        <div class="ticker-card shrink-0 w-28 bg-slate-700 rounded-lg px-2.5 py-2 text-center border border-slate-600" data-pick="${p.pickNumber}">
+          <div class="text-[10px] text-slate-400 font-medium">Pick #${p.pickNumber}</div>
+          <div class="text-white text-xs font-bold mt-0.5 truncate">${escapeHtml(p.playerName)}</div>
+          <div class="text-[10px] text-slate-400 mt-0.5 truncate">${escapeHtml(p.teamName)}${p.position ? ` · ${escapeHtml(p.position)}` : ''}</div>
+        </div>`;
+      }
+
+      // Future pick
+      return `
+      <div class="ticker-card shrink-0 w-28 bg-slate-800/60 rounded-lg px-2.5 py-2 text-center border border-slate-700/50" data-pick="${p.pickNumber}">
+        <div class="text-[10px] text-slate-500 font-medium">Pick #${p.pickNumber}</div>
+        <div class="text-slate-400 text-xs font-medium mt-0.5 truncate">${escapeHtml(p.teamName)}</div>
+        <div class="text-[10px] text-slate-600 mt-0.5">—</div>
+      </div>`;
+    })
     .join('');
 
   return `
-  <div class="flex flex-col sm:flex-row gap-2 sm:gap-4">
-    ${
-      last2.length > 0
-        ? `<div class="flex items-center gap-2 min-w-0">
-        <span class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider shrink-0">Last</span>
-        <div class="flex gap-1.5 overflow-x-auto min-w-0">${lastCards}</div>
-      </div>`
-        : ''
-    }
-    ${
-      next3.length > 0
-        ? `<div class="flex items-center gap-2 min-w-0">
-        <span class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider shrink-0">Next</span>
-        <div class="flex gap-1.5 overflow-x-auto min-w-0">${nextCards}</div>
-      </div>`
-        : ''
-    }
+  <div class="relative">
+    <button type="button" class="ticker-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg" style="display:none;">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+    </button>
+    <div class="ticker-scroll flex gap-2 overflow-x-auto px-1 py-1 scrollbar-hide" style="scrollbar-width:none;-ms-overflow-style:none;">
+      ${cards}
+    </div>
+    <button type="button" class="ticker-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+    </button>
   </div>`;
 }
 
@@ -298,7 +300,7 @@ export function chatPage(
   groups: ChatGroupDisplay[],
   activeGroupId: number,
   activeGroup: {id: number; name: string; isDefault: boolean},
-  ticker: {last2: TickerPick[]; next3: TickerPick[]},
+  ticker: TickerPick[],
   year: number,
   currentUserId: number,
   clerkPublishableKey?: string,
@@ -319,6 +321,7 @@ export function chatPage(
   <style>
     .msg-bubble:hover .react-bar,
     .msg-bubble .react-bar.active { display: block !important; }
+    .ticker-scroll::-webkit-scrollbar { display: none; }
   </style>
   <div class="min-h-screen bg-slate-800 text-gray-100 flex flex-col">
     ${draftTopBar(year, 'chat', isAdmin)}
@@ -335,7 +338,7 @@ export function chatPage(
            hx-get="/draft/${year}/chat/ticker"
            hx-trigger="every 30s"
            hx-swap="innerHTML">
-        ${chatTickerFragment(ticker.last2, ticker.next3)}
+        ${chatTickerFragment(ticker)}
       </div>
 
       <!-- Messages area -->
@@ -389,6 +392,44 @@ export function chatPage(
     }
     // Initial scroll
     scrollToBottom();
+
+    // ─── Ticker scroll buttons + auto-scroll to "On The Clock" ───
+    function initTickerScroll() {
+      var ticker = document.querySelector('.ticker-scroll');
+      var leftBtn = document.querySelector('.ticker-scroll-left');
+      var rightBtn = document.querySelector('.ticker-scroll-right');
+      if (!ticker) return;
+
+      function updateArrows() {
+        if (leftBtn) leftBtn.style.display = ticker.scrollLeft > 10 ? '' : 'none';
+        if (rightBtn) rightBtn.style.display = ticker.scrollLeft < ticker.scrollWidth - ticker.clientWidth - 10 ? '' : 'none';
+      }
+
+      if (leftBtn) leftBtn.addEventListener('click', function() {
+        ticker.scrollBy({left: -240, behavior: 'smooth'});
+      });
+      if (rightBtn) rightBtn.addEventListener('click', function() {
+        ticker.scrollBy({left: 240, behavior: 'smooth'});
+      });
+
+      ticker.addEventListener('scroll', updateArrows, {passive: true});
+
+      // Auto-scroll to "On The Clock" card on load
+      var onClock = ticker.querySelector('[data-pick].bg-amber-600');
+      if (onClock) {
+        var offset = onClock.offsetLeft - ticker.offsetLeft - 40;
+        ticker.scrollLeft = Math.max(0, offset);
+      }
+      setTimeout(updateArrows, 50);
+    }
+    initTickerScroll();
+
+    // Re-init ticker after HTMX poll replaces it
+    document.body.addEventListener('htmx:afterSettle', function(e) {
+      if (e.detail.target && e.detail.target.id === 'chat-ticker') {
+        initTickerScroll();
+      }
+    });
 
     // ─── Dedup + update polling cursor + auto-scroll ───
     function updatePollCursor() {
