@@ -2198,10 +2198,11 @@ export function leaderboardScoresFragment(
           ${!isPro && e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
         </td>`;
       const clickable = showPicksLink || isPro;
-      const onSwap = `this.closest('tbody').querySelectorAll('tr').forEach(function(r){r.classList.remove('bg-orange-100','ring-2','ring-orange-400')});this.classList.add('bg-orange-100','ring-2','ring-orange-400');document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})`;
+      const onSwap = `window.__selectedLbUser=${e.user.id};this.closest('tbody').querySelectorAll('tr').forEach(function(r){r.classList.remove('bg-orange-100','ring-2','ring-orange-400','ring-inset')});this.classList.add('bg-orange-100','ring-2','ring-orange-400','ring-inset');document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})`;
+      const isSelected = `window.__selectedLbUser===${e.user.id}`;
       const trAttrs = clickable
-        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML" hx-on::after-swap="${onSwap}"`
-        : ` class="border-b border-gray-200"`;
+        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" data-user-id="${e.user.id}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML" hx-on::after-swap="${onSwap}"`
+        : ` class="border-b border-gray-200" data-user-id="${e.user.id}"`;
       return `<tr${trAttrs}>
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
           ${nameCell}
@@ -2212,7 +2213,9 @@ export function leaderboardScoresFragment(
   const pollingAttrs = draftStarted
     ? `hx-get="/draft/${year}/leaderboard/scores" hx-trigger="every 30s" hx-swap="outerHTML"`
     : '';
-  return `<div id="leaderboard-scores" ${pollingAttrs}>
+  // Re-apply highlight after polling refresh replaces the scores HTML
+  const reHighlight = `hx-on::after-settle="if(window.__selectedLbUser!=null){var r=this.querySelector('tr[data-user-id=\\''+window.__selectedLbUser+'\\']');if(r)r.classList.add('bg-orange-100','ring-2','ring-orange-400','ring-inset')}"`;
+  return `<div id="leaderboard-scores" ${pollingAttrs} ${reHighlight}>
   <table class="w-full">
     <thead><tr class="bg-gray-50 text-left border-b border-gray-200">
       <th class="px-4 py-2 font-semibold text-gray-600 w-8">#</th>
