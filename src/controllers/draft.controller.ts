@@ -971,6 +971,7 @@ export const draftController = new Elysia({prefix: '/draft'})
     }
 
     // Build officialByPlayer map for color coding
+    const db = getDB();
     const officialRows = await db
       .select()
       .from(officialDraftResults)
