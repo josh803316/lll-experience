@@ -153,41 +153,129 @@ export function chatMessagesFragment(messages: ChatMessageDisplay[]): string {
   return messages.map((m) => chatSingleMessageFragment(m)).join('');
 }
 
+// ─── NFL team metadata ───────────────────────────────────────────────────────
+
+interface TeamMeta {
+  abbr: string;
+  primary: string; // bg color
+  secondary: string; // text/accent color
+  espnId: string; // ESPN team ID for logo URL
+}
+
+const NFL_TEAMS: Record<string, TeamMeta> = {
+  'Arizona Cardinals': {abbr: 'ARI', primary: '#97233F', secondary: '#FFB612', espnId: '22'},
+  'Atlanta Falcons': {abbr: 'ATL', primary: '#A71930', secondary: '#000000', espnId: '1'},
+  'Baltimore Ravens': {abbr: 'BAL', primary: '#241773', secondary: '#9E7C0C', espnId: '33'},
+  'Buffalo Bills': {abbr: 'BUF', primary: '#00338D', secondary: '#C60C30', espnId: '2'},
+  'Carolina Panthers': {abbr: 'CAR', primary: '#0085CA', secondary: '#101820', espnId: '29'},
+  'Chicago Bears': {abbr: 'CHI', primary: '#0B162A', secondary: '#C83803', espnId: '3'},
+  'Cincinnati Bengals': {abbr: 'CIN', primary: '#FB4F14', secondary: '#000000', espnId: '4'},
+  'Cleveland Browns': {abbr: 'CLE', primary: '#311D00', secondary: '#FF3C00', espnId: '5'},
+  'Dallas Cowboys': {abbr: 'DAL', primary: '#003594', secondary: '#869397', espnId: '6'},
+  'Denver Broncos': {abbr: 'DEN', primary: '#FB4F14', secondary: '#002244', espnId: '7'},
+  'Detroit Lions': {abbr: 'DET', primary: '#0076B6', secondary: '#B0B7BC', espnId: '8'},
+  'Green Bay Packers': {abbr: 'GB', primary: '#203731', secondary: '#FFB612', espnId: '9'},
+  'Houston Texans': {abbr: 'HOU', primary: '#03202F', secondary: '#A71930', espnId: '34'},
+  'Indianapolis Colts': {abbr: 'IND', primary: '#002C5F', secondary: '#A2AAAD', espnId: '11'},
+  'Jacksonville Jaguars': {abbr: 'JAX', primary: '#006778', secondary: '#D7A22A', espnId: '30'},
+  'Kansas City Chiefs': {abbr: 'KC', primary: '#E31837', secondary: '#FFB81C', espnId: '12'},
+  'Las Vegas Raiders': {abbr: 'LV', primary: '#000000', secondary: '#A5ACAF', espnId: '13'},
+  'Los Angeles Chargers': {abbr: 'LAC', primary: '#0080C6', secondary: '#FFC20E', espnId: '24'},
+  'Los Angeles Rams': {abbr: 'LAR', primary: '#003594', secondary: '#FFA300', espnId: '14'},
+  'Miami Dolphins': {abbr: 'MIA', primary: '#008E97', secondary: '#FC4C02', espnId: '15'},
+  'Minnesota Vikings': {abbr: 'MIN', primary: '#4F2683', secondary: '#FFC62F', espnId: '16'},
+  'New England Patriots': {abbr: 'NE', primary: '#002244', secondary: '#C60C30', espnId: '17'},
+  'New Orleans Saints': {abbr: 'NO', primary: '#D3BC8D', secondary: '#101820', espnId: '18'},
+  'New York Giants': {abbr: 'NYG', primary: '#0B2265', secondary: '#A71930', espnId: '19'},
+  'New York Jets': {abbr: 'NYJ', primary: '#125740', secondary: '#FFFFFF', espnId: '20'},
+  'Philadelphia Eagles': {abbr: 'PHI', primary: '#004C54', secondary: '#A5ACAF', espnId: '21'},
+  'Pittsburgh Steelers': {abbr: 'PIT', primary: '#FFB612', secondary: '#101820', espnId: '23'},
+  'San Francisco 49ers': {abbr: 'SF', primary: '#AA0000', secondary: '#B3995D', espnId: '25'},
+  'Seattle Seahawks': {abbr: 'SEA', primary: '#002244', secondary: '#69BE28', espnId: '26'},
+  'Tampa Bay Buccaneers': {abbr: 'TB', primary: '#D50A0A', secondary: '#FF7900', espnId: '27'},
+  'Tennessee Titans': {abbr: 'TEN', primary: '#0C2340', secondary: '#4B92DB', espnId: '10'},
+  'Washington Commanders': {abbr: 'WSH', primary: '#5A1414', secondary: '#FFB612', espnId: '28'},
+};
+
+function getTeamMeta(teamName: string): TeamMeta {
+  return (
+    NFL_TEAMS[teamName] ?? {
+      abbr: teamName.slice(0, 3).toUpperCase(),
+      primary: '#374151',
+      secondary: '#9CA3AF',
+      espnId: '',
+    }
+  );
+}
+
+function teamLogoUrl(espnId: string): string {
+  if (!espnId) {return '';}
+  return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${espnId}.png&h=40&w=40`;
+}
+
 // ─── Ticker fragment (ESPN-style horizontal scroll) ─────────────────────────
 
 export function chatTickerFragment(picks: TickerPick[]): string {
   // Find the "on the clock" pick: first pick without a player
   const onTheClockIdx = picks.findIndex((p) => !p.playerName);
+  const allComplete = onTheClockIdx === -1 && picks.some((p) => p.playerName);
+
+  function teamLogo(team: TeamMeta, size: 'sm' | 'lg'): string {
+    const dim = size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
+    const url = teamLogoUrl(team.espnId);
+    if (url) {
+      return `<img src="${url}" alt="${team.abbr}" class="${dim} shrink-0 object-contain" loading="lazy" />`;
+    }
+    // Fallback: colored circle with abbreviation
+    const textSize = size === 'lg' ? 'text-xs' : 'text-[10px]';
+    return `<div class="${dim} ${textSize} rounded-full flex items-center justify-center font-extrabold shrink-0 border border-white/20" style="background:${team.primary};color:${team.secondary}">${team.abbr}</div>`;
+  }
 
   const cards = picks
     .map((p, i) => {
+      const tm = getTeamMeta(p.teamName);
       const isComplete = !!p.playerName;
       const isOnClock = i === onTheClockIdx;
+      const ovrLabel = `Pick #${p.pickNumber} (${p.pickNumber} OVR)`;
 
       if (isOnClock) {
         return `
-        <div class="ticker-card shrink-0 w-28 bg-amber-600 rounded-lg px-2.5 py-2 text-center border-2 border-amber-400 shadow-lg shadow-amber-900/30" data-pick="${p.pickNumber}">
-          <div class="text-[10px] font-bold text-amber-100 uppercase tracking-wider">On The Clock</div>
-          <div class="text-white text-xs font-bold mt-0.5 truncate">${escapeHtml(p.teamName)}</div>
-          <div class="text-[10px] text-amber-200 mt-0.5">Pick #${p.pickNumber}</div>
+        <div class="ticker-card shrink-0 w-36 rounded-lg px-3 py-2.5 border-2 border-amber-400 shadow-lg shadow-amber-900/40 relative overflow-hidden" data-pick="${p.pickNumber}" style="background:linear-gradient(135deg, ${tm.primary}ee, ${tm.primary}bb)">
+          <div class="absolute top-0 right-0 bg-amber-500 text-[9px] font-bold text-white px-2 py-0.5 rounded-bl-lg uppercase tracking-wider">On The Clock</div>
+          <div class="flex items-center gap-2 mt-2.5">
+            ${teamLogo(tm, 'lg')}
+            <div class="min-w-0">
+              <div class="text-white text-xs font-bold truncate">${escapeHtml(p.teamName)}</div>
+              <div class="text-[10px] text-white/60">${ovrLabel}</div>
+            </div>
+          </div>
         </div>`;
       }
 
       if (isComplete) {
         return `
-        <div class="ticker-card shrink-0 w-28 bg-slate-700 rounded-lg px-2.5 py-2 text-center border border-slate-600" data-pick="${p.pickNumber}">
-          <div class="text-[10px] text-slate-400 font-medium">Pick #${p.pickNumber}</div>
-          <div class="text-white text-xs font-bold mt-0.5 truncate">${escapeHtml(p.playerName)}</div>
-          <div class="text-[10px] text-slate-400 mt-0.5 truncate">${escapeHtml(p.teamName)}${p.position ? ` · ${escapeHtml(p.position)}` : ''}</div>
+        <div class="ticker-card shrink-0 w-36 rounded-lg px-3 py-2 border border-slate-600 relative" data-pick="${p.pickNumber}" style="background:linear-gradient(135deg, ${tm.primary}40, ${tm.primary}15)">
+          <div class="flex items-center gap-2">
+            ${teamLogo(tm, 'sm')}
+            <div class="min-w-0 flex-1">
+              <div class="text-white text-[11px] font-bold truncate">${escapeHtml(p.playerName)}</div>
+              <div class="text-[10px] text-slate-400 truncate">${escapeHtml(p.teamName)}${p.position ? ` · <span class="text-slate-300">${escapeHtml(p.position)}</span>` : ''}</div>
+            </div>
+          </div>
+          <div class="text-[9px] text-slate-500 mt-1">${ovrLabel}</div>
         </div>`;
       }
 
       // Future pick
       return `
-      <div class="ticker-card shrink-0 w-28 bg-slate-800/60 rounded-lg px-2.5 py-2 text-center border border-slate-700/50" data-pick="${p.pickNumber}">
-        <div class="text-[10px] text-slate-500 font-medium">Pick #${p.pickNumber}</div>
-        <div class="text-slate-400 text-xs font-medium mt-0.5 truncate">${escapeHtml(p.teamName)}</div>
-        <div class="text-[10px] text-slate-600 mt-0.5">—</div>
+      <div class="ticker-card shrink-0 w-36 rounded-lg px-3 py-2 border border-slate-700/50 bg-slate-800/40" data-pick="${p.pickNumber}">
+        <div class="flex items-center gap-2">
+          ${teamLogo(tm, 'sm')}
+          <div class="min-w-0">
+            <div class="text-slate-400 text-[11px] font-medium truncate">${escapeHtml(p.teamName)}</div>
+            <div class="text-[10px] text-slate-600">${ovrLabel}</div>
+          </div>
+        </div>
       </div>`;
     })
     .join('');
@@ -197,7 +285,7 @@ export function chatTickerFragment(picks: TickerPick[]): string {
     <button type="button" class="ticker-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg" style="display:none;">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
     </button>
-    <div class="ticker-scroll flex gap-2 overflow-x-auto px-1 py-1 scrollbar-hide" style="scrollbar-width:none;-ms-overflow-style:none;">
+    <div class="ticker-scroll flex gap-2 overflow-x-auto px-1 py-1" style="scrollbar-width:none;-ms-overflow-style:none;">
       ${cards}
     </div>
     <button type="button" class="ticker-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg">

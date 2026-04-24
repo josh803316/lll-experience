@@ -152,10 +152,10 @@ async function loadReactionsForMessages(
   const byMsg = new Map<number, Map<string, Array<{userId: number; name: string}>>>();
   for (const r of rows) {
     if (!byMsg.has(r.messageId)) {byMsg.set(r.messageId, new Map());}
-    const emojiMap = byMsg.get(r.messageId);
+    const emojiMap = byMsg.get(r.messageId) as Map<string, Array<{userId: number; name: string}>>;
     if (!emojiMap.has(r.emoji)) {emojiMap.set(r.emoji, []);}
     const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || 'Someone';
-    emojiMap.get(r.emoji).push({userId: r.userId, name});
+    (emojiMap.get(r.emoji) as Array<{userId: number; name: string}>).push({userId: r.userId, name});
   }
 
   for (const [msgId, emojiMap] of byMsg) {
