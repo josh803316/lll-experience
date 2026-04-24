@@ -2198,8 +2198,9 @@ export function leaderboardScoresFragment(
           ${!isPro && e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
         </td>`;
       const clickable = showPicksLink || isPro;
+      const onSwap = `this.closest('tbody').querySelectorAll('tr').forEach(function(r){r.classList.remove('bg-orange-100','ring-2','ring-orange-400')});this.classList.add('bg-orange-100','ring-2','ring-orange-400');document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})`;
       const trAttrs = clickable
-        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML" hx-on::after-swap="document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})"`
+        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML" hx-on::after-swap="${onSwap}"`
         : ` class="border-b border-gray-200"`;
       return `<tr${trAttrs}>
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
