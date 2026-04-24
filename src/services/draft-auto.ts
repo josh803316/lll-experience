@@ -205,7 +205,9 @@ setLiveTeamResolver((year: number) => liveTeamsBySlotByYear.get(year) ?? null);
 async function upsertTeamAssignments(appId: number, year: number, teamsBySlot: Map<number, string>): Promise<void> {
   const db = getDB();
   for (const [slot, teamName] of teamsBySlot) {
-    if (slot < 1 || slot > 32) {continue;}
+    if (slot < 1 || slot > 32) {
+      continue;
+    }
     const existing = await db
       .select()
       .from(officialDraftResults)
@@ -265,8 +267,6 @@ export async function syncOfficialPicksFromMultipleSources(
     const {picks, teamsBySlot} = await fetchFromESPNSite(year);
     if (teamsBySlot.size > 0) {
       liveTeamsBySlotByYear.set(year, teamsBySlot);
-      // Persist team assignments to DB so serverless (Vercel) can read them
-      await upsertTeamAssignments(appId, year, teamsBySlot);
     }
     if (picks.length > 0) {
       const synced = await upsertPicks(appId, year, picks);
