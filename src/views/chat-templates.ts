@@ -35,7 +35,9 @@ function displayName(first: string | null, last: string | null): string {
 }
 
 function shortName(first: string | null, last: string | null): string {
-  if (first && last) {return `${first} ${last.charAt(0)}.`;}
+  if (first && last) {
+    return `${first} ${last.charAt(0)}.`;
+  }
   return first || last || 'Anon';
 }
 
@@ -176,7 +178,9 @@ export function chatGroupBar(groups: ChatGroupDisplay[], activeGroupId: number, 
 // ─── Invite form fragment ────────────────────────────────────────────────────
 
 export function chatInviteSection(groupId: number, year: number, isDefault: boolean): string {
-  if (isDefault) {return '';}
+  if (isDefault) {
+    return '';
+  }
   return `
   <div class="mt-2">
     <button type="button" id="invite-toggle-btn" class="text-xs text-blue-400 hover:text-blue-300 transition-colors">+ Invite someone</button>
@@ -241,7 +245,7 @@ export function chatPage(
   clerkPublishableKey?: string,
   isAdmin = false,
 ): string {
-  const lastTs = messages.length > 0 ? messages[messages.length - 1].createdAt : new Date(0).toISOString();
+  const lastId = messages.length > 0 ? messages[messages.length - 1].id : 0;
 
   const messagesHtml =
     messages.length > 0
@@ -278,7 +282,7 @@ export function chatPage(
         </div>
         <!-- Polling sentinel -->
         <div id="chat-poll"
-             hx-get="/draft/${year}/chat/messages?groupId=${activeGroupId}&after=${encodeURIComponent(lastTs)}"
+             hx-get="/draft/${year}/chat/messages?groupId=${activeGroupId}&afterId=${lastId}"
              hx-trigger="every 4s"
              hx-target="#chat-messages"
              hx-swap="beforeend">
@@ -323,7 +327,40 @@ export function chatPage(
     // Initial scroll
     scrollToBottom();
 
-    // ─── After HTMX swaps new messages, update polling URL + auto-scroll ───
+    // ─── Dedup + update polling cursor + auto-scroll ───
+    function updatePollCursor() {
+      var container = document.getElementById('chat-messages');
+      if (!container) return;
+      var msgs = container.querySelectorAll('[data-msg-id]');
+      if (msgs.length === 0) return;
+      var latestId = msgs[msgs.length - 1].getAttribute('data-msg-id');
+      var poll = document.getElementById('chat-poll');
+      if (poll && latestId) {
+        var base = poll.getAttribute('hx-get').split('?')[0];
+        var params = new URLSearchParams(poll.getAttribute('hx-get').split('?')[1] || '');
+        params.set('afterId', latestId);
+        poll.setAttribute('hx-get', base + '?' + params.toString());
+        htmx.process(poll);
+      }
+    }
+
+    // Before HTMX swaps in new content, remove duplicates
+    document.body.addEventListener('htmx:beforeSwap', function(e) {
+      var target = e.detail.target;
+      if (!target || target.id !== 'chat-messages') return;
+      // Parse incoming HTML and strip messages already in the DOM
+      var tmp = document.createElement('div');
+      tmp.innerHTML = e.detail.serverResponse;
+      var incoming = tmp.querySelectorAll('[data-msg-id]');
+      for (var i = 0; i < incoming.length; i++) {
+        var id = incoming[i].getAttribute('data-msg-id');
+        if (target.querySelector('[data-msg-id="' + id + '"]')) {
+          incoming[i].remove();
+        }
+      }
+      e.detail.serverResponse = tmp.innerHTML;
+    });
+
     document.body.addEventListener('htmx:afterSettle', function(e) {
       var target = e.detail.target;
       if (!target || target.id !== 'chat-messages') return;
@@ -332,19 +369,8 @@ export function chatPage(
       var empty = document.getElementById('chat-empty');
       if (empty && target.children.length > 1) empty.remove();
 
-      // Update polling timestamp
-      var msgs = target.querySelectorAll('[data-msg-ts]');
-      if (msgs.length > 0) {
-        var latest = msgs[msgs.length - 1].getAttribute('data-msg-ts');
-        var poll = document.getElementById('chat-poll');
-        if (poll && latest) {
-          var base = poll.getAttribute('hx-get').split('?')[0];
-          var params = new URLSearchParams(poll.getAttribute('hx-get').split('?')[1] || '');
-          params.set('after', latest);
-          poll.setAttribute('hx-get', base + '?' + params.toString());
-          htmx.process(poll);
-        }
-      }
+      // Update polling cursor to latest message ID
+      updatePollCursor();
 
       // Auto-scroll if near bottom
       if (isNearBottom()) {
@@ -356,8 +382,9 @@ export function chatPage(
     var form = document.getElementById('chat-send-form');
     var input = document.getElementById('chat-input');
     if (form) {
-      form.addEventListener('htmx:afterRequest', function(e) {
+      form.addEventListener('htmx:afterSettle', function(e) {
         if (input) input.value = '';
+        updatePollCursor();
         setTimeout(scrollToBottom, 100);
       });
       // Submit on Enter

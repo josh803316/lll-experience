@@ -38,7 +38,9 @@ async function getApp(slug: string) {
 }
 
 function parseYear(param: string | undefined): number | null {
-  if (param == null) {return null;}
+  if (param == null) {
+    return null;
+  }
   const y = Number(param);
   return Number.isInteger(y) && y >= 2020 && y <= 2040 ? y : null;
 }
@@ -117,13 +119,13 @@ async function isGroupMember(groupId: number, userId: number): Promise<boolean> 
 async function loadMessages(
   groupId: number,
   currentUserId: number,
-  after?: Date,
+  afterId?: number,
   limit = 50,
 ): Promise<ChatMessageDisplay[]> {
   const db = getDB();
   const conditions = [eq(chatMessages.groupId, groupId)];
-  if (after) {
-    conditions.push(gt(chatMessages.createdAt, after));
+  if (afterId) {
+    conditions.push(gt(chatMessages.id, afterId));
   }
 
   const rows = await db
@@ -278,13 +280,9 @@ export const chatController = new Elysia({prefix: '/draft'})
       return '';
     }
 
-    const afterStr = ctx.query?.after as string;
-    const after = afterStr ? new Date(decodeURIComponent(afterStr)) : undefined;
-    if (after && isNaN(after.getTime())) {
-      return '';
-    }
+    const afterId = Number(ctx.query?.afterId) || 0;
 
-    const messages = await loadMessages(groupId, user.id, after);
+    const messages = await loadMessages(groupId, user.id, afterId || undefined);
     ctx.set.headers['Content-Type'] = 'text/html';
     return chatMessagesFragment(messages);
   })
@@ -360,7 +358,9 @@ export const chatController = new Elysia({prefix: '/draft'})
     }
 
     const app = await getApp('nfl-draft');
-    if (!app) {return '';}
+    if (!app) {
+      return '';
+    }
 
     const ticker = await buildTickerData(app.id, year);
     ctx.set.headers['Content-Type'] = 'text/html';
