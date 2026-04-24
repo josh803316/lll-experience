@@ -2113,9 +2113,9 @@ export function draftLayout(
   return baseLayout(content, 'NFL Draft Predictor — LLL Experience', clerkPublishableKey);
 }
 
-type DraftRoom = 'picks' | 'leaderboard';
+type DraftRoom = 'picks' | 'leaderboard' | 'chat';
 
-function draftTopBar(year: number, active: DraftRoom, isAdmin = false): string {
+export function draftTopBar(year: number, active: DraftRoom, isAdmin = false): string {
   const base = '/draft/' + year;
   return `
   <header class="bg-slate-900 border-b border-slate-700">
@@ -2126,6 +2126,7 @@ function draftTopBar(year: number, active: DraftRoom, isAdmin = false): string {
         <nav class="flex items-center gap-1 shrink-0" aria-label="Draft rooms">
           <a href="${base}" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === 'picks' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}">Picks</a>
           <a href="${base}/leaderboard" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === 'leaderboard' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}">Leaderboard</a>
+          <a href="${base}/chat" class="px-3 py-1.5 rounded text-sm font-medium transition-colors ${active === 'chat' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}">Chat</a>
           ${isAdmin ? `<a href="/admin/draft/${year}" class="px-3 py-1.5 rounded text-sm font-medium text-orange-400 hover:bg-slate-700 hover:text-orange-300 transition-colors">⚙ Admin</a>` : ''}
           <button type="button" onclick="if(window.Clerk){window.Clerk.signOut().then(function(){window.location.href='/';});}" class="px-3 py-1.5 rounded text-sm font-medium text-slate-400 hover:bg-slate-700 hover:text-white transition-colors">Sign out</button>
         </nav>
