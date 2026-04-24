@@ -80,8 +80,8 @@ async function fetchFromESPNSite(year: number): Promise<OfficialPickEntry[]> {
 
   const out: OfficialPickEntry[] = [];
   for (const p of picks) {
-    // Only include picks where a selection has been made
-    if (p?.status && p.status !== 'SELECTION_MADE') {
+    // Only include picks that have been made (SELECTION_MADE or PICK_IS_IN)
+    if (p?.status && p.status !== 'SELECTION_MADE' && p.status !== 'PICK_IS_IN') {
       continue;
     }
     const pickNum = p?.pick ?? p?.overall ?? p?.number;
