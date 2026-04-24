@@ -13,14 +13,14 @@ export const FIRST_ROUND_TEAMS_2026: Record<number, string> = {
   3: 'Arizona Cardinals',
   4: 'Tennessee Titans',
   5: 'New York Giants',
-  6: 'Cleveland Browns',
+  6: 'Kansas City Chiefs', // traded up from CLE
   7: 'Washington Commanders',
   8: 'New Orleans Saints',
-  9: 'Kansas City Chiefs',
+  9: 'Cleveland Browns', // from KC trade
   10: 'New York Giants', // from Bengals (Dexter Lawrence trade)
   11: 'Miami Dolphins',
   12: 'Dallas Cowboys',
-  13: 'Los Angeles Rams',
+  13: 'Los Angeles Rams', // from ATL trade
   14: 'Baltimore Ravens',
   15: 'Tampa Bay Buccaneers',
   16: 'New York Jets',
