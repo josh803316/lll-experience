@@ -133,3 +133,15 @@ export const chatMessages = pgTable('chat_messages', {
   content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const chatMessageReactions = pgTable('chat_message_reactions', {
+  id: serial('id').primaryKey(),
+  messageId: integer('message_id')
+    .references(() => chatMessages.id, {onDelete: 'cascade'})
+    .notNull(),
+  userId: integer('user_id')
+    .references(() => users.id, {onDelete: 'cascade'})
+    .notNull(),
+  emoji: text('emoji').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

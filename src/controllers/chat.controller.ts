@@ -1,8 +1,16 @@
 import {Elysia, t} from 'elysia';
 import {authGuard} from '../guards/auth-guard.js';
 import {getDB} from '../db/index.js';
-import {apps, users, chatGroups, chatGroupMembers, chatMessages, officialDraftResults} from '../db/schema.js';
-import {eq, and, gt, asc, desc, sql} from 'drizzle-orm';
+import {
+  apps,
+  users,
+  chatGroups,
+  chatGroupMembers,
+  chatMessages,
+  chatMessageReactions,
+  officialDraftResults,
+} from '../db/schema.js';
+import {eq, and, gt, asc, desc, sql, inArray} from 'drizzle-orm';
 import {UsersModel} from '../models/users.model.js';
 import {getClerkProfile, isAdminUserId} from '../lib/clerk-email.js';
 import {getFirstRoundTeams, CURRENT_DRAFT_YEAR, getPositionForPlayer} from '../config/draft-data.js';
@@ -11,9 +19,11 @@ import {
   chatMessagesFragment,
   chatSingleMessageFragment,
   chatTickerFragment,
+  messageReactionsFragment,
   type ChatMessageDisplay,
   type ChatGroupDisplay,
   type TickerPick,
+  type ReactionGroup,
 } from '../views/chat-templates.js';
 
 const usersModel = new UsersModel();
@@ -116,6 +126,51 @@ async function isGroupMember(groupId: number, userId: number): Promise<boolean> 
   return row.length > 0;
 }
 
+async function loadReactionsForMessages(
+  messageIds: number[],
+  currentUserId: number,
+): Promise<Map<number, ReactionGroup[]>> {
+  const result = new Map<number, ReactionGroup[]>();
+  if (messageIds.length === 0) {return result;}
+
+  const db = getDB();
+  const rows = await db
+    .select({
+      messageId: chatMessageReactions.messageId,
+      emoji: chatMessageReactions.emoji,
+      userId: chatMessageReactions.userId,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+    .from(chatMessageReactions)
+    .innerJoin(users, eq(chatMessageReactions.userId, users.id))
+    .where(inArray(chatMessageReactions.messageId, messageIds));
+
+  // Group by messageId → emoji → users
+  const byMsg = new Map<number, Map<string, Array<{userId: number; name: string}>>>();
+  for (const r of rows) {
+    if (!byMsg.has(r.messageId)) {byMsg.set(r.messageId, new Map());}
+    const emojiMap = byMsg.get(r.messageId);
+    if (!emojiMap.has(r.emoji)) {emojiMap.set(r.emoji, []);}
+    const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || 'Someone';
+    emojiMap.get(r.emoji).push({userId: r.userId, name});
+  }
+
+  for (const [msgId, emojiMap] of byMsg) {
+    const groups: ReactionGroup[] = [];
+    for (const [emoji, reactors] of emojiMap) {
+      groups.push({
+        emoji,
+        count: reactors.length,
+        names: reactors.map((r) => r.name),
+        currentUserReacted: reactors.some((r) => r.userId === currentUserId),
+      });
+    }
+    result.set(msgId, groups);
+  }
+  return result;
+}
+
 async function loadMessages(
   groupId: number,
   currentUserId: number,
@@ -143,13 +198,16 @@ async function loadMessages(
     .orderBy(asc(chatMessages.createdAt))
     .limit(limit);
 
+  // Load reactions for all messages in batch
+  const messageIds = rows.map((r) => r.id);
+  const reactionsMap = await loadReactionsForMessages(messageIds, currentUserId);
+
   // Resolve names from Clerk for users missing firstName/lastName
   const result: ChatMessageDisplay[] = [];
   for (const r of rows) {
     let firstName = r.firstName;
     let lastName = r.lastName;
     if (!firstName && !lastName) {
-      // Look up from users table to get clerkId, then Clerk
       const [u] = await db.select().from(users).where(eq(users.id, r.userId)).limit(1);
       if (u) {
         const profile = await getClerkProfile(u.clerkId);
@@ -165,6 +223,7 @@ async function loadMessages(
       content: r.content,
       createdAt: r.createdAt.toISOString(),
       isOwn: r.userId === currentUserId,
+      reactions: reactionsMap.get(r.id) ?? [],
     });
   }
   return result;
@@ -339,6 +398,7 @@ export const chatController = new Elysia({prefix: '/draft'})
         content: msg.content,
         createdAt: msg.createdAt.toISOString(),
         isOwn: true,
+        reactions: [],
       });
     },
     {
@@ -458,5 +518,67 @@ export const chatController = new Elysia({prefix: '/draft'})
     {
       params: t.Object({year: t.String(), id: t.String()}),
       body: t.Object({email: t.String()}),
+    },
+  )
+
+  // POST /draft/:year/chat/react — toggle a reaction on a message
+  .post(
+    '/:year/chat/react',
+    async (ctx: any) => {
+      const year = parseYear(ctx.params?.year);
+      if (year == null) {
+        ctx.set.status = 404;
+        return '';
+      }
+
+      const auth = ctx.auth();
+      const user = await getOrCreateUser(auth);
+      const messageId = Number(ctx.body?.messageId);
+      const emoji = (ctx.body?.emoji as string)?.trim();
+
+      if (!messageId || !emoji) {
+        ctx.set.status = 400;
+        return '';
+      }
+
+      const db = getDB();
+
+      // Verify message exists and user has access to its group
+      const [msg] = await db.select().from(chatMessages).where(eq(chatMessages.id, messageId)).limit(1);
+      if (!msg || !(await isGroupMember(msg.groupId, user.id))) {
+        ctx.set.status = 403;
+        return '';
+      }
+
+      // Toggle: if user already reacted with this emoji, remove it; otherwise add it
+      const existing = await db
+        .select()
+        .from(chatMessageReactions)
+        .where(
+          and(
+            eq(chatMessageReactions.messageId, messageId),
+            eq(chatMessageReactions.userId, user.id),
+            eq(chatMessageReactions.emoji, emoji),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db.delete(chatMessageReactions).where(eq(chatMessageReactions.id, existing[0].id));
+      } else {
+        await db.insert(chatMessageReactions).values({messageId, userId: user.id, emoji});
+      }
+
+      // Return updated reactions fragment for this message
+      const reactionsMap = await loadReactionsForMessages([messageId], user.id);
+      const reactions = reactionsMap.get(messageId) ?? [];
+      ctx.set.headers['Content-Type'] = 'text/html';
+      return messageReactionsFragment(messageId, reactions, year);
+    },
+    {
+      body: t.Object({
+        messageId: t.String(),
+        emoji: t.String(),
+      }),
     },
   );

@@ -43,6 +43,13 @@
       "when": 1777069539515,
       "tag": "0005_tiny_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777071137828,
+      "tag": "0006_easy_captain_america",
+      "breakpoints": true
     }
   ]
 }

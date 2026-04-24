@@ -3,6 +3,13 @@ import {getFirstRoundTeams} from '../config/draft-data.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export interface ReactionGroup {
+  emoji: string;
+  count: number;
+  names: string[];
+  currentUserReacted: boolean;
+}
+
 export interface ChatMessageDisplay {
   id: number;
   userId: number;
@@ -11,6 +18,7 @@ export interface ChatMessageDisplay {
   content: string;
   createdAt: string; // ISO string
   isOwn: boolean;
+  reactions: ReactionGroup[];
 }
 
 export interface ChatGroupDisplay {
@@ -56,6 +64,43 @@ function initials(first: string | null, last: string | null): string {
   return f + l || '?';
 }
 
+// ─── Quick reaction emojis ───────────────────────────────────────────────────
+
+const QUICK_REACTIONS = ['👍', '😂', '🔥', '❤️', '😱', '💯'];
+
+// ─── Reactions display below a message ───────────────────────────────────────
+
+export function messageReactionsFragment(messageId: number, reactions: ReactionGroup[], year: number): string {
+  if (reactions.length === 0) {
+    return `<div id="reactions-${messageId}" class="msg-reactions"></div>`;
+  }
+
+  const pills = reactions
+    .map((r) => {
+      const activeClass = r.currentUserReacted
+        ? 'bg-blue-900/40 border-blue-500/50'
+        : 'bg-slate-800 border-slate-600 hover:border-slate-500';
+      const tooltip = r.names.join(', ');
+      return `<button type="button"
+        class="react-btn inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-xs transition-colors ${activeClass}"
+        data-msg-id="${messageId}" data-emoji="${r.emoji}"
+        title="${escapeHtml(tooltip)}">
+        <span>${r.emoji}</span><span class="text-slate-400">${r.count}</span>
+      </button>`;
+    })
+    .join('');
+
+  return `<div id="reactions-${messageId}" class="msg-reactions flex flex-wrap gap-1 mt-1">${pills}</div>`;
+}
+
+function inlineReactions(m: ChatMessageDisplay): string {
+  if (m.reactions.length === 0) {
+    return `<div id="reactions-${m.id}" class="msg-reactions"></div>`;
+  }
+  // Use 0 for year since inline reactions don't need a year for the toggle endpoint
+  return messageReactionsFragment(m.id, m.reactions, 0);
+}
+
 // ─── Single message bubble ───────────────────────────────────────────────────
 
 export function chatSingleMessageFragment(m: ChatMessageDisplay): string {
@@ -63,13 +108,23 @@ export function chatSingleMessageFragment(m: ChatMessageDisplay): string {
   const name = shortName(m.firstName, m.lastName);
   const ini = initials(m.firstName, m.lastName);
 
+  const reactionBar = `<div class="react-bar hidden absolute ${m.isOwn ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'} top-0 z-10">
+    <div class="flex gap-0.5 bg-slate-900 border border-slate-600 rounded-full px-1.5 py-1 shadow-lg">
+      ${QUICK_REACTIONS.map((e) => `<button type="button" class="react-quick w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-700 text-sm transition-colors" data-msg-id="${m.id}" data-emoji="${e}">${e}</button>`).join('')}
+    </div>
+  </div>`;
+
   if (m.isOwn) {
     return `
     <div class="flex justify-end gap-2 mb-2" data-msg-ts="${escapeHtml(m.createdAt)}" data-msg-id="${m.id}">
       <div class="max-w-[75%] sm:max-w-[65%]">
-        <div class="bg-green-600 text-white rounded-2xl rounded-tr-sm px-3.5 py-2 shadow-sm">
-          <p class="text-sm whitespace-pre-wrap break-words">${escapeHtml(m.content)}</p>
+        <div class="relative msg-bubble group">
+          ${reactionBar}
+          <div class="bg-green-600 text-white rounded-2xl rounded-tr-sm px-3.5 py-2 shadow-sm">
+            <p class="text-sm whitespace-pre-wrap break-words">${escapeHtml(m.content)}</p>
+          </div>
         </div>
+        ${inlineReactions(m)}
         <p class="text-[10px] text-slate-500 text-right mt-0.5 pr-1">${time}</p>
       </div>
     </div>`;
@@ -80,9 +135,13 @@ export function chatSingleMessageFragment(m: ChatMessageDisplay): string {
     <div class="shrink-0 w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white mt-1">${ini}</div>
     <div class="max-w-[75%] sm:max-w-[65%]">
       <p class="text-[11px] text-slate-400 mb-0.5 pl-1 font-medium">${escapeHtml(name)}</p>
-      <div class="bg-slate-700 text-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2 shadow-sm">
-        <p class="text-sm whitespace-pre-wrap break-words">${escapeHtml(m.content)}</p>
+      <div class="relative msg-bubble group">
+        ${reactionBar}
+        <div class="bg-slate-700 text-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2 shadow-sm">
+          <p class="text-sm whitespace-pre-wrap break-words">${escapeHtml(m.content)}</p>
+        </div>
       </div>
+      ${inlineReactions(m)}
       <p class="text-[10px] text-slate-500 mt-0.5 pl-1">${time}</p>
     </div>
   </div>`;
@@ -257,6 +316,10 @@ export function chatPage(
         </div>`;
 
   const content = `
+  <style>
+    .msg-bubble:hover .react-bar,
+    .msg-bubble .react-bar.active { display: block !important; }
+  </style>
   <div class="min-h-screen bg-slate-800 text-gray-100 flex flex-col">
     ${draftTopBar(year, 'chat', isAdmin)}
     <div class="flex-1 flex flex-col max-w-4xl w-full mx-auto px-4 pt-3 pb-4 overflow-hidden" style="height: calc(100dvh - 57px)">
@@ -459,6 +522,50 @@ export function chatPage(
         if (emailInput && !inviteForm.classList.contains('hidden')) emailInput.focus();
       });
     }
+
+    // ─── Reactions: quick bar + existing reaction pills ───
+    var DRAFT_YEAR = ${year};
+    document.addEventListener('click', function(e) {
+      var quickBtn = e.target.closest('.react-quick');
+      var reactBtn = e.target.closest('.react-btn');
+      var btn = quickBtn || reactBtn;
+      if (!btn) return;
+
+      var msgId = btn.getAttribute('data-msg-id');
+      var emoji = btn.getAttribute('data-emoji');
+      if (!msgId || !emoji) return;
+
+      // POST to toggle reaction
+      var token = window.__clerkToken;
+      fetch('/draft/' + DRAFT_YEAR + '/chat/react', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': token ? 'Bearer ' + token : ''
+        },
+        body: 'messageId=' + encodeURIComponent(msgId) + '&emoji=' + encodeURIComponent(emoji)
+      })
+      .then(function(res) { return res.text(); })
+      .then(function(html) {
+        var target = document.getElementById('reactions-' + msgId);
+        if (target) {
+          target.outerHTML = html;
+        }
+      });
+    });
+
+    // Mobile: tap to show reaction bar (since no hover)
+    document.addEventListener('touchstart', function(e) {
+      var bubble = e.target.closest('.msg-bubble');
+      // Close all other open reaction bars
+      document.querySelectorAll('.react-bar.active').forEach(function(bar) {
+        if (!bubble || !bubble.contains(bar)) bar.classList.remove('active');
+      });
+      if (bubble) {
+        var bar = bubble.querySelector('.react-bar');
+        if (bar) bar.classList.toggle('active');
+      }
+    }, {passive: true});
 
     // ─── Clerk auth token for HTMX ───
     // Already handled by the global htmx:configRequest listener in baseLayout
