@@ -148,7 +148,7 @@ async function fetchFromESPNAlternate(year: number): Promise<OfficialPickEntry[]
   return out;
 }
 
-/** Upsert official picks into the database. */
+/** Upsert official picks into the database. Only writes playerName — never overwrites teamName. */
 async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry[]): Promise<number> {
   const byNum = new Map<number, OfficialPickEntry>();
   for (const p of picks) {
@@ -160,7 +160,7 @@ async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry
   let synced = 0;
   for (let num = 1; num <= 32; num++) {
     const entry = byNum.get(num);
-    if (!entry) {
+    if (!entry || !entry.playerName) {
       continue;
     }
     const existing = await db
@@ -177,7 +177,7 @@ async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry
     if (existing.length > 0) {
       await db
         .update(officialDraftResults)
-        .set({playerName: entry.playerName, teamName: entry.teamName})
+        .set({playerName: entry.playerName})
         .where(
           and(
             eq(officialDraftResults.appId, appId),
@@ -188,7 +188,7 @@ async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry
     } else {
       await db
         .insert(officialDraftResults)
-        .values({appId, year, pickNumber: num, playerName: entry.playerName, teamName: entry.teamName});
+        .values({appId, year, pickNumber: num, playerName: entry.playerName, teamName: null});
     }
     synced++;
   }
