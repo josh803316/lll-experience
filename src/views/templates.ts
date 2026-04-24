@@ -420,7 +420,7 @@ export function picksTableFragment(
 
   // Poll when draft is live or mock simulation is running so official/mock picks update in real-time
   const shouldPoll = draftLocked || pollWhenLiveOrMock;
-  const pollingAttrs = shouldPoll ? `hx-get="/draft/${year}/picks" hx-trigger="every 15s" hx-swap="outerHTML"` : '';
+  const pollingAttrs = shouldPoll ? `hx-get="/draft/${year}/picks" hx-trigger="every 8s" hx-swap="outerHTML"` : '';
 
   const legend = shouldPoll
     ? `<div class="flex flex-wrap gap-3 text-xs text-gray-600 mb-2 px-1">
@@ -2210,7 +2210,7 @@ export function leaderboardScoresFragment(
     })
     .join('');
   const pollingAttrs = draftStarted
-    ? `hx-get="/draft/${year}/leaderboard/scores" hx-trigger="every 30s" hx-swap="outerHTML"`
+    ? `hx-get="/draft/${year}/leaderboard/scores" hx-trigger="every 15s" hx-swap="outerHTML"`
     : '';
   return `<div id="leaderboard-scores" ${pollingAttrs}>
   <script>document.addEventListener('htmx:afterSettle',function(e){if(e.detail.target&&e.detail.target.id==='leaderboard-scores'&&window.__selectedLbUser!=null){var r=e.detail.target.querySelector('tr[data-user-id=\"'+window.__selectedLbUser+'\"]');if(r){r.style.background='#ea580c';r.style.boxShadow='0 0 0 2px #ea580c';r.style.outline='2px solid #ea580c';r.querySelectorAll('td').forEach(function(td){td.style.color='#fff'})}}})</script>
@@ -2284,9 +2284,11 @@ export function leaderboardUserPicksFragment(
           } else {
             rowBg = 'bg-gray-200';
           }
-          if (pts > 0)
-            {scoreBadge = ` <span class="text-xs font-bold ${pts >= 4 ? 'text-green-700' : pts >= 2 ? 'text-yellow-600' : 'text-red-500'}">+${pts}</span>`;}
-          else {scoreBadge = ` <span class="text-xs font-bold text-gray-400">0</span>`;}
+          if (pts > 0) {
+            scoreBadge = ` <span class="text-xs font-bold ${pts >= 4 ? 'text-green-700' : pts >= 2 ? 'text-yellow-600' : 'text-red-500'}">+${pts}</span>`;
+          } else {
+            scoreBadge = ` <span class="text-xs font-bold text-gray-400">0</span>`;
+          }
         }
       }
       return `<tr class="border-b border-gray-100 ${rowBg}">

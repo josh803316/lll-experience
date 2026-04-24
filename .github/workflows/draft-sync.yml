@@ -16,9 +16,9 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          # Call the endpoint 5 times, once per minute, to get ~1 min resolution
+          # Call the endpoint 10 times, every 30s, for ~30s resolution
           # from a 5-min cron. Each call runs auto-start + ESPN sync via runDraftAutoTick.
-          for i in 1 2 3 4 5; do
+          for i in 1 2 3 4 5 6 7 8 9 10; do
             echo "=== Tick $i at $(date -u) ==="
             STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
               -H "Authorization: Bearer $CRON_SECRET" \
@@ -27,7 +27,7 @@ jobs:
             cat /tmp/response.json
             echo ""
             # Don't sleep after the last iteration
-            if [ "$i" -lt 5 ]; then
-              sleep 60
+            if [ "$i" -lt 10 ]; then
+              sleep 30
             fi
           done
