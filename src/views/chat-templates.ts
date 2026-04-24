@@ -209,15 +209,18 @@ function getTeamMeta(teamName: string): TeamMeta {
 }
 
 function teamLogoUrl(espnId: string): string {
-  if (!espnId) {return '';}
+  if (!espnId) {
+    return '';
+  }
   return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${espnId}.png&h=40&w=40`;
 }
 
 // ─── Ticker fragment (ESPN-style horizontal scroll) ─────────────────────────
 
-export function chatTickerFragment(picks: TickerPick[]): string {
+export function chatTickerFragment(picks: TickerPick[], isLive = false): string {
   // Find the "on the clock" pick: first pick without a player
   const onTheClockIdx = picks.findIndex((p) => !p.playerName);
+  const completedCount = picks.filter((p) => p.playerName).length;
   const allComplete = onTheClockIdx === -1 && picks.some((p) => p.playerName);
 
   function teamLogo(team: TeamMeta, size: 'sm' | 'lg'): string {
@@ -258,7 +261,7 @@ export function chatTickerFragment(picks: TickerPick[]): string {
           <div class="flex items-center gap-2">
             ${teamLogo(tm, 'sm')}
             <div class="min-w-0 flex-1">
-              <div class="text-white text-[11px] font-bold truncate">${escapeHtml(p.playerName)}</div>
+              <div class="text-white text-[11px] font-bold truncate">${escapeHtml(p.playerName ?? '')}</div>
               <div class="text-[10px] text-slate-400 truncate">${escapeHtml(p.teamName)}${p.position ? ` · <span class="text-slate-300">${escapeHtml(p.position)}</span>` : ''}</div>
             </div>
           </div>
@@ -280,7 +283,18 @@ export function chatTickerFragment(picks: TickerPick[]): string {
     })
     .join('');
 
+  const liveIndicator = isLive
+    ? `<div class="flex items-center gap-1.5 mb-1.5">
+        <span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span></span>
+        <span class="text-[10px] font-semibold text-red-400 uppercase tracking-wider">Live — Round 1</span>
+        <span class="text-[10px] text-slate-500">${completedCount}/32 picks</span>
+      </div>`
+    : `<div class="flex items-center gap-1.5 mb-1.5">
+        <span class="text-[10px] text-slate-500">Round 1 — ${completedCount}/32 picks</span>
+      </div>`;
+
   return `
+  ${liveIndicator}
   <div class="relative">
     <button type="button" class="ticker-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg" style="display:none;">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -388,12 +402,13 @@ export function chatPage(
   groups: ChatGroupDisplay[],
   activeGroupId: number,
   activeGroup: {id: number; name: string; isDefault: boolean},
-  ticker: TickerPick[],
+  ticker: {picks: TickerPick[]; draftLive: boolean; mockActive: boolean},
   year: number,
   currentUserId: number,
   clerkPublishableKey?: string,
   isAdmin = false,
 ): string {
+  const isLive = ticker.draftLive || ticker.mockActive;
   const lastId = messages.length > 0 ? messages[messages.length - 1].id : 0;
 
   const messagesHtml =
@@ -421,12 +436,12 @@ export function chatPage(
         ${chatInviteSection(activeGroup.id, year, activeGroup.isDefault)}
       </div>
 
-      <!-- Draft ticker -->
+      <!-- Draft ticker — polls every 10s when live, 30s otherwise -->
       <div id="chat-ticker" class="shrink-0 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 mb-3"
            hx-get="/draft/${year}/chat/ticker"
-           hx-trigger="every 30s"
+           hx-trigger="every ${isLive ? '10' : '30'}s"
            hx-swap="innerHTML">
-        ${chatTickerFragment(ticker)}
+        ${chatTickerFragment(ticker.picks, isLive)}
       </div>
 
       <!-- Messages area -->

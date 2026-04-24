@@ -9,6 +9,8 @@ import {
   chatMessages,
   chatMessageReactions,
   officialDraftResults,
+  draftSettings,
+  draftMockState,
 } from '../db/schema.js';
 import {eq, and, gt, asc, desc, sql, inArray} from 'drizzle-orm';
 import {UsersModel} from '../models/users.model.js';
@@ -151,9 +153,13 @@ async function loadReactionsForMessages(
   // Group by messageId → emoji → users
   const byMsg = new Map<number, Map<string, Array<{userId: number; name: string}>>>();
   for (const r of rows) {
-    if (!byMsg.has(r.messageId)) {byMsg.set(r.messageId, new Map());}
+    if (!byMsg.has(r.messageId)) {
+      byMsg.set(r.messageId, new Map());
+    }
     const emojiMap = byMsg.get(r.messageId) as Map<string, Array<{userId: number; name: string}>>;
-    if (!emojiMap.has(r.emoji)) {emojiMap.set(r.emoji, []);}
+    if (!emojiMap.has(r.emoji)) {
+      emojiMap.set(r.emoji, []);
+    }
     const name = [r.firstName, r.lastName].filter(Boolean).join(' ') || 'Someone';
     (emojiMap.get(r.emoji) as Array<{userId: number; name: string}>).push({userId: r.userId, name});
   }
@@ -231,28 +237,108 @@ async function loadMessages(
   return result;
 }
 
-async function buildTickerData(appId: number, year: number): Promise<TickerPick[]> {
+async function isDraftLive(appId: number, year: number): Promise<boolean> {
   const db = getDB();
+  const [row] = await db
+    .select()
+    .from(draftSettings)
+    .where(and(eq(draftSettings.appId, appId), eq(draftSettings.year, year)))
+    .limit(1);
+  return row?.draftStartedAt != null;
+}
+
+async function isMockActive(appId: number, year: number): Promise<boolean> {
+  const db = getDB();
+  const [row] = await db
+    .select()
+    .from(draftMockState)
+    .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)))
+    .limit(1);
+  return !!row;
+}
+
+interface TickerState {
+  picks: TickerPick[];
+  draftLive: boolean;
+  mockActive: boolean;
+}
+
+async function buildTickerData(appId: number, year: number): Promise<TickerState> {
+  const db = getDB();
+  const teams = getFirstRoundTeams(year);
+
+  // Check if draft is live or mock simulation is running
+  const draftLive = await isDraftLive(appId, year);
+  const mockActive = await isMockActive(appId, year);
+
+  // Build a merged pick map: official results + mock simulation revealed picks
+  const pickMap = new Map<number, {playerName: string | null; teamName: string | null; position: string | null}>();
+
+  // Layer 1: official draft results from ESPN sync
   const official = await db
     .select()
     .from(officialDraftResults)
     .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year)))
     .orderBy(officialDraftResults.pickNumber);
 
-  const teams = getFirstRoundTeams(year);
-  const officialMap = new Map(official.map((r) => [r.pickNumber, r]));
+  for (const r of official) {
+    if (r.playerName) {
+      pickMap.set(r.pickNumber, {
+        playerName: r.playerName,
+        teamName: r.teamName,
+        position: getPositionForPlayer(r.playerName, year) ?? null,
+      });
+    }
+  }
 
+  // Layer 2: mock simulation picks (override if mock is active and has revealed picks)
+  if (mockActive) {
+    const [mockRow] = await db
+      .select()
+      .from(draftMockState)
+      .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)))
+      .limit(1);
+
+    if (mockRow) {
+      // Advance mock timer: count how many picks should be revealed by now
+      const MOCK_INTERVAL = 30_000;
+      let revealed = mockRow.revealedCount;
+      let nextAt = Number(mockRow.nextRevealAtMs);
+      const now = Date.now();
+      while (nextAt <= now && revealed < 32) {
+        revealed++;
+        nextAt += MOCK_INTERVAL;
+      }
+
+      const mockPicks = mockRow.picksJson as Array<{
+        pickNumber: number;
+        playerName: string;
+        teamName: string;
+        position: string | null;
+      }>;
+      for (let i = 0; i < revealed && i < mockPicks.length; i++) {
+        const mp = mockPicks[i];
+        pickMap.set(mp.pickNumber, {
+          playerName: mp.playerName,
+          teamName: mp.teamName,
+          position: mp.position ?? getPositionForPlayer(mp.playerName, year) ?? null,
+        });
+      }
+    }
+  }
+
+  // Build final 32-pick array
   const picks: TickerPick[] = [];
   for (let num = 1; num <= 32; num++) {
-    const result = officialMap.get(num);
+    const result = pickMap.get(num);
     picks.push({
       pickNumber: num,
       teamName: result?.teamName || teams[num] || `Pick ${num}`,
       playerName: result?.playerName ?? null,
-      position: result?.playerName ? (getPositionForPlayer(result.playerName, year) ?? null) : null,
+      position: result?.position ?? null,
     });
   }
-  return picks;
+  return {picks, draftLive, mockActive};
 }
 
 // ─── Controller ──────────────────────────────────────────────────────────────
@@ -411,7 +497,7 @@ export const chatController = new Elysia({prefix: '/draft'})
 
     const ticker = await buildTickerData(app.id, year);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return chatTickerFragment(ticker);
+    return chatTickerFragment(ticker.picks, ticker.draftLive || ticker.mockActive);
   })
 
   // POST /draft/:year/chat/groups — create a new group
