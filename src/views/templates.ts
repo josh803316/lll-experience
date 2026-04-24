@@ -2198,8 +2198,7 @@ export function leaderboardScoresFragment(
           ${!isPro && e.user.email ? `<div class="text-xs text-gray-500">${escapeHtml(e.user.email)}</div>` : ''}
         </td>`;
       const clickable = showPicksLink || isPro;
-      const hlStyle = 'background:#fed7aa;box-shadow:inset 0 0 0 2px #f97316';
-      const onSwap = `window.__selectedLbUser=${e.user.id};this.closest('tbody').querySelectorAll('tr').forEach(function(r){r.style.background='';r.style.boxShadow=''});this.style.background='#fed7aa';this.style.boxShadow='inset 0 0 0 2px #f97316';document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})`;
+      const onSwap = `window.__selectedLbUser=${e.user.id};this.closest('tbody').querySelectorAll('tr').forEach(function(r){r.style.background='';r.style.boxShadow='';r.style.outline=''});this.style.background='#ea580c';this.style.boxShadow='0 0 0 2px #ea580c';this.style.outline='2px solid #ea580c';this.querySelectorAll('td').forEach(function(td){td.style.color='#fff'});this.closest('tbody').querySelectorAll('tr').forEach(function(r){if(r!==this){r.querySelectorAll('td').forEach(function(td){td.style.color=''})}}.bind(this));document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})`;
       const trAttrs = clickable
         ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" data-user-id="${e.user.id}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML" hx-on::after-swap="${onSwap}"`
         : ` class="border-b border-gray-200" data-user-id="${e.user.id}"`;
@@ -2214,7 +2213,7 @@ export function leaderboardScoresFragment(
     ? `hx-get="/draft/${year}/leaderboard/scores" hx-trigger="every 30s" hx-swap="outerHTML"`
     : '';
   // Re-apply highlight after polling refresh replaces the scores HTML
-  const reHighlight = `hx-on::after-settle="if(window.__selectedLbUser!=null){var r=this.querySelector('tr[data-user-id=\\''+window.__selectedLbUser+'\\']');if(r){r.style.background='#fed7aa';r.style.boxShadow='inset 0 0 0 2px #f97316'}}"`;
+  const reHighlight = `hx-on::after-settle="if(window.__selectedLbUser!=null){var r=this.querySelector('tr[data-user-id=\\''+window.__selectedLbUser+'\\']');if(r){r.style.background='#ea580c';r.style.boxShadow='0 0 0 2px #ea580c';r.style.outline='2px solid #ea580c';r.querySelectorAll('td').forEach(function(td){td.style.color='#fff'})}}"`;
   return `<div id="leaderboard-scores" ${pollingAttrs} ${reHighlight}>
   <table class="w-full">
     <thead><tr class="bg-gray-50 text-left border-b border-gray-200">
