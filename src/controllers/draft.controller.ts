@@ -970,6 +970,18 @@ export const draftController = new Elysia({prefix: '/draft'})
       return 'Picks are hidden until the draft starts.';
     }
 
+    // Build officialByPlayer map for color coding
+    const officialRows = await db
+      .select()
+      .from(officialDraftResults)
+      .where(and(eq(officialDraftResults.appId, app.id), eq(officialDraftResults.year, year)));
+    const officialByPlayer = new Map<string, number>();
+    for (const r of officialRows) {
+      if (r.playerName) {
+        officialByPlayer.set(normalizeName(r.playerName), r.pickNumber);
+      }
+    }
+
     // Pro/expert picks (negative IDs)
     if (userId < 0) {
       const pro = PRO_MOCKS.find((p) => p.id === userId);
@@ -987,10 +999,14 @@ export const draftController = new Elysia({prefix: '/draft'})
         doubleScorePick: false,
       }));
       ctx.set.headers['Content-Type'] = 'text/html';
-      return leaderboardUserPicksFragment({firstName: pro.firstName, lastName: pro.lastName, email: ''}, picks, year);
+      return leaderboardUserPicksFragment(
+        {firstName: pro.firstName, lastName: pro.lastName, email: ''},
+        picks,
+        year,
+        officialByPlayer,
+      );
     }
 
-    const db = getDB();
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!u) {
       ctx.set.status = 404;
@@ -1008,6 +1024,7 @@ export const draftController = new Elysia({prefix: '/draft'})
       },
       picks,
       year,
+      officialByPlayer,
     );
   })
 

@@ -2249,19 +2249,53 @@ export function leaderboardUserPicksFragment(
   user: {firstName: string | null; lastName: string | null; email: string},
   picks: Pick[],
   year: number,
+  officialByPlayer?: Map<string, number>,
 ): string {
   const teams = getFirstRoundTeams(year);
   const sorted = [...picks].sort((a, b) => a.pickNumber - b.pickNumber);
   const rows = sorted
-    .map(
-      (p) =>
-        `<tr class="border-b border-gray-100">
-          <td class="px-3 py-1.5 font-medium text-gray-600 w-8">${p.pickNumber}</td>
+    .map((p) => {
+      let rowBg = '';
+      let border = '';
+      let scoreBadge = '';
+      if (officialByPlayer && officialByPlayer.size > 0 && p.playerName) {
+        const norm = p.playerName
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .replace(/\./g, '')
+          .replace(/\s+(jr|sr|ii|iii|iv)\s*$/i, '')
+          .trim()
+          .replace(/\breuben\b/g, 'rueben');
+        const officialSlot = officialByPlayer.get(norm);
+        if (officialSlot != null) {
+          const diff = Math.abs(p.pickNumber - officialSlot);
+          const base = diff === 0 ? 3 : diff === 1 ? 2 : diff === 2 ? 1 : 0;
+          const pts = base * (p.doubleScorePick ? 2 : 1);
+          if (diff === 0) {
+            rowBg = 'bg-green-100';
+            border = 'border-l-4 border-green-500';
+          } else if (diff === 1) {
+            rowBg = 'bg-yellow-100';
+            border = 'border-l-4 border-yellow-400';
+          } else if (diff === 2) {
+            rowBg = 'bg-red-100';
+            border = 'border-l-4 border-red-400';
+          } else {
+            rowBg = 'bg-gray-200';
+          }
+          if (pts > 0)
+            {scoreBadge = ` <span class="text-xs font-bold ${pts >= 4 ? 'text-green-700' : pts >= 2 ? 'text-yellow-600' : 'text-red-500'}">+${pts}</span>`;}
+          else {scoreBadge = ` <span class="text-xs font-bold text-gray-400">0</span>`;}
+        }
+      }
+      return `<tr class="border-b border-gray-100 ${rowBg}">
+          <td class="px-3 py-1.5 font-medium text-gray-600 w-8 ${border}">${p.pickNumber}${scoreBadge}</td>
           <td class="px-3 py-1.5 text-gray-700">${escapeHtml(teams[p.pickNumber] ?? '—')}</td>
           <td class="px-3 py-1.5 font-medium text-gray-900">${escapeHtml(p.playerName ?? '—')}${p.position ? ` <span class="text-gray-500 font-normal">(${escapeHtml(p.position)})</span>` : ''}</td>
           <td class="px-3 py-1.5 text-center w-10">${p.doubleScorePick ? '2×' : ''}</td>
-        </tr>`,
-    )
+        </tr>`;
+    })
     .join('');
   const name = displayName(user);
   return `<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
