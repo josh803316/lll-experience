@@ -2199,7 +2199,7 @@ export function leaderboardScoresFragment(
         </td>`;
       const clickable = showPicksLink || isPro;
       const trAttrs = clickable
-        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML"`
+        ? ` class="border-b border-gray-200 cursor-pointer ${isPro ? 'bg-blue-50/50 hover:bg-blue-100/50' : 'hover:bg-gray-50'}" hx-get="/draft/${year}/leaderboard/picks/${e.user.id}" hx-target="#leaderboard-picks-panel" hx-swap="innerHTML" hx-on::after-swap="document.getElementById('leaderboard-picks-panel').scrollIntoView({behavior:'smooth',block:'start'})"`
         : ` class="border-b border-gray-200"`;
       return `<tr${trAttrs}>
           <td class="px-4 py-2.5 font-bold text-gray-500 w-8">${i + 1}</td>
@@ -2230,8 +2230,7 @@ export function leaderboardPicksPlaceholderFragment(): string {
     <h3 class="font-semibold text-gray-700">View picks</h3>
   </div>
   <div class="p-6 text-center text-gray-500 text-sm">
-    <p>Select a player from the leaderboard to view their picks here.</p>
-    <p class="mt-2 text-gray-400">Before the draft ends, picks are hidden.</p>
+    <p>Tap a name on the leaderboard to view their picks.</p>
   </div>
   <table class="w-full text-sm text-gray-400">
     <thead><tr class="bg-gray-50 border-b border-gray-200"><th class="px-3 py-2 text-left">#</th><th class="px-3 py-2 text-left">Team</th><th class="px-3 py-2 text-left">Pick</th></tr></thead>
