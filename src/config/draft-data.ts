@@ -480,12 +480,22 @@ export function getDraftStartTimeMs(year: number): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
-/** Year-aware getters for multi-year support. Add new years here as needed. */
+/** Callback to get live team data from draft-auto service (set at runtime to avoid circular imports). */
+let liveTeamResolver: ((year: number) => Map<number, string> | null) | null = null;
+export function setLiveTeamResolver(fn: (year: number) => Map<number, string> | null): void {
+  liveTeamResolver = fn;
+}
+
+/** Year-aware getters for multi-year support. Overlays live trade data when available. */
 export function getFirstRoundTeams(year: number): Record<number, string> {
-  if (year === 2026) {
-    return FIRST_ROUND_TEAMS_2026;
+  const base = year === 2026 ? {...FIRST_ROUND_TEAMS_2026} : ({} as Record<number, string>);
+  const live = liveTeamResolver?.(year);
+  if (live) {
+    live.forEach((teamName, slot) => {
+      base[slot] = teamName;
+    });
   }
-  return {};
+  return base;
 }
 
 export function getTeamNeeds(year: number): Record<number, string> {

@@ -7,7 +7,7 @@
 import {getDB} from '../db/index.js';
 import {apps, draftSettings, officialDraftResults, draftMockState} from '../db/schema.js';
 import {eq, and} from 'drizzle-orm';
-import {CURRENT_DRAFT_YEAR, getDraftStartTimeMs} from '../config/draft-data.js';
+import {CURRENT_DRAFT_YEAR, getDraftStartTimeMs, setLiveTeamResolver} from '../config/draft-data.js';
 
 const POLL_INTERVAL_MS = 60_000; // 1 minute
 const FETCH_TIMEOUT_MS = 12_000;
@@ -56,30 +56,54 @@ async function fetchFromESPNCore(year: number): Promise<OfficialPickEntry[]> {
 }
 
 /** Source 2: ESPN Site API draft summary (top-level picks[] or rounds[0].picks) */
-async function fetchFromESPNSite(year: number): Promise<OfficialPickEntry[]> {
+async function fetchFromESPNSite(
+  year: number,
+): Promise<{picks: OfficialPickEntry[]; teamsBySlot: Map<number, string>}> {
   const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`;
   const res = await fetch(url, {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
   if (!res.ok) {
-    return [];
+    return {picks: [], teamsBySlot: new Map()};
   }
 
   const data = (await res.json()) as any;
 
+  // Build team ID → name lookup from data.teams
+  const teamLookup = new Map<string, string>();
+  if (Array.isArray(data?.teams)) {
+    for (const t of data.teams) {
+      if (t?.id && t?.displayName) {
+        teamLookup.set(String(t.id), t.displayName);
+      }
+    }
+  }
+
   // 2026+ format: picks are at data.picks (top-level array)
   // Older format: picks are at data.rounds[0].picks
-  let picks: any[];
+  let allPicks: any[];
   if (Array.isArray(data?.picks) && data.picks.length > 0) {
-    picks = data.picks;
+    allPicks = data.picks;
   } else {
     const rounds = data?.rounds ?? [];
     const round1 = Array.isArray(rounds)
       ? (rounds.find((r: any) => r?.number === 1 || r?.round === 1) ?? rounds[0])
       : null;
-    picks = round1?.picks ?? [];
+    allPicks = round1?.picks ?? [];
+  }
+
+  // Build live team-by-slot map (includes trades) for all first-round slots
+  const teamsBySlot = new Map<number, string>();
+  for (const p of allPicks) {
+    const pickNum = p?.pick ?? p?.overall;
+    if (!pickNum || pickNum > 32) {continue;}
+    const teamId = String(p?.teamId ?? '');
+    const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? null;
+    if (teamName) {
+      teamsBySlot.set(Number(pickNum), teamName);
+    }
   }
 
   const out: OfficialPickEntry[] = [];
-  for (const p of picks) {
+  for (const p of allPicks) {
     // Only include picks that have been made (SELECTION_MADE or PICK_IS_IN)
     if (p?.status && p.status !== 'SELECTION_MADE' && p.status !== 'PICK_IS_IN') {
       continue;
@@ -92,10 +116,11 @@ async function fetchFromESPNSite(year: number): Promise<OfficialPickEntry[]> {
     if (!name) {
       continue;
     }
-    const team = p?.team?.displayName ?? p?.team?.name ?? p?.teamName ?? null;
+    const teamId = String(p?.teamId ?? '');
+    const team = teamLookup.get(teamId) ?? p?.team?.displayName ?? p?.team?.name ?? null;
     out.push({pickNumber: Number(pickNum), playerName: name, teamName: team});
   }
-  return out;
+  return {picks: out, teamsBySlot};
 }
 
 /** Source 3: ESPN alternate (draft summary) — different path sometimes used by ESPN frontend */
@@ -121,9 +146,69 @@ async function fetchFromESPNAlternate(year: number): Promise<OfficialPickEntry[]
   return out;
 }
 
-const SOURCES: Array<{name: string; fetch: (year: number) => Promise<OfficialPickEntry[]>}> = [
+/** Upsert official picks into the database. */
+async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry[]): Promise<number> {
+  const byNum = new Map<number, OfficialPickEntry>();
+  for (const p of picks) {
+    if (p.pickNumber >= 1 && p.pickNumber <= 32) {
+      byNum.set(p.pickNumber, p);
+    }
+  }
+  const db = getDB();
+  let synced = 0;
+  for (let num = 1; num <= 32; num++) {
+    const entry = byNum.get(num);
+    if (!entry) {continue;}
+    const existing = await db
+      .select()
+      .from(officialDraftResults)
+      .where(
+        and(
+          eq(officialDraftResults.appId, appId),
+          eq(officialDraftResults.year, year),
+          eq(officialDraftResults.pickNumber, num),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      await db
+        .update(officialDraftResults)
+        .set({playerName: entry.playerName, teamName: entry.teamName})
+        .where(
+          and(
+            eq(officialDraftResults.appId, appId),
+            eq(officialDraftResults.year, year),
+            eq(officialDraftResults.pickNumber, num),
+          ),
+        );
+    } else {
+      await db
+        .insert(officialDraftResults)
+        .values({appId, year, pickNumber: num, playerName: entry.playerName, teamName: entry.teamName});
+    }
+    synced++;
+  }
+  return synced;
+}
+
+/** Live team assignments by slot (updated on each sync from ESPN Site API). */
+const liveTeamsBySlotByYear = new Map<number, Map<number, string>>();
+
+// Register live team resolver so getFirstRoundTeams() returns trade-updated teams
+setLiveTeamResolver((year: number) => liveTeamsBySlotByYear.get(year) ?? null);
+
+/** Get the live team name for a pick slot, falling back to static config. */
+export function getLiveTeamForSlot(year: number, slot: number): string | null {
+  return liveTeamsBySlotByYear.get(year)?.get(slot) ?? null;
+}
+
+/** Get all live team assignments for a year (trade-aware). */
+export function getLiveTeamsBySlot(year: number): Map<number, string> | null {
+  return liveTeamsBySlotByYear.get(year) ?? null;
+}
+
+const FALLBACK_SOURCES: Array<{name: string; fetch: (year: number) => Promise<OfficialPickEntry[]>}> = [
   {name: 'ESPN Core', fetch: fetchFromESPNCore},
-  {name: 'ESPN Site', fetch: fetchFromESPNSite},
   {name: 'ESPN Alternate', fetch: fetchFromESPNAlternate},
 ];
 
@@ -132,65 +217,27 @@ export async function syncOfficialPicksFromMultipleSources(
   appId: number,
   year: number,
 ): Promise<{synced: number; source: string}> {
-  for (const source of SOURCES) {
+  // Primary: ESPN Site API (also gives us live team assignments for trades)
+  try {
+    const {picks, teamsBySlot} = await fetchFromESPNSite(year);
+    if (teamsBySlot.size > 0) {
+      liveTeamsBySlotByYear.set(year, teamsBySlot);
+    }
+    if (picks.length > 0) {
+      const synced = await upsertPicks(appId, year, picks);
+      if (synced > 0) {return {synced, source: 'ESPN Site'};}
+    }
+  } catch (_) {
+    /* fall through */
+  }
+
+  // Fallback sources
+  for (const source of FALLBACK_SOURCES) {
     try {
       const picks = await source.fetch(year);
-      if (picks.length === 0) {
-        continue;
-      }
-
-      const byNum = new Map<number, OfficialPickEntry>();
-      for (const p of picks) {
-        if (p.pickNumber >= 1 && p.pickNumber <= 32) {
-          byNum.set(p.pickNumber, p);
-        }
-      }
-
-      const db = getDB();
-      let synced = 0;
-      for (let num = 1; num <= 32; num++) {
-        const entry = byNum.get(num);
-        if (!entry) {
-          continue;
-        }
-
-        const existing = await db
-          .select()
-          .from(officialDraftResults)
-          .where(
-            and(
-              eq(officialDraftResults.appId, appId),
-              eq(officialDraftResults.year, year),
-              eq(officialDraftResults.pickNumber, num),
-            ),
-          )
-          .limit(1);
-
-        if (existing.length > 0) {
-          await db
-            .update(officialDraftResults)
-            .set({playerName: entry.playerName, teamName: entry.teamName})
-            .where(
-              and(
-                eq(officialDraftResults.appId, appId),
-                eq(officialDraftResults.year, year),
-                eq(officialDraftResults.pickNumber, num),
-              ),
-            );
-        } else {
-          await db.insert(officialDraftResults).values({
-            appId,
-            year,
-            pickNumber: num,
-            playerName: entry.playerName,
-            teamName: entry.teamName,
-          });
-        }
-        synced++;
-      }
-      if (synced > 0) {
-        return {synced, source: source.name};
-      }
+      if (picks.length === 0) {continue;}
+      const synced = await upsertPicks(appId, year, picks);
+      if (synced > 0) {return {synced, source: source.name};}
     } catch (_) {
       // fall through to next source
     }
