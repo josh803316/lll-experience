@@ -55,7 +55,7 @@ async function fetchFromESPNCore(year: number): Promise<OfficialPickEntry[]> {
   return out;
 }
 
-/** Source 2: ESPN Site API draft summary (rounds[0].picks) */
+/** Source 2: ESPN Site API draft summary (top-level picks[] or rounds[0].picks) */
 async function fetchFromESPNSite(year: number): Promise<OfficialPickEntry[]> {
   const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`;
   const res = await fetch(url, {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
@@ -64,20 +64,36 @@ async function fetchFromESPNSite(year: number): Promise<OfficialPickEntry[]> {
   }
 
   const data = (await res.json()) as any;
-  const rounds = data?.rounds ?? [];
-  const round1 = Array.isArray(rounds)
-    ? (rounds.find((r: any) => r?.number === 1 || r?.round === 1) ?? rounds[0])
-    : null;
-  const picks: any[] = round1?.picks ?? [];
+
+  // 2026+ format: picks are at data.picks (top-level array)
+  // Older format: picks are at data.rounds[0].picks
+  let picks: any[];
+  if (Array.isArray(data?.picks) && data.picks.length > 0) {
+    picks = data.picks;
+  } else {
+    const rounds = data?.rounds ?? [];
+    const round1 = Array.isArray(rounds)
+      ? (rounds.find((r: any) => r?.number === 1 || r?.round === 1) ?? rounds[0])
+      : null;
+    picks = round1?.picks ?? [];
+  }
+
   const out: OfficialPickEntry[] = [];
   for (const p of picks) {
+    // Only include picks where a selection has been made
+    if (p?.status && p.status !== 'SELECTION_MADE') {
+      continue;
+    }
     const pickNum = p?.pick ?? p?.overall ?? p?.number;
     if (!pickNum || pickNum > 32) {
       continue;
     }
     const name = p?.athlete?.displayName ?? p?.displayName ?? p?.name ?? p?.athlete?.shortName ?? null;
+    if (!name) {
+      continue;
+    }
     const team = p?.team?.displayName ?? p?.team?.name ?? p?.teamName ?? null;
-    out.push({pickNumber: Number(pickNum), playerName: name ?? null, teamName: team ?? null});
+    out.push({pickNumber: Number(pickNum), playerName: name, teamName: team});
   }
   return out;
 }
