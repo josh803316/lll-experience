@@ -382,12 +382,14 @@ export function chatPage(
     var form = document.getElementById('chat-send-form');
     var input = document.getElementById('chat-input');
     if (form) {
-      form.addEventListener('htmx:afterSettle', function(e) {
+      // htmx:afterRequest fires on the requesting element (the form),
+      // unlike afterSettle which fires on the target (#chat-messages)
+      form.addEventListener('htmx:afterRequest', function(e) {
         if (input) input.value = '';
         updatePollCursor();
         setTimeout(scrollToBottom, 100);
       });
-      // Submit on Enter
+      // Submit on Enter or Send button
       if (input) {
         input.addEventListener('keydown', function(e) {
           if (e.key === 'Enter' && !e.shiftKey) {
