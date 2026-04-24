@@ -29,6 +29,8 @@ import {
   type RankingSource,
 } from '../config/draft-data.js';
 import {getClerkProfile, isAdminUserId} from '../lib/clerk-email.js';
+import {loadLiveTeamsFromDb} from '../services/draft-auto.js';
+import {setLiveTeamResolver} from '../config/draft-data.js';
 import {refreshESPNProspects, getCachedESPNProspects} from '../services/rankings-refresh.js';
 import {chatWithAi, type AiPick, type ChatMessage} from '../services/ai-recommend.js';
 import {
@@ -49,6 +51,15 @@ import {
 
 const usersModel = new UsersModel();
 const TOTAL_PICKS = 32;
+
+/** Load live team assignments from DB into the resolver so getFirstRoundTeams() returns trade-updated names. */
+async function refreshLiveTeams(appId: number, year: number): Promise<void> {
+  const teams = await loadLiveTeamsFromDb(appId, year);
+  const map = new Map(Object.entries(teams).map(([k, v]) => [Number(k), v]));
+  if (map.size > 0) {
+    setLiveTeamResolver((_y: number) => (_y === year ? map : null));
+  }
+}
 
 function parseYear(param: string | undefined): number | null {
   if (param == null) {
@@ -426,6 +437,7 @@ export const draftController = new Elysia({prefix: '/draft'})
     const auth = ctx.auth();
     const user = await getOrCreateUser(auth);
     const app = await getApp('nfl-draft');
+    if (app) {await refreshLiveTeams(app.id, year);}
     const picks = app ? await getUserPicks(user.id, app.id, year) : [];
     const draftLocked = app ? await getDraftStarted(app.id, year) : false;
 
@@ -861,6 +873,7 @@ export const draftController = new Elysia({prefix: '/draft'})
       ctx.set.status = 404;
       return 'App not found';
     }
+    await refreshLiveTeams(app.id, year);
 
     const db = getDB();
     const clerkKey = process.env.CLERK_PUBLISHABLE_KEY;

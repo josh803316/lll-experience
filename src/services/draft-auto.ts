@@ -94,7 +94,9 @@ async function fetchFromESPNSite(
   const teamsBySlot = new Map<number, string>();
   for (const p of allPicks) {
     const pickNum = p?.pick ?? p?.overall;
-    if (!pickNum || pickNum > 32) {continue;}
+    if (!pickNum || pickNum > 32) {
+      continue;
+    }
     const teamId = String(p?.teamId ?? '');
     const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? null;
     if (teamName) {
@@ -158,7 +160,9 @@ async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry
   let synced = 0;
   for (let num = 1; num <= 32; num++) {
     const entry = byNum.get(num);
-    if (!entry) {continue;}
+    if (!entry) {
+      continue;
+    }
     const existing = await db
       .select()
       .from(officialDraftResults)
@@ -191,20 +195,59 @@ async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry
   return synced;
 }
 
-/** Live team assignments by slot (updated on each sync from ESPN Site API). */
+/** In-memory cache (used by local dev server). */
 const liveTeamsBySlotByYear = new Map<number, Map<number, string>>();
 
 // Register live team resolver so getFirstRoundTeams() returns trade-updated teams
 setLiveTeamResolver((year: number) => liveTeamsBySlotByYear.get(year) ?? null);
 
-/** Get the live team name for a pick slot, falling back to static config. */
-export function getLiveTeamForSlot(year: number, slot: number): string | null {
-  return liveTeamsBySlotByYear.get(year)?.get(slot) ?? null;
+/** Persist team assignments to DB for all 32 slots (trade-aware). */
+async function upsertTeamAssignments(appId: number, year: number, teamsBySlot: Map<number, string>): Promise<void> {
+  const db = getDB();
+  for (const [slot, teamName] of teamsBySlot) {
+    if (slot < 1 || slot > 32) {continue;}
+    const existing = await db
+      .select()
+      .from(officialDraftResults)
+      .where(
+        and(
+          eq(officialDraftResults.appId, appId),
+          eq(officialDraftResults.year, year),
+          eq(officialDraftResults.pickNumber, slot),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      await db
+        .update(officialDraftResults)
+        .set({teamName})
+        .where(
+          and(
+            eq(officialDraftResults.appId, appId),
+            eq(officialDraftResults.year, year),
+            eq(officialDraftResults.pickNumber, slot),
+          ),
+        );
+    } else {
+      await db.insert(officialDraftResults).values({appId, year, pickNumber: slot, playerName: null, teamName});
+    }
+  }
 }
 
-/** Get all live team assignments for a year (trade-aware). */
-export function getLiveTeamsBySlot(year: number): Map<number, string> | null {
-  return liveTeamsBySlotByYear.get(year) ?? null;
+/** Load live team assignments from DB (for serverless environments). */
+export async function loadLiveTeamsFromDb(appId: number, year: number): Promise<Record<number, string>> {
+  const db = getDB();
+  const rows = await db
+    .select()
+    .from(officialDraftResults)
+    .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year)));
+  const teams: Record<number, string> = {};
+  for (const r of rows) {
+    if (r.teamName) {
+      teams[r.pickNumber] = r.teamName;
+    }
+  }
+  return teams;
 }
 
 const FALLBACK_SOURCES: Array<{name: string; fetch: (year: number) => Promise<OfficialPickEntry[]>}> = [
@@ -222,10 +265,14 @@ export async function syncOfficialPicksFromMultipleSources(
     const {picks, teamsBySlot} = await fetchFromESPNSite(year);
     if (teamsBySlot.size > 0) {
       liveTeamsBySlotByYear.set(year, teamsBySlot);
+      // Persist team assignments to DB so serverless (Vercel) can read them
+      await upsertTeamAssignments(appId, year, teamsBySlot);
     }
     if (picks.length > 0) {
       const synced = await upsertPicks(appId, year, picks);
-      if (synced > 0) {return {synced, source: 'ESPN Site'};}
+      if (synced > 0) {
+        return {synced, source: 'ESPN Site'};
+      }
     }
   } catch (_) {
     /* fall through */
@@ -235,9 +282,13 @@ export async function syncOfficialPicksFromMultipleSources(
   for (const source of FALLBACK_SOURCES) {
     try {
       const picks = await source.fetch(year);
-      if (picks.length === 0) {continue;}
+      if (picks.length === 0) {
+        continue;
+      }
       const synced = await upsertPicks(appId, year, picks);
-      if (synced > 0) {return {synced, source: source.name};}
+      if (synced > 0) {
+        return {synced, source: source.name};
+      }
     } catch (_) {
       // fall through to next source
     }
