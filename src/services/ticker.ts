@@ -9,7 +9,7 @@ import {apps, draftSettings, draftMockState, officialDraftResults, pickWriteups}
 import {and, eq} from 'drizzle-orm';
 import {getFirstRoundTeams, getPositionForPlayer} from '../config/draft-data.js';
 import type {TickerPick} from '../views/chat-templates.js';
-import {getCachedWriteup, type WriteupSource} from './pick-writeup.js';
+import {getCachedWriteup, type WriteupSource, type GradeBreakdown} from './pick-writeup.js';
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -48,6 +48,10 @@ export interface PlayerDetail {
   writeup: string | null;
   writeupSources: WriteupSource[];
   writeupGeneratedAt: string | null;
+  gradeLetter: string | null;
+  gradeNumeric: string | null;
+  gradeSourceCount: number | null;
+  gradeBreakdown: GradeBreakdown[];
 }
 
 async function isDraftLive(appId: number, year: number): Promise<boolean> {
@@ -303,6 +307,10 @@ export async function getPickDetail(year: number, pickNumber: number): Promise<P
     writeup: null,
     writeupSources: [],
     writeupGeneratedAt: null,
+    gradeLetter: null,
+    gradeNumeric: null,
+    gradeSourceCount: null,
+    gradeBreakdown: [],
   };
 
   // Fetch ESPN news + cached writeup in parallel; both are best-effort.
@@ -325,6 +333,10 @@ export async function getPickDetail(year: number, pickNumber: number): Promise<P
     detail.writeup = writeup.writeup;
     detail.writeupSources = writeup.sources;
     detail.writeupGeneratedAt = writeup.generatedAt.toISOString();
+    detail.gradeLetter = writeup.gradeLetter;
+    detail.gradeNumeric = writeup.gradeNumeric;
+    detail.gradeSourceCount = writeup.gradeSourceCount;
+    detail.gradeBreakdown = writeup.gradeBreakdown;
   }
 
   return detail;

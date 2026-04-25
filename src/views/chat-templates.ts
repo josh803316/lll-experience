@@ -355,6 +355,11 @@ export interface PickModalSource {
   title?: string;
 }
 
+export interface PickModalGradeBreakdown {
+  source: string;
+  grade: string | null;
+}
+
 export interface PickModalData {
   pickNumber: number;
   round: number;
@@ -375,6 +380,10 @@ export interface PickModalData {
   writeup: string | null;
   writeupSources: PickModalSource[];
   writeupGeneratedAt: string | null;
+  gradeLetter: string | null;
+  gradeNumeric: string | null;
+  gradeSourceCount: number | null;
+  gradeBreakdown: PickModalGradeBreakdown[];
 }
 
 function relativeDate(iso?: string): string | null {
@@ -437,12 +446,38 @@ export function pickModalFragment(d: PickModalData): string {
     ? `<img src="${escapeHtml(d.headshotUrl)}" alt="${escapeHtml(d.playerName ?? '')}" class="w-24 h-24 rounded-full object-cover border-2 border-white/20 shrink-0 bg-slate-700" loading="lazy" />`
     : `<div class="w-24 h-24 rounded-full flex items-center justify-center font-extrabold text-2xl shrink-0 border-2 border-white/20" style="background:${tm.primary};color:${tm.secondary}">${escapeHtml((d.playerName ?? '?').charAt(0))}</div>`;
 
-  const gradeBadge = d.draftGrade
-    ? `<div class="shrink-0 flex flex-col items-center justify-center rounded-lg bg-amber-500/20 border border-amber-400/40 px-3 py-1">
-        <div class="text-[9px] uppercase tracking-wider text-amber-300 font-bold">Grade</div>
-        <div class="text-2xl font-black text-amber-200 leading-none">${escapeHtml(d.draftGrade)}</div>
+  // Prefer the consensus letter grade aggregated across CBS / NFL.com / USA Today / etc.
+  // Fall back to the ESPN draft-grade number ("OVR" 0-100) when no consensus is available.
+  const consensusBadge = d.gradeLetter
+    ? `<div class="shrink-0 flex flex-col items-center justify-center rounded-lg bg-blue-500/20 border border-blue-400/40 px-3 py-1" title="Average of CBS, NFL.com, USA Today, ESPN, PFF where graded${d.gradeSourceCount ? ` (${d.gradeSourceCount} source${d.gradeSourceCount === 1 ? '' : 's'})` : ''}">
+        <div class="text-[9px] uppercase tracking-wider text-blue-300 font-bold">Consensus</div>
+        <div class="text-2xl font-black text-blue-100 leading-none">${escapeHtml(d.gradeLetter)}</div>
+        ${d.gradeNumeric ? `<div class="text-[9px] text-blue-300/80 mt-0.5">${escapeHtml(d.gradeNumeric)} GPA</div>` : ''}
       </div>`
-    : '';
+    : d.draftGrade
+      ? `<div class="shrink-0 flex flex-col items-center justify-center rounded-lg bg-amber-500/20 border border-amber-400/40 px-3 py-1">
+          <div class="text-[9px] uppercase tracking-wider text-amber-300 font-bold">ESPN Grade</div>
+          <div class="text-2xl font-black text-amber-200 leading-none">${escapeHtml(d.draftGrade)}</div>
+        </div>`
+      : '';
+
+  // Per-source breakdown pills shown inside the writeup section
+  const breakdownPills =
+    d.gradeBreakdown.filter((b) => b.grade).length > 0
+      ? `<div class="flex flex-wrap gap-1.5 mt-3">
+          ${d.gradeBreakdown
+            .filter((b) => b.grade)
+            .map(
+              (
+                b,
+              ) => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 text-[10px]">
+                <span class="text-slate-400">${escapeHtml(b.source)}</span>
+                <span class="font-bold text-white">${escapeHtml(b.grade ?? '')}</span>
+              </span>`,
+            )
+            .join('')}
+        </div>`
+      : '';
 
   const writeupBlock = d.writeup
     ? (() => {
@@ -478,6 +513,7 @@ export function pickModalFragment(d: PickModalData): string {
         ${generatedWhen ? `<span class="text-[10px] text-slate-500">· ${escapeHtml(generatedWhen)}</span>` : ''}
       </div>
       <div class="space-y-2">${paragraphs}</div>
+      ${breakdownPills}
       ${sourcePills ? `<div class="flex flex-wrap gap-1.5 mt-3">${sourcePills}</div>` : ''}
     </div>`;
       })()
@@ -529,7 +565,7 @@ export function pickModalFragment(d: PickModalData): string {
           <div class="text-sm text-slate-300 truncate">${escapeHtml(d.teamName)}${d.position ? ` · <span class="text-white/90 font-semibold">${escapeHtml(d.position)}</span>` : ''}</div>
           ${d.college ? `<div class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(d.college)}${d.collegeAbbr ? ` (${escapeHtml(d.collegeAbbr)})` : ''}</div>` : ''}
         </div>
-        ${gradeBadge}
+        ${consensusBadge}
       </div>
     </div>
 

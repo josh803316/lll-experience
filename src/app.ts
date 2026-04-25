@@ -99,9 +99,10 @@ const app = baseApp
       return {error: 'Unauthorized'};
     }
     const batch = Math.min(Math.max(Number(query?.batch) || 3, 1), 5);
+    const force = query?.force === '1' || query?.force === 'true';
     try {
-      const result = await generatePendingPickWriteups(CURRENT_DRAFT_YEAR, batch);
-      return {ok: true, year: CURRENT_DRAFT_YEAR, ...result};
+      const result = await generatePendingPickWriteups(CURRENT_DRAFT_YEAR, batch, {force});
+      return {ok: true, year: CURRENT_DRAFT_YEAR, force, ...result};
     } catch (err: any) {
       console.error('[CRON] generate-writeups error:', err?.message ?? err);
       set.status = 500;

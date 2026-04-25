@@ -104,11 +104,14 @@ export interface WriteupCronResult {
 
 /**
  * Process up to `batchSize` picks that have a player but no cached writeup.
- * Always returns — never throws — so a single bad pick won't kill the run.
+ * Pass `force: true` to regenerate even cached picks (used for prompt-format
+ * backfills). Always returns — never throws — so a single bad pick won't
+ * kill the run.
  */
 export async function generatePendingPickWriteups(
   year: number,
   batchSize = DEFAULT_BATCH_SIZE,
+  options: {force?: boolean} = {},
 ): Promise<WriteupCronResult> {
   const result: WriteupCronResult = {attempted: 0, generated: 0, skipped: 0, errors: []};
 
@@ -123,13 +126,17 @@ export async function generatePendingPickWriteups(
     return result;
   }
 
-  const existing = await db
-    .select({pickNumber: pickWriteups.pickNumber})
-    .from(pickWriteups)
-    .where(and(eq(pickWriteups.appId, appId), eq(pickWriteups.year, year)));
-  const have = new Set(existing.map((e) => e.pickNumber));
+  let pending = completed;
+  if (!options.force) {
+    const existing = await db
+      .select({pickNumber: pickWriteups.pickNumber})
+      .from(pickWriteups)
+      .where(and(eq(pickWriteups.appId, appId), eq(pickWriteups.year, year)));
+    const have = new Set(existing.map((e) => e.pickNumber));
+    pending = completed.filter((c) => !have.has(c.pickNumber));
+  }
 
-  const pending = completed.filter((c) => !have.has(c.pickNumber)).slice(0, batchSize);
+  pending = pending.slice(0, batchSize);
   if (pending.length === 0) {
     return result;
   }
@@ -137,7 +144,7 @@ export async function generatePendingPickWriteups(
   for (const pick of pending) {
     result.attempted++;
     try {
-      const {writeup, sources} = await generatePickWriteup({
+      const generation = await generatePickWriteup({
         appId,
         year,
         pickNumber: pick.pickNumber,
@@ -148,9 +155,11 @@ export async function generatePendingPickWriteups(
         college: pick.college,
         teamName: pick.teamName,
       });
-      await saveWriteup(appId, year, pick.pickNumber, pick.playerName, writeup, sources);
+      await saveWriteup(appId, year, pick.pickNumber, pick.playerName, generation);
       result.generated++;
-      console.log(`[WRITEUP] generated pick ${pick.pickNumber} (${pick.playerName})`);
+      console.log(
+        `[WRITEUP] generated pick ${pick.pickNumber} (${pick.playerName}) grade=${generation.gradeLetter ?? 'N/A'}`,
+      );
     } catch (err: any) {
       const message = err?.message ?? String(err);
       result.errors.push({pickNumber: pick.pickNumber, message});

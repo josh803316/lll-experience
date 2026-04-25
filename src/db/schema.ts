@@ -98,6 +98,10 @@ export const pickWriteups = pgTable(
     playerName: text('player_name'),
     writeup: text('writeup'),
     sources: jsonb('sources'),
+    gradeLetter: text('grade_letter'),
+    gradeNumeric: text('grade_numeric'),
+    gradeSourceCount: integer('grade_source_count'),
+    gradeBreakdown: jsonb('grade_breakdown'),
     generatedAt: timestamp('generated_at').defaultNow().notNull(),
   },
   (t) => ({
