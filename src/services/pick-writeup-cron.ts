@@ -8,56 +8,85 @@
  */
 
 import {getDB} from '../db/index.js';
-import {apps, officialDraftResults, pickWriteups} from '../db/schema.js';
-import {and, asc, eq, isNotNull} from 'drizzle-orm';
+import {apps, pickWriteups} from '../db/schema.js';
+import {and, eq} from 'drizzle-orm';
 import {getPositionForPlayer} from '../config/draft-data.js';
 import {generatePickWriteup, saveWriteup} from './pick-writeup.js';
 
 const FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_BATCH_SIZE = 3;
 
-interface ESPNPickMeta {
+interface CompletedEspnPick {
   pickNumber: number;
   round: number;
   pickInRound: number;
+  playerName: string;
+  teamName: string;
   position: string | null;
   college: string | null;
 }
 
-/** Build a lookup of pickNumber → ESPN metadata (round, position, college). */
-async function fetchEspnPickMetadata(year: number): Promise<Map<number, ESPNPickMeta>> {
-  const map = new Map<number, ESPNPickMeta>();
+/**
+ * Pull every completed pick from the ESPN draft endpoint. This is the source
+ * of truth for the ticker as well — officialDraftResults only stores Round 1
+ * because the leaderboard scoring only spans 32 picks, but writeups should
+ * cover every pick the user can see in the ticker.
+ */
+async function fetchCompletedPicksFromEspn(year: number): Promise<CompletedEspnPick[]> {
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      return map;
+      return [];
     }
     const data = (await res.json()) as any;
-    const picks: any[] = Array.isArray(data?.picks) ? data.picks : [];
-    for (const p of picks) {
+    const teamLookup = new Map<string, string>();
+    if (Array.isArray(data?.teams)) {
+      for (const t of data.teams) {
+        if (t?.id && t?.displayName) {
+          teamLookup.set(String(t.id), t.displayName);
+        }
+      }
+    }
+    const out: CompletedEspnPick[] = [];
+    for (const p of (data?.picks as any[]) ?? []) {
+      const isMade = p?.status === 'SELECTION_MADE' || p?.status === 'PICK_IS_IN';
+      if (!isMade) {
+        continue;
+      }
       const overall = p?.overall ?? p?.pick;
       if (!overall) {
         continue;
       }
+      const a = p?.athlete ?? {};
+      const playerName = a?.displayName ?? p?.displayName;
+      if (!playerName) {
+        continue;
+      }
+      const teamId = String(p?.teamId ?? '');
+      const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? '';
+      if (!teamName) {
+        continue;
+      }
       const round = p?.round ?? Math.ceil(overall / 32);
       const pickInRound = p?.pick ?? overall - (round - 1) * 32;
-      const a = p?.athlete ?? {};
       const college =
         a?.team?.location && a?.team?.name ? `${a.team.location} ${a.team.name}` : (a?.college?.displayName ?? null);
-      map.set(overall, {
+      out.push({
         pickNumber: overall,
         round,
         pickInRound,
-        position: null, // we get this from getPositionForPlayer locally
+        playerName,
+        teamName,
+        position: getPositionForPlayer(playerName, year) ?? null,
         college,
       });
     }
+    return out.sort((a, b) => a.pickNumber - b.pickNumber);
   } catch (_) {
-    // best-effort
+    return [];
   }
-  return map;
 }
 
 async function getNflDraftAppId(): Promise<number | null> {
@@ -89,21 +118,7 @@ export async function generatePendingPickWriteups(
   }
 
   const db = getDB();
-
-  // Picks that have a player + team and no writeup yet
-  const completed = await db
-    .select()
-    .from(officialDraftResults)
-    .where(
-      and(
-        eq(officialDraftResults.appId, appId),
-        eq(officialDraftResults.year, year),
-        isNotNull(officialDraftResults.playerName),
-        isNotNull(officialDraftResults.teamName),
-      ),
-    )
-    .orderBy(asc(officialDraftResults.pickNumber));
-
+  const completed = await fetchCompletedPicksFromEspn(year);
   if (completed.length === 0) {
     return result;
   }
@@ -119,31 +134,18 @@ export async function generatePendingPickWriteups(
     return result;
   }
 
-  const espnMeta = await fetchEspnPickMetadata(year);
-
   for (const pick of pending) {
     result.attempted++;
-    if (!pick.playerName || !pick.teamName) {
-      result.skipped++;
-      continue;
-    }
-
-    const meta = espnMeta.get(pick.pickNumber);
-    const round = meta?.round ?? Math.ceil(pick.pickNumber / 32);
-    const pickInRound = meta?.pickInRound ?? pick.pickNumber - (round - 1) * 32;
-    const position = getPositionForPlayer(pick.playerName, year) ?? null;
-    const college = meta?.college ?? null;
-
     try {
       const {writeup, sources} = await generatePickWriteup({
         appId,
         year,
         pickNumber: pick.pickNumber,
-        round,
-        pickInRound,
+        round: pick.round,
+        pickInRound: pick.pickInRound,
         playerName: pick.playerName,
-        position,
-        college,
+        position: pick.position,
+        college: pick.college,
         teamName: pick.teamName,
       });
       await saveWriteup(appId, year, pick.pickNumber, pick.playerName, writeup, sources);
