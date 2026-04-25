@@ -79,7 +79,7 @@ export async function generatePickWriteup(p: GenerateInput): Promise<{writeup: s
     },
     body: JSON.stringify({
       input: buildPrompt(p),
-      research_effort: 'standard',
+      research_effort: 'fast',
     }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
