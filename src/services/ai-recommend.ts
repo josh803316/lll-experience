@@ -173,7 +173,7 @@ export async function chatWithAi(
     },
     body: JSON.stringify({
       input: prompt,
-      research_effort: 'fast',
+      research_effort: 'lite',
     }),
     signal: AbortSignal.timeout(90_000),
   });
