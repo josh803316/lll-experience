@@ -305,7 +305,7 @@ export async function generatePickWriteup(p: GenerateInput): Promise<ParsedGener
     },
     body: JSON.stringify({
       input: buildPrompt(p),
-      research_effort: 'lite',
+      research_effort: 'standard',
     }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
