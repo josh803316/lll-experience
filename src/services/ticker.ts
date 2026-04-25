@@ -5,10 +5,11 @@
  */
 
 import {getDB} from '../db/index.js';
-import {draftSettings, draftMockState, officialDraftResults} from '../db/schema.js';
+import {apps, draftSettings, draftMockState, officialDraftResults} from '../db/schema.js';
 import {and, eq} from 'drizzle-orm';
 import {getFirstRoundTeams, getPositionForPlayer} from '../config/draft-data.js';
 import type {TickerPick} from '../views/chat-templates.js';
+import {getCachedWriteup, type WriteupSource} from './pick-writeup.js';
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -44,6 +45,9 @@ export interface PlayerDetail {
   overallRank: string | null;
   espnLink: string | null;
   news: NewsItem[];
+  writeup: string | null;
+  writeupSources: WriteupSource[];
+  writeupGeneratedAt: string | null;
 }
 
 async function isDraftLive(appId: number, year: number): Promise<boolean> {
@@ -276,11 +280,31 @@ export async function getPickDetail(year: number, pickNumber: number): Promise<P
     overallRank: readAttr(a?.attributes, 'overall'),
     espnLink: a?.link ?? (profileId ? `https://www.espn.com/nfl/player/_/id/${profileId}` : null),
     news: [],
+    writeup: null,
+    writeupSources: [],
+    writeupGeneratedAt: null,
   };
 
-  // Fetch news in the background (using alternativeId — this is the right id for the URL)
-  if (profileId) {
-    detail.news = await fetchAthleteNews(profileId);
+  // Fetch ESPN news + cached writeup in parallel; both are best-effort.
+  const [news, writeup, appRow] = await Promise.all([
+    profileId ? fetchAthleteNews(profileId) : Promise.resolve([]),
+    Promise.resolve().then(async () => {
+      const db = getDB();
+      const [a2] = await db.select().from(apps).where(eq(apps.slug, 'nfl-draft')).limit(1);
+      if (!a2) {
+        return null;
+      }
+      return getCachedWriteup(a2.id, year, overall).catch(() => null);
+    }),
+    Promise.resolve(null), // placeholder for symmetry
+  ]);
+  void appRow;
+
+  detail.news = news;
+  if (writeup) {
+    detail.writeup = writeup.writeup;
+    detail.writeupSources = writeup.sources;
+    detail.writeupGeneratedAt = writeup.generatedAt.toISOString();
   }
 
   return detail;

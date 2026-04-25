@@ -1,4 +1,4 @@
-import {text, timestamp, pgTable, serial, integer, boolean, bigint, jsonb} from 'drizzle-orm/pg-core';
+import {text, timestamp, pgTable, serial, integer, boolean, bigint, jsonb, unique} from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -81,6 +81,29 @@ export const officialDraftResults = pgTable('official_draft_results', {
   playerName: text('player_name'),
   teamName: text('team_name'),
 });
+
+/**
+ * Cached LLM-generated analysis for a draft pick.
+ * Generated on demand by the writeups cron after a pick is announced.
+ */
+export const pickWriteups = pgTable(
+  'pick_writeups',
+  {
+    id: serial('id').primaryKey(),
+    appId: integer('app_id')
+      .references(() => apps.id, {onDelete: 'cascade'})
+      .notNull(),
+    year: integer('year').notNull(),
+    pickNumber: integer('pick_number').notNull(),
+    playerName: text('player_name'),
+    writeup: text('writeup'),
+    sources: jsonb('sources'),
+    generatedAt: timestamp('generated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqApp_year_pick: unique().on(t.appId, t.year, t.pickNumber),
+  }),
+);
 
 export const draftHistoricalWinners = pgTable('draft_historical_winners', {
   id: serial('id').primaryKey(),

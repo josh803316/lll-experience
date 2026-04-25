@@ -345,6 +345,11 @@ export interface PickModalNewsItem {
   publishedAt?: string;
 }
 
+export interface PickModalSource {
+  url: string;
+  title?: string;
+}
+
 export interface PickModalData {
   pickNumber: number;
   round: number;
@@ -362,6 +367,9 @@ export interface PickModalData {
   overallRank: string | null;
   espnLink: string | null;
   news: PickModalNewsItem[];
+  writeup: string | null;
+  writeupSources: PickModalSource[];
+  writeupGeneratedAt: string | null;
 }
 
 function relativeDate(iso?: string): string | null {
@@ -431,6 +439,45 @@ export function pickModalFragment(d: PickModalData): string {
       </div>`
     : '';
 
+  const writeupBlock = d.writeup
+    ? (() => {
+        const generatedWhen = relativeDate(d.writeupGeneratedAt ?? undefined);
+        const sourcePills = d.writeupSources
+          .slice(0, 6)
+          .map((s) => {
+            let host: string;
+            try {
+              host = new URL(s.url).hostname.replace(/^www\./, '');
+            } catch (_) {
+              host = '';
+            }
+            const label = s.title || host || 'source';
+            return `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${escapeHtml(s.title ?? s.url)}"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-700/60 hover:bg-slate-700 border border-slate-600 text-[10px] text-slate-200">
+              ${host ? `<span class="text-slate-400">${escapeHtml(host)}</span>` : ''}
+              <span class="truncate max-w-[180px]">${escapeHtml(label)}</span>
+            </a>`;
+          })
+          .join('');
+        // Convert the markdown-ish writeup into safe paragraphs
+        const paragraphs = d.writeup
+          .split(/\n{2,}/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => `<p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(p)}</p>`)
+          .join('');
+        return `
+    <div class="mt-4 p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-800/60 border border-blue-700/30">
+      <div class="flex items-center gap-2 mb-2">
+        <div class="text-[10px] uppercase tracking-wider text-blue-300 font-bold">Pick analysis</div>
+        ${generatedWhen ? `<span class="text-[10px] text-slate-500">· ${escapeHtml(generatedWhen)}</span>` : ''}
+      </div>
+      <div class="space-y-2">${paragraphs}</div>
+      ${sourcePills ? `<div class="flex flex-wrap gap-1.5 mt-3">${sourcePills}</div>` : ''}
+    </div>`;
+      })()
+    : '';
+
   const newsBlock =
     d.news.length > 0
       ? `
@@ -483,6 +530,7 @@ export function pickModalFragment(d: PickModalData): string {
 
     <div class="flex-1 min-h-0 overflow-y-auto p-5">
       ${statRows ? `<div class="grid grid-cols-1">${statRows}</div>` : ''}
+      ${writeupBlock}
       ${newsBlock}
       ${
         d.espnLink
