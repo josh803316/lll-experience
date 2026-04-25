@@ -16,6 +16,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force-regenerate writeups (1 = regenerate oldest/unmigrated picks)'
+        required: false
+        default: '0'
 
 concurrency:
   group: draft-tick
@@ -30,23 +35,35 @@ jobs:
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FORCE: ${{ github.event.inputs.force || '0' }}
         run: |
           set -e
           if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
             echo "::error::SITE_URL or CRON_SECRET secret is not set"
             exit 1
           fi
-          echo "=== Draft tick window starting at $(date -u) ==="
+          # In force mode, skip sync (the backfill only cares about writeups)
+          # and pass force=1 + a longer timeout because each pick is ~30s.
+          if [ "$FORCE" = "1" ] || [ "$FORCE" = "true" ]; then
+            FORCE_QS="&force=1"
+            ENDPOINTS="generate-writeups"
+            CURL_TIMEOUT=180
+          else
+            FORCE_QS=""
+            ENDPOINTS="sync-draft-picks generate-writeups"
+            CURL_TIMEOUT=25
+          fi
+          echo "=== Draft tick window starting at $(date -u) (force=$FORCE) ==="
           # Loop for up to ~4 minutes (8 ticks * 30s). Even if scheduled runs
           # are delayed/skipped, this guarantees frequent updates while one
           # run is alive.
           for tick in 1 2 3 4 5 6 7 8; do
             echo
             echo "--- tick $tick / 8 at $(date -u +%H:%M:%S) ---"
-            for endpoint in sync-draft-picks generate-writeups; do
-              STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" --max-time 25 \
+            for endpoint in $ENDPOINTS; do
+              STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" --max-time $CURL_TIMEOUT \
                 -H "Authorization: Bearer $CRON_SECRET" \
-                "$SITE_URL/api/cron/$endpoint?batch=5" || echo "000")
+                "$SITE_URL/api/cron/$endpoint?batch=5$FORCE_QS" || echo "000")
               BODY=$(cat /tmp/resp.json 2>/dev/null | head -c 250 || true)
               echo "$endpoint: HTTP $STATUS — $BODY"
               if [ "$STATUS" != "200" ]; then
