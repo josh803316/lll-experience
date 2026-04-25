@@ -126,17 +126,46 @@ export async function generatePendingPickWriteups(
     return result;
   }
 
-  let pending = completed;
-  if (!options.force) {
-    const existing = await db
-      .select({pickNumber: pickWriteups.pickNumber})
-      .from(pickWriteups)
-      .where(and(eq(pickWriteups.appId, appId), eq(pickWriteups.year, year)));
-    const have = new Set(existing.map((e) => e.pickNumber));
-    pending = completed.filter((c) => !have.has(c.pickNumber));
+  // Build the work queue:
+  // - default mode: only picks that don't have a writeup yet (in pickNumber order)
+  // - force mode: picks lacking grade_breakdown first (needs migration), then
+  //   the ones with the oldest generatedAt — so a loop with force=1 walks the
+  //   whole table without repeating the same picks every call.
+  const existing = await db
+    .select({
+      pickNumber: pickWriteups.pickNumber,
+      generatedAt: pickWriteups.generatedAt,
+      gradeBreakdown: pickWriteups.gradeBreakdown,
+    })
+    .from(pickWriteups)
+    .where(and(eq(pickWriteups.appId, appId), eq(pickWriteups.year, year)));
+
+  function buildQueue(): typeof completed {
+    if (!options.force) {
+      const have = new Set(existing.map((e) => e.pickNumber));
+      return completed.filter((c) => !have.has(c.pickNumber));
+    }
+    const meta = new Map(existing.map((e) => [e.pickNumber, e]));
+    return [...completed].sort((a, b) => {
+      const ma = meta.get(a.pickNumber);
+      const mb = meta.get(b.pickNumber);
+      const aMissing = ma == null ? 0 : 1;
+      const bMissing = mb == null ? 0 : 1;
+      if (aMissing !== bMissing) {
+        return aMissing - bMissing;
+      }
+      const aNeedsMigration = ma && (!Array.isArray(ma.gradeBreakdown) || ma.gradeBreakdown.length === 0) ? 0 : 1;
+      const bNeedsMigration = mb && (!Array.isArray(mb.gradeBreakdown) || mb.gradeBreakdown.length === 0) ? 0 : 1;
+      if (aNeedsMigration !== bNeedsMigration) {
+        return aNeedsMigration - bNeedsMigration;
+      }
+      const aTime = ma?.generatedAt?.getTime() ?? 0;
+      const bTime = mb?.generatedAt?.getTime() ?? 0;
+      return aTime - bTime;
+    });
   }
 
-  pending = pending.slice(0, batchSize);
+  const pending = buildQueue().slice(0, batchSize);
   if (pending.length === 0) {
     return result;
   }
