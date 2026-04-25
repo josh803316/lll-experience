@@ -60,26 +60,40 @@ interface GenerateInput {
 }
 
 /**
- * Specific draft-grade tracker URLs we want You.com to consult. Listed
- * inline in the prompt so research_effort=lite still pulls them in.
+ * Specific draft-grade tracker URLs we want You.com to consult. The CBS
+ * per-round and Bleacher Report per-day pages are the only sources that
+ * publish a letter grade for every pick across all 7 rounds, so we pick
+ * the right ones for the pick's round and pass the rest as supplements.
  */
-const GRADE_SOURCES: Array<{name: string; url: string}> = [
-  {
-    name: 'CBS Sports — Live Grade Tracker',
-    url: 'https://www.cbssports.com/nfl/draft/news/2026-nfl-draft-grades-tracker-live-round-5-analysis/',
-  },
-  {name: 'CBS Sports — Draft Tracker', url: 'https://www.cbssports.com/nfl/draft/draft-tracker/'},
-  {
-    name: 'NFL.com — Snap Grades by Team',
-    url: 'https://www.nfl.com/news/2026-nfl-draft-snap-grades-for-every-team-after-day-1',
-  },
-  {
-    name: 'USA Today — Draft Tracker Day 3',
-    url: 'https://www.usatoday.com/story/sports/nfl/draft/2026/04/25/nfl-draft-tracker-2026-picks-day-3/89788186007/',
-  },
-  {name: 'ESPN — Mel Kiper / Field Yates draft analysis', url: 'https://www.espn.com/nfl/draft2026/'},
-  {name: 'PFF — Pro Football Focus draft grades', url: 'https://www.pff.com/news/draft'},
-];
+const BR_DAY_2 = 'https://bleacherreport.com/articles/25422017-nfl-draft-2026-day-2-grades-every-pick';
+const BR_DAY_3 = 'https://bleacherreport.com/articles/25422315-nfl-draft-2026-day-3-grades-every-pick';
+const BR_ROUND_1 = 'https://bleacherreport.com/articles/25421658-nfl-draft-2026-round-1-grades-every-pick';
+
+function getGradeSources(round: number): Array<{name: string; url: string}> {
+  const cbsRound = Math.min(Math.max(round, 1), 7);
+  const brByDay = round === 1 ? BR_ROUND_1 : round <= 3 ? BR_DAY_2 : BR_DAY_3;
+  const nflTeamGrades =
+    round === 1
+      ? 'https://www.nfl.com/news/2026-nfl-draft-snap-grades-for-every-team-after-day-1'
+      : 'https://www.nfl.com/news/2026-nfl-draft-snap-grades-for-every-team-after-rounds-2-3';
+  return [
+    {
+      name: `CBS Sports — Round ${cbsRound} Live Grade Tracker (per-pick A–F)`,
+      url: `https://www.cbssports.com/nfl/draft/news/2026-nfl-draft-grades-tracker-live-round-${cbsRound}-analysis/`,
+    },
+    {
+      name: `Bleacher Report — ${round === 1 ? 'Round 1' : round <= 3 ? 'Day 2 (R2-3)' : 'Day 3 (R4-7)'} Grades for Every Pick`,
+      url: brByDay,
+    },
+    {
+      name: 'CBS Sports — Team Grades Roundup',
+      url: 'https://www.cbssports.com/nfl/draft/news/nfl-draft-2026-team-grades/',
+    },
+    {name: 'NFL.com — Snap Grades by Team', url: nflTeamGrades},
+    {name: 'ESPN — Mel Kiper / Field Yates draft analysis', url: 'https://www.espn.com/nfl/draft2026/'},
+    {name: 'PFF — Pro Football Focus draft grades', url: 'https://www.pff.com/news/draft'},
+  ];
+}
 
 function ordinal(n: number): string {
   if (n % 100 >= 11 && n % 100 <= 13) {
@@ -101,7 +115,9 @@ function buildPrompt(p: GenerateInput): string {
   const positionStr = p.position ? `, ${p.position}` : '';
   const collegeStr = p.college ? ` out of ${p.college}` : '';
 
-  const sourceList = GRADE_SOURCES.map((s, i) => `  ${i + 1}. ${s.name} — ${s.url}`).join('\n');
+  const sourceList = getGradeSources(p.round)
+    .map((s, i) => `  ${i + 1}. ${s.name} — ${s.url}`)
+    .join('\n');
 
   return `You are aggregating expert draft grades for a single NFL Draft pick.
 
@@ -119,8 +135,8 @@ GRADE_NUMERIC: <e.g. 3.3 or N/A>
 GRADE_SOURCES: <integer count of sources with a grade>
 GRADE_BREAKDOWN:
 - CBS Sports: <letter or N/A>
+- Bleacher Report: <letter or N/A>
 - NFL.com: <letter or N/A>
-- USA Today: <letter or N/A>
 - ESPN: <letter or N/A>
 - PFF: <letter or N/A>
 - Other: <letter or N/A>
