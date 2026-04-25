@@ -1,0 +1,45 @@
+name: Draft Tick
+
+# Pings /api/cron/sync-draft-picks frequently during the draft. The endpoint
+# is idempotent — when there are no pending picks/writeups, it returns fast.
+# GitHub Actions enforces a 5-minute minimum for scheduled triggers and may
+# queue events under load, so expect some drift; this is good enough for
+# user-facing freshness during the draft.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: draft-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Sync picks + generate writeups
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -e
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::SITE_URL or CRON_SECRET secret is not set"
+            exit 1
+          fi
+          echo "=== Draft tick at $(date -u) ==="
+          for endpoint in sync-draft-picks generate-writeups; do
+            echo "→ /api/cron/$endpoint"
+            STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$SITE_URL/api/cron/$endpoint?batch=5")
+            echo "HTTP $STATUS"
+            cat /tmp/resp.json | head -c 600
+            echo
+            if [ "$STATUS" != "200" ]; then
+              echo "::warning::$endpoint returned $STATUS"
+            fi
+          done
