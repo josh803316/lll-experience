@@ -261,84 +261,108 @@ interface TickerState {
   picks: TickerPick[];
   draftLive: boolean;
   mockActive: boolean;
+  currentRound: number;
+}
+
+/** Compute round and pick-in-round from overall pick number. NFL draft has 32 picks per round (roughly). */
+function pickToRound(overall: number): {round: number; pickInRound: number} {
+  // Standard: 32 picks per round for R1, may vary in later rounds due to compensatory
+  // For simplicity, use the ESPN-provided round info when available; this is a fallback
+  const round = Math.ceil(overall / 32);
+  const pickInRound = overall - (round - 1) * 32;
+  return {round, pickInRound};
+}
+
+/** Fetch live draft data directly from ESPN API for the ticker. */
+async function fetchLiveTickerFromESPN(year: number): Promise<{picks: TickerPick[]; currentRound: number} | null> {
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`;
+    const res = await fetch(url, {signal: AbortSignal.timeout(5000)});
+    if (!res.ok) {return null;}
+
+    const data = (await res.json()) as any;
+    const allPicks: any[] = Array.isArray(data?.picks) ? data.picks : [];
+    if (allPicks.length === 0) {return null;}
+
+    // Build team lookup
+    const teamLookup = new Map<string, string>();
+    if (Array.isArray(data?.teams)) {
+      for (const t of data.teams) {
+        if (t?.id && t?.displayName) {teamLookup.set(String(t.id), t.displayName);}
+      }
+    }
+
+    // Find the "on the clock" pick — first one without SELECTION_MADE status
+    let currentRound = 1;
+    const onClock = allPicks.find((p: any) => p?.status && p.status !== 'SELECTION_MADE' && p.status !== 'PICK_IS_IN');
+    if (onClock) {
+      currentRound = onClock.round ?? pickToRound(onClock.overall ?? 1).round;
+    } else {
+      // All picks made — show the last round that has picks
+      const lastMade = allPicks.filter((p: any) => p?.status === 'SELECTION_MADE' || p?.status === 'PICK_IS_IN');
+      if (lastMade.length > 0) {
+        currentRound = lastMade[lastMade.length - 1].round ?? 1;
+      }
+    }
+
+    const picks: TickerPick[] = allPicks.map((p: any) => {
+      const overall = p?.overall ?? p?.pick ?? 0;
+      const round = p?.round ?? pickToRound(overall).round;
+      const pickInRound = p?.pick ?? pickToRound(overall).pickInRound;
+      const teamId = String(p?.teamId ?? '');
+      const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? `Pick ${overall}`;
+      const isMade = p?.status === 'SELECTION_MADE' || p?.status === 'PICK_IS_IN';
+      const playerName = isMade ? (p?.athlete?.displayName ?? p?.displayName ?? null) : null;
+      const posId = p?.athlete?.position?.id;
+
+      return {
+        pickNumber: overall,
+        round,
+        pickInRound,
+        teamName,
+        playerName,
+        position: playerName ? (getPositionForPlayer(playerName, year) ?? null) : null,
+      };
+    });
+
+    return {picks, currentRound};
+  } catch {
+    return null;
+  }
 }
 
 async function buildTickerData(appId: number, year: number): Promise<TickerState> {
-  const db = getDB();
-  const teams = getFirstRoundTeams(year);
-
-  // Check if draft is live or mock simulation is running
   const draftLive = await isDraftLive(appId, year);
   const mockActive = await isMockActive(appId, year);
 
-  // Build a merged pick map: official results + mock simulation revealed picks
-  const pickMap = new Map<number, {playerName: string | null; teamName: string | null; position: string | null}>();
+  // Try live ESPN data first (always fresh)
+  const live = await fetchLiveTickerFromESPN(year);
+  if (live && live.picks.length > 0) {
+    return {picks: live.picks, draftLive, mockActive, currentRound: live.currentRound};
+  }
 
-  // Layer 1: official draft results from ESPN sync
+  // Fallback: DB data (Round 1 only from officialDraftResults)
+  const db = getDB();
+  const teams = getFirstRoundTeams(year);
   const official = await db
     .select()
     .from(officialDraftResults)
     .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year)))
     .orderBy(officialDraftResults.pickNumber);
 
-  for (const r of official) {
-    if (r.playerName) {
-      pickMap.set(r.pickNumber, {
-        playerName: r.playerName,
-        teamName: r.teamName,
-        position: getPositionForPlayer(r.playerName, year) ?? null,
-      });
-    }
-  }
-
-  // Layer 2: mock simulation picks (override if mock is active and has revealed picks)
-  if (mockActive) {
-    const [mockRow] = await db
-      .select()
-      .from(draftMockState)
-      .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)))
-      .limit(1);
-
-    if (mockRow) {
-      // Advance mock timer: count how many picks should be revealed by now
-      const MOCK_INTERVAL = 30_000;
-      let revealed = mockRow.revealedCount;
-      let nextAt = Number(mockRow.nextRevealAtMs);
-      const now = Date.now();
-      while (nextAt <= now && revealed < 32) {
-        revealed++;
-        nextAt += MOCK_INTERVAL;
-      }
-
-      const mockPicks = mockRow.picksJson as Array<{
-        pickNumber: number;
-        playerName: string;
-        teamName: string;
-        position: string | null;
-      }>;
-      for (let i = 0; i < revealed && i < mockPicks.length; i++) {
-        const mp = mockPicks[i];
-        pickMap.set(mp.pickNumber, {
-          playerName: mp.playerName,
-          teamName: mp.teamName,
-          position: mp.position ?? getPositionForPlayer(mp.playerName, year) ?? null,
-        });
-      }
-    }
-  }
-
-  // Build final 32-pick array
   const picks: TickerPick[] = [];
   for (let num = 1; num <= 32; num++) {
-    const result = pickMap.get(num);
+    const result = official.find((r) => r.pickNumber === num);
     picks.push({
       pickNumber: num,
+      round: 1,
+      pickInRound: num,
       teamName: result?.teamName || teams[num] || `Pick ${num}`,
       playerName: result?.playerName ?? null,
-      position: result?.position ?? null,
+      position: result?.playerName ? (getPositionForPlayer(result.playerName, year) ?? null) : null,
     });
   }
-  return {picks, draftLive, mockActive};
+  return {picks, draftLive, mockActive, currentRound: 1};
 }
 
 // ─── Controller ──────────────────────────────────────────────────────────────
@@ -496,8 +520,9 @@ export const chatController = new Elysia({prefix: '/draft'})
     }
 
     const ticker = await buildTickerData(app.id, year);
+    const requestedRound = Number(ctx.query?.round) || ticker.currentRound;
     ctx.set.headers['Content-Type'] = 'text/html';
-    return chatTickerFragment(ticker.picks, ticker.draftLive || ticker.mockActive);
+    return chatTickerFragment(ticker.picks, ticker.draftLive || ticker.mockActive, requestedRound);
   })
 
   // POST /draft/:year/chat/groups — create a new group

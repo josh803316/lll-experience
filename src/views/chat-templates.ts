@@ -29,7 +29,9 @@ export interface ChatGroupDisplay {
 }
 
 export interface TickerPick {
-  pickNumber: number;
+  pickNumber: number; // overall pick number
+  round: number;
+  pickInRound: number; // pick within the round
   teamName: string;
   playerName: string | null;
   position: string | null;
@@ -217,11 +219,22 @@ function teamLogoUrl(espnId: string): string {
 
 // ─── Ticker fragment (ESPN-style horizontal scroll) ─────────────────────────
 
-export function chatTickerFragment(picks: TickerPick[], isLive = false): string {
-  // Find the "on the clock" pick: first pick without a player
-  const onTheClockIdx = picks.findIndex((p) => !p.playerName);
-  const completedCount = picks.filter((p) => p.playerName).length;
-  const allComplete = onTheClockIdx === -1 && picks.some((p) => p.playerName);
+export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRound = 1): string {
+  // Group picks by round
+  const rounds = new Map<number, TickerPick[]>();
+  for (const p of picks) {
+    if (!rounds.has(p.round)) {rounds.set(p.round, []);}
+    rounds.get(p.round).push(p);
+  }
+  const roundNumbers = Array.from(rounds.keys()).sort((a, b) => a - b);
+  if (roundNumbers.length === 0) {roundNumbers.push(1);}
+
+  // Show current round's picks
+  const currentPicks = rounds.get(activeRound) ?? [];
+  const onTheClockIdx = currentPicks.findIndex((p) => !p.playerName);
+  const completedInRound = currentPicks.filter((p) => p.playerName).length;
+  const totalInRound = currentPicks.length;
+  const totalCompleted = picks.filter((p) => p.playerName).length;
 
   function teamLogo(team: TeamMeta, size: 'sm' | 'lg'): string {
     const dim = size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
@@ -229,17 +242,16 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false): string 
     if (url) {
       return `<img src="${url}" alt="${team.abbr}" class="${dim} shrink-0 object-contain" loading="lazy" />`;
     }
-    // Fallback: colored circle with abbreviation
     const textSize = size === 'lg' ? 'text-xs' : 'text-[10px]';
     return `<div class="${dim} ${textSize} rounded-full flex items-center justify-center font-extrabold shrink-0 border border-white/20" style="background:${team.primary};color:${team.secondary}">${team.abbr}</div>`;
   }
 
-  const cards = picks
+  const cards = currentPicks
     .map((p, i) => {
       const tm = getTeamMeta(p.teamName);
       const isComplete = !!p.playerName;
       const isOnClock = i === onTheClockIdx;
-      const ovrLabel = `Pick #${p.pickNumber} (${p.pickNumber} OVR)`;
+      const ovrLabel = `Rd ${p.round}, Pick ${p.pickInRound} (${p.pickNumber} OVR)`;
 
       if (isOnClock) {
         return `
@@ -283,18 +295,31 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false): string 
     })
     .join('');
 
+  // Round tabs
+  const roundTabs = roundNumbers
+    .map((r) => {
+      const roundPicks = rounds.get(r) ?? [];
+      const done = roundPicks.filter((p) => p.playerName).length;
+      const isActive = r === activeRound;
+      const cls = isActive
+        ? 'bg-slate-600 text-white'
+        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white';
+      // Round tabs use JS to switch (avoid full page reload) by updating the ticker via HTMX
+      return `<button type="button" class="ticker-round-tab px-2.5 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap ${cls}" data-round="${r}">R${r}${done > 0 ? ` <span class="text-slate-500">${done}</span>` : ''}</button>`;
+    })
+    .join('');
+
   const liveIndicator = isLive
-    ? `<div class="flex items-center gap-1.5 mb-1.5">
-        <span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span></span>
-        <span class="text-[10px] font-semibold text-red-400 uppercase tracking-wider">Live — Round 1</span>
-        <span class="text-[10px] text-slate-500">${completedCount}/32 picks</span>
-      </div>`
-    : `<div class="flex items-center gap-1.5 mb-1.5">
-        <span class="text-[10px] text-slate-500">Round 1 — ${completedCount}/32 picks</span>
-      </div>`;
+    ? `<span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span></span>
+       <span class="text-[10px] font-semibold text-red-400 uppercase tracking-wider">Live</span>`
+    : '';
 
   return `
-  ${liveIndicator}
+  <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+    ${liveIndicator}
+    <div class="flex gap-1">${roundTabs}</div>
+    <span class="text-[10px] text-slate-500 ml-auto">${completedInRound}/${totalInRound} picks · ${totalCompleted} total</span>
+  </div>
   <div class="relative">
     <button type="button" class="ticker-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg" style="display:none;">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -402,7 +427,7 @@ export function chatPage(
   groups: ChatGroupDisplay[],
   activeGroupId: number,
   activeGroup: {id: number; name: string; isDefault: boolean},
-  ticker: {picks: TickerPick[]; draftLive: boolean; mockActive: boolean},
+  ticker: {picks: TickerPick[]; draftLive: boolean; mockActive: boolean; currentRound: number},
   year: number,
   currentUserId: number,
   clerkPublishableKey?: string,
@@ -441,7 +466,7 @@ export function chatPage(
            hx-get="/draft/${year}/chat/ticker"
            hx-trigger="every ${isLive ? '10' : '30'}s"
            hx-swap="innerHTML">
-        ${chatTickerFragment(ticker.picks, isLive)}
+        ${chatTickerFragment(ticker.picks, isLive, ticker.currentRound)}
       </div>
 
       <!-- Messages area -->
@@ -517,8 +542,8 @@ export function chatPage(
 
       ticker.addEventListener('scroll', updateArrows, {passive: true});
 
-      // Auto-scroll to "On The Clock" card on load
-      var onClock = ticker.querySelector('[data-pick].bg-amber-600');
+      // Auto-scroll to "On The Clock" card (has border-amber-400)
+      var onClock = ticker.querySelector('.border-amber-400');
       if (onClock) {
         var offset = onClock.offsetLeft - ticker.offsetLeft - 40;
         ticker.scrollLeft = Math.max(0, offset);
@@ -532,6 +557,21 @@ export function chatPage(
       if (e.detail.target && e.detail.target.id === 'chat-ticker') {
         initTickerScroll();
       }
+    });
+
+    // Round tab switching — re-fetch ticker for the selected round
+    document.addEventListener('click', function(e) {
+      var tab = e.target.closest('.ticker-round-tab');
+      if (!tab) return;
+      var round = tab.getAttribute('data-round');
+      if (!round) return;
+      var tickerEl = document.getElementById('chat-ticker');
+      if (!tickerEl) return;
+      // Update the polling URL to include the round param
+      var baseUrl = tickerEl.getAttribute('hx-get').split('?')[0];
+      tickerEl.setAttribute('hx-get', baseUrl + '?round=' + round);
+      htmx.process(tickerEl);
+      htmx.trigger(tickerEl, 'htmx:trigger');
     });
 
     // ─── Dedup + update polling cursor + auto-scroll ───

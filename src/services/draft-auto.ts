@@ -32,7 +32,7 @@ async function getDraftStarted(appId: number, year: number): Promise<boolean> {
 
 /** Source 1: ESPN Core API v2 draft picks */
 async function fetchFromESPNCore(year: number): Promise<OfficialPickEntry[]> {
-  const url = `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${year}/draft/picks?limit=100`;
+  const url = `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${year}/draft/picks?limit=300`;
   const res = await fetch(url, {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)});
   if (!res.ok) {
     return [];
@@ -40,12 +40,10 @@ async function fetchFromESPNCore(year: number): Promise<OfficialPickEntry[]> {
 
   const data = (await res.json()) as any;
   const items: any[] = data?.items ?? [];
-  const firstRound = items.filter((item: any) => item?.round === 1 || (!item?.round && (item?.pick ?? 0) <= 32));
-
   const out: OfficialPickEntry[] = [];
-  for (const item of firstRound) {
-    const pickNum = item?.pick;
-    if (!pickNum || pickNum > 32) {
+  for (const item of items) {
+    const pickNum = item?.overall ?? item?.pick;
+    if (!pickNum) {
       continue;
     }
     const playerName = item?.athlete?.displayName ?? item?.athlete?.shortName ?? null;
@@ -90,17 +88,15 @@ async function fetchFromESPNSite(
     allPicks = round1?.picks ?? [];
   }
 
-  // Build live team-by-slot map (includes trades) for all first-round slots
+  // Build live team-by-slot map (includes trades) for first-round slots
   const teamsBySlot = new Map<number, string>();
   for (const p of allPicks) {
-    const pickNum = p?.pick ?? p?.overall;
-    if (!pickNum || pickNum > 32) {
-      continue;
-    }
+    const overall = p?.overall ?? p?.pick;
+    if (!overall || overall > 32) {continue;} // team slot map only for R1
     const teamId = String(p?.teamId ?? '');
     const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? null;
     if (teamName) {
-      teamsBySlot.set(Number(pickNum), teamName);
+      teamsBySlot.set(Number(overall), teamName);
     }
   }
 
@@ -110,8 +106,8 @@ async function fetchFromESPNSite(
     if (p?.status && p.status !== 'SELECTION_MADE' && p.status !== 'PICK_IS_IN') {
       continue;
     }
-    const pickNum = p?.pick ?? p?.overall ?? p?.number;
-    if (!pickNum || pickNum > 32) {
+    const pickNum = p?.overall ?? p?.pick ?? p?.number;
+    if (!pickNum) {
       continue;
     }
     const name = p?.athlete?.displayName ?? p?.displayName ?? p?.name ?? p?.athlete?.shortName ?? null;
@@ -137,8 +133,8 @@ async function fetchFromESPNAlternate(year: number): Promise<OfficialPickEntry[]
   const items: any[] = data?.items ?? [];
   const out: OfficialPickEntry[] = [];
   for (const item of items) {
-    const pickNum = item?.pick ?? item?.overall;
-    if (!pickNum || pickNum > 32) {
+    const pickNum = item?.overall ?? item?.pick;
+    if (!pickNum) {
       continue;
     }
     const playerName = item?.athlete?.displayName ?? item?.athlete?.shortName ?? item?.displayName ?? null;
@@ -150,17 +146,11 @@ async function fetchFromESPNAlternate(year: number): Promise<OfficialPickEntry[]
 
 /** Upsert official picks into the database. Only writes playerName — never overwrites teamName. */
 async function upsertPicks(appId: number, year: number, picks: OfficialPickEntry[]): Promise<number> {
-  const byNum = new Map<number, OfficialPickEntry>();
-  for (const p of picks) {
-    if (p.pickNumber >= 1 && p.pickNumber <= 32) {
-      byNum.set(p.pickNumber, p);
-    }
-  }
   const db = getDB();
   let synced = 0;
-  for (let num = 1; num <= 32; num++) {
-    const entry = byNum.get(num);
-    if (!entry || !entry.playerName) {
+  for (const entry of picks) {
+    const num = entry.pickNumber;
+    if (!num || !entry.playerName) {
       continue;
     }
     const existing = await db
