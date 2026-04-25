@@ -461,14 +461,14 @@ export function pickModalFragment(d: PickModalData): string {
     </div>`;
 
   return `
-  <div class="relative max-w-lg w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden" data-pick-modal-card>
+  <div class="relative max-w-lg w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col" style="max-height:calc(100dvh - 2rem)" data-pick-modal-card>
     <button type="button" data-pick-modal-close
       class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600 transition-colors z-10"
       aria-label="Close">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
 
-    <div class="p-5" style="background:linear-gradient(135deg, ${tm.primary}66, ${tm.primary}10)">
+    <div class="shrink-0 p-5" style="background:linear-gradient(135deg, ${tm.primary}66, ${tm.primary}10)">
       <div class="flex items-start gap-4">
         ${headshot}
         <div class="min-w-0 flex-1">
@@ -481,7 +481,7 @@ export function pickModalFragment(d: PickModalData): string {
       </div>
     </div>
 
-    <div class="p-5">
+    <div class="flex-1 min-h-0 overflow-y-auto p-5">
       ${statRows ? `<div class="grid grid-cols-1">${statRows}</div>` : ''}
       ${newsBlock}
       ${

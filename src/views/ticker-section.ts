@@ -10,9 +10,9 @@
 export function pickModalContainer(): string {
   return `
   <div id="pick-modal-backdrop"
-       class="hidden fixed inset-0 bg-black/70 z-[100] flex items-start sm:items-center justify-center p-4 overflow-y-auto"
+       class="hidden fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4"
        data-pick-modal-backdrop>
-    <div id="pick-modal-content" class="w-full"></div>
+    <div id="pick-modal-content" class="w-full max-h-full flex items-stretch justify-center"></div>
   </div>`;
 }
 
