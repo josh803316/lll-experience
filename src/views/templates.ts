@@ -5,6 +5,7 @@ import {
   DRAFT_START_ISO_BY_YEAR,
 } from '../config/draft-data.js';
 import {PLAYER_SCOUTING_2026} from '../config/player-scouting.js';
+import {getAppVersion} from '../lib/version.js';
 
 export interface App {
   id: number;
@@ -157,6 +158,7 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
 </head>
 <body class="bg-gray-50 min-h-screen">
   ${content}
+  <div class="hidden lg:block fixed bottom-2 right-2 px-2 py-1 rounded bg-black/40 text-[10px] text-white/50 font-mono z-50 select-all pointer-events-auto hover:text-white/80 transition-colors" title="App version">${escapeHtml(getAppVersion())}</div>
 </body>
 </html>`;
 }
