@@ -1,5 +1,4 @@
 import {baseLayout, escapeHtml, draftTopBar} from './templates.js';
-import {getFirstRoundTeams} from '../config/draft-data.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,11 +38,6 @@ export interface TickerPick {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function displayName(first: string | null, last: string | null): string {
-  const parts = [first, last].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : 'Anonymous';
-}
-
 function shortName(first: string | null, last: string | null): string {
   if (first && last) {
     return `${first} ${last.charAt(0)}.`;
@@ -72,7 +66,7 @@ const QUICK_REACTIONS = ['👍', '😂', '🔥', '❤️', '😱', '💯'];
 
 // ─── Reactions display below a message ───────────────────────────────────────
 
-export function messageReactionsFragment(messageId: number, reactions: ReactionGroup[], year: number): string {
+export function messageReactionsFragment(messageId: number, reactions: ReactionGroup[], _year?: number): string {
   if (reactions.length === 0) {
     return `<div id="reactions-${messageId}" class="msg-reactions"></div>`;
   }
@@ -224,10 +218,13 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
   const rounds = new Map<number, TickerPick[]>();
   for (const p of picks) {
     if (!rounds.has(p.round)) {rounds.set(p.round, []);}
-    rounds.get(p.round).push(p);
+    const arr = rounds.get(p.round) as TickerPick[];
+    arr.push(p);
   }
   const roundNumbers = Array.from(rounds.keys()).sort((a, b) => a - b);
-  if (roundNumbers.length === 0) {roundNumbers.push(1);}
+  if (roundNumbers.length === 0) {
+    roundNumbers.push(1);
+  }
 
   // Show current round's picks
   const currentPicks = rounds.get(activeRound) ?? [];
