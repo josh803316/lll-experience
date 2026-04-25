@@ -277,18 +277,24 @@ function pickToRound(overall: number): {round: number; pickInRound: number} {
 async function fetchLiveTickerFromESPN(year: number): Promise<{picks: TickerPick[]; currentRound: number} | null> {
   try {
     const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`;
-    const res = await fetch(url, {signal: AbortSignal.timeout(5000)});
-    if (!res.ok) {return null;}
+    const res = await fetch(url, {signal: AbortSignal.timeout(10000)});
+    if (!res.ok) {
+      return null;
+    }
 
     const data = (await res.json()) as any;
     const allPicks: any[] = Array.isArray(data?.picks) ? data.picks : [];
-    if (allPicks.length === 0) {return null;}
+    if (allPicks.length === 0) {
+      return null;
+    }
 
     // Build team lookup
     const teamLookup = new Map<string, string>();
     if (Array.isArray(data?.teams)) {
       for (const t of data.teams) {
-        if (t?.id && t?.displayName) {teamLookup.set(String(t.id), t.displayName);}
+        if (t?.id && t?.displayName) {
+          teamLookup.set(String(t.id), t.displayName);
+        }
       }
     }
 
@@ -304,6 +310,10 @@ async function fetchLiveTickerFromESPN(year: number): Promise<{picks: TickerPick
         currentRound = lastMade[lastMade.length - 1].round ?? 1;
       }
     }
+
+    console.log(
+      `[TICKER] ESPN live: ${allPicks.length} picks, currentRound=${currentRound}, onClock=${onClock?.overall ?? 'none'}`,
+    );
 
     const picks: TickerPick[] = allPicks.map((p: any) => {
       const overall = p?.overall ?? p?.pick ?? 0;
@@ -326,7 +336,8 @@ async function fetchLiveTickerFromESPN(year: number): Promise<{picks: TickerPick
     });
 
     return {picks, currentRound};
-  } catch {
+  } catch (err: any) {
+    console.error('[TICKER] ESPN fetch failed:', err?.message ?? err);
     return null;
   }
 }
@@ -341,6 +352,7 @@ async function buildTickerData(appId: number, year: number): Promise<TickerState
     return {picks: live.picks, draftLive, mockActive, currentRound: live.currentRound};
   }
 
+  console.log('[TICKER] ESPN fetch returned no data, falling back to DB');
   // Fallback: DB data (Round 1 only from officialDraftResults)
   const db = getDB();
   const teams = getFirstRoundTeams(year);

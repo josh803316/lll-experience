@@ -217,7 +217,9 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
   // Group picks by round
   const rounds = new Map<number, TickerPick[]>();
   for (const p of picks) {
-    if (!rounds.has(p.round)) {rounds.set(p.round, []);}
+    if (!rounds.has(p.round)) {
+      rounds.set(p.round, []);
+    }
     const arr = rounds.get(p.round) as TickerPick[];
     arr.push(p);
   }
@@ -462,7 +464,8 @@ export function chatPage(
       <div id="chat-ticker" class="shrink-0 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 mb-3"
            hx-get="/draft/${year}/chat/ticker"
            hx-trigger="every ${isLive ? '10' : '30'}s"
-           hx-swap="innerHTML">
+           hx-swap="innerHTML"
+           data-current-round="${ticker.currentRound}">
         ${chatTickerFragment(ticker.picks, isLive, ticker.currentRound)}
       </div>
 
@@ -556,7 +559,7 @@ export function chatPage(
       }
     });
 
-    // Round tab switching — re-fetch ticker for the selected round
+    // Round tab switching — fetch ticker for the selected round via htmx.ajax
     document.addEventListener('click', function(e) {
       var tab = e.target.closest('.ticker-round-tab');
       if (!tab) return;
@@ -564,11 +567,13 @@ export function chatPage(
       if (!round) return;
       var tickerEl = document.getElementById('chat-ticker');
       if (!tickerEl) return;
-      // Update the polling URL to include the round param
       var baseUrl = tickerEl.getAttribute('hx-get').split('?')[0];
-      tickerEl.setAttribute('hx-get', baseUrl + '?round=' + round);
+      var newUrl = baseUrl + '?round=' + round;
+      // Update the polling URL so future polls stay on this round
+      tickerEl.setAttribute('hx-get', newUrl);
       htmx.process(tickerEl);
-      htmx.trigger(tickerEl, 'htmx:trigger');
+      // Immediately fetch the new round
+      htmx.ajax('GET', newUrl, {target: '#chat-ticker', swap: 'innerHTML'});
     });
 
     // ─── Dedup + update polling cursor + auto-scroll ───
