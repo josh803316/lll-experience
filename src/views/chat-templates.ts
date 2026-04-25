@@ -36,6 +36,7 @@ export interface TickerPick {
   playerName: string | null;
   position: string | null;
   athleteId?: string | null; // ESPN athlete id, when available
+  hasWriteup?: boolean; // true when an AI writeup is cached for this pick
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -270,8 +271,12 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
 
       if (isComplete) {
         const athleteAttr = p.athleteId ? ` data-athlete-id="${escapeHtml(p.athleteId)}"` : '';
+        const aiBadge = p.hasWriteup
+          ? `<span class="absolute top-1 right-1 px-1.5 py-[1px] rounded-full bg-blue-500/25 border border-blue-400/40 text-[8px] font-extrabold text-blue-200 tracking-widest leading-tight" title="AI pick analysis available">AI</span>`
+          : '';
         return `
         <button type="button" class="ticker-card ticker-card-clickable shrink-0 w-36 rounded-lg px-3 py-2 border border-slate-600 relative text-left hover:border-slate-400 transition-colors" data-pick="${p.pickNumber}"${athleteAttr} style="background:linear-gradient(135deg, ${tm.primary}40, ${tm.primary}15)">
+          ${aiBadge}
           <div class="flex items-center gap-2">
             ${teamLogo(tm, 'sm')}
             <div class="min-w-0 flex-1">

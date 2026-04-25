@@ -5,7 +5,7 @@
  */
 
 import {getDB} from '../db/index.js';
-import {apps, draftSettings, draftMockState, officialDraftResults} from '../db/schema.js';
+import {apps, draftSettings, draftMockState, officialDraftResults, pickWriteups} from '../db/schema.js';
 import {and, eq} from 'drizzle-orm';
 import {getFirstRoundTeams, getPositionForPlayer} from '../config/draft-data.js';
 import type {TickerPick} from '../views/chat-templates.js';
@@ -139,13 +139,32 @@ async function fetchLiveTickerFromESPN(year: number): Promise<{picks: TickerPick
   }
 }
 
+/** Look up which pickNumbers already have a cached AI writeup. */
+async function getWriteupPickNumbers(appId: number, year: number): Promise<Set<number>> {
+  try {
+    const db = getDB();
+    const rows = await db
+      .select({pickNumber: pickWriteups.pickNumber})
+      .from(pickWriteups)
+      .where(and(eq(pickWriteups.appId, appId), eq(pickWriteups.year, year)));
+    return new Set(rows.map((r) => r.pickNumber));
+  } catch (_) {
+    return new Set();
+  }
+}
+
 /** Build the full ticker state. ESPN-first, DB fallback. */
 export async function buildTickerData(appId: number, year: number): Promise<TickerState> {
   const draftLive = await isDraftLive(appId, year);
   const mockActive = await isMockActive(appId, year);
 
+  const writeupPicks = await getWriteupPickNumbers(appId, year);
+
   const live = await fetchLiveTickerFromESPN(year);
   if (live && live.picks.length > 0) {
+    for (const p of live.picks) {
+      p.hasWriteup = writeupPicks.has(p.pickNumber);
+    }
     return {picks: live.picks, draftLive, mockActive, currentRound: live.currentRound};
   }
 
@@ -168,6 +187,7 @@ export async function buildTickerData(appId: number, year: number): Promise<Tick
       playerName: result?.playerName ?? null,
       position: result?.playerName ? (getPositionForPlayer(result.playerName, year) ?? null) : null,
       athleteId: null,
+      hasWriteup: writeupPicks.has(num),
     });
   }
   return {picks, draftLive, mockActive, currentRound: 1};
