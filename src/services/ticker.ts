@@ -19,6 +19,13 @@ export interface TickerState {
   currentRound: number;
 }
 
+export interface NewsItem {
+  headline: string;
+  description: string;
+  link: string;
+  publishedAt?: string;
+}
+
 export interface PlayerDetail {
   athleteId: string | null;
   pickNumber: number;
@@ -27,17 +34,16 @@ export interface PlayerDetail {
   teamName: string;
   playerName: string | null;
   position: string | null;
-  jersey: string | null;
   height: string | null;
   weight: string | null;
-  displayDOB: string | null;
-  age: number | null;
   college: string | null;
-  hometown: string | null;
+  collegeAbbr: string | null;
   headshotUrl: string | null;
-  bio: string | null;
-  analysis: string | null;
+  draftGrade: string | null;
+  positionRank: string | null;
+  overallRank: string | null;
   espnLink: string | null;
+  news: NewsItem[];
 }
 
 async function isDraftLive(appId: number, year: number): Promise<boolean> {
@@ -163,10 +169,49 @@ export async function buildTickerData(appId: number, year: number): Promise<Tick
   return {picks, draftLive, mockActive, currentRound: 1};
 }
 
+/** Fetch news / scouting articles for a college athlete (uses ESPN alternativeId). */
+async function fetchAthleteNews(alternativeId: string): Promise<NewsItem[]> {
+  try {
+    const res = await fetch(
+      `https://site.web.api.espn.com/apis/common/v3/sports/football/college-football/athletes/${alternativeId}/overview`,
+      {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)},
+    );
+    if (!res.ok) {
+      return [];
+    }
+    const data = (await res.json()) as any;
+    const news: any[] = Array.isArray(data?.news) ? data.news : [];
+    return news
+      .map(
+        (n: any): NewsItem => ({
+          headline: String(n?.headline ?? n?.linkText ?? ''),
+          description: String(n?.description ?? ''),
+          link: String(n?.links?.web?.href ?? ''),
+          publishedAt: n?.lastModified ?? n?.published ?? undefined,
+        }),
+      )
+      .filter((n) => n.headline && n.link)
+      .slice(0, 4);
+  } catch (_) {
+    return [];
+  }
+}
+
+/** Pull a named attribute (e.g. "grade", "rank", "overall") from ESPN athlete attributes. */
+function readAttr(attrs: any[] | undefined, name: string): string | null {
+  if (!Array.isArray(attrs)) {
+    return null;
+  }
+  const match = attrs.find((a: any) => a?.name === name);
+  const value = match?.displayValue ?? match?.value;
+  return value != null ? String(value) : null;
+}
+
 /**
- * Fetch detail for a specific pick from the live ESPN draft endpoint.
- * Returns the basic info the UI already has, then enriches it with the athlete
- * detail and overview endpoints when available.
+ * Fetch detail for a specific pick. The ESPN draft endpoint already returns
+ * a rich athlete object inline (height, weight, college team, headshot,
+ * draft grade, profile link), so we use that directly and only hit the
+ * external news endpoint for "what experts are saying" content.
  */
 export async function getPickDetail(year: number, pickNumber: number): Promise<PlayerDetail | null> {
   let pickEntry: any = null;
@@ -194,14 +239,24 @@ export async function getPickDetail(year: number, pickNumber: number): Promise<P
     return null;
   }
 
+  const a = pickEntry?.athlete ?? {};
   const overall = pickEntry?.overall ?? pickEntry?.pick ?? pickNumber;
   const round = pickEntry?.round ?? pickToRound(overall).round;
   const pickInRound = pickEntry?.pick ?? pickToRound(overall).pickInRound;
   const teamId = String(pickEntry?.teamId ?? '');
   const teamName = teamLookup.get(teamId) ?? pickEntry?.team?.displayName ?? `Pick ${overall}`;
   const isMade = pickEntry?.status === 'SELECTION_MADE' || pickEntry?.status === 'PICK_IS_IN';
-  const playerName = isMade ? (pickEntry?.athlete?.displayName ?? pickEntry?.displayName ?? null) : null;
-  const athleteId = pickEntry?.athlete?.id != null ? String(pickEntry.athlete.id) : null;
+  const playerName = isMade ? (a?.displayName ?? pickEntry?.displayName ?? null) : null;
+
+  // alternativeId is ESPN's player profile id (used in URLs); id is the prospect id.
+  const profileId = a?.alternativeId != null ? String(a.alternativeId) : null;
+  const athleteId = a?.id != null ? String(a.id) : null;
+
+  const collegeFull =
+    a?.team?.location && a?.team?.name
+      ? `${a.team.location} ${a.team.name}`
+      : (a?.team?.shortDisplayName ?? a?.college?.displayName ?? null);
+  const collegeAbbr = a?.team?.abbreviation ?? null;
 
   const detail: PlayerDetail = {
     athleteId,
@@ -210,68 +265,22 @@ export async function getPickDetail(year: number, pickNumber: number): Promise<P
     pickInRound,
     teamName,
     playerName,
-    position:
-      pickEntry?.athlete?.position?.abbreviation ??
-      (playerName ? (getPositionForPlayer(playerName, year) ?? null) : null),
-    jersey: null,
-    height: null,
-    weight: null,
-    displayDOB: null,
-    age: null,
-    college: pickEntry?.athlete?.college?.displayName ?? null,
-    hometown: null,
-    headshotUrl: pickEntry?.athlete?.headshot?.href ?? null,
-    bio: null,
-    analysis: null,
-    espnLink: athleteId ? `https://www.espn.com/nfl/player/_/id/${athleteId}` : null,
+    position: playerName ? (getPositionForPlayer(playerName, year) ?? null) : null,
+    height: a?.displayHeight ? String(a.displayHeight) : null,
+    weight: a?.displayWeight ? String(a.displayWeight) : null,
+    college: collegeFull,
+    collegeAbbr,
+    headshotUrl: a?.headshot?.href ?? null,
+    draftGrade: readAttr(a?.attributes, 'grade'),
+    positionRank: readAttr(a?.attributes, 'rank'),
+    overallRank: readAttr(a?.attributes, 'overall'),
+    espnLink: a?.link ?? (profileId ? `https://www.espn.com/nfl/player/_/id/${profileId}` : null),
+    news: [],
   };
 
-  // Best-effort enrichment: ESPN's athlete endpoint
-  if (athleteId) {
-    try {
-      const aRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/athletes/${athleteId}`, {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (aRes.ok) {
-        const aData = (await aRes.json()) as any;
-        const a = aData?.athlete ?? aData;
-        detail.height = (a?.displayHeight ?? a?.height) ? String(a.displayHeight ?? a.height) : detail.height;
-        detail.weight = (a?.displayWeight ?? a?.weight) ? String(a.displayWeight ?? a.weight) : detail.weight;
-        detail.jersey = a?.jersey ? String(a.jersey) : detail.jersey;
-        detail.displayDOB = a?.displayDOB ?? a?.dateOfBirth ?? detail.displayDOB;
-        detail.age = typeof a?.age === 'number' ? a.age : detail.age;
-        detail.college = a?.college?.displayName ?? a?.educationalInstitution?.displayName ?? detail.college;
-        const birthPlace =
-          a?.birthPlace?.displayText ?? [a?.birthPlace?.city, a?.birthPlace?.state].filter(Boolean).join(', ');
-        detail.hometown = birthPlace || detail.hometown;
-        detail.headshotUrl = a?.headshot?.href ?? detail.headshotUrl;
-        detail.position = a?.position?.abbreviation ?? detail.position;
-      }
-    } catch (_) {
-      // ignore — we still have basic info
-    }
-
-    // Overview endpoint occasionally has narrative content (news/draft analysis).
-    try {
-      const oRes = await fetch(
-        `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${athleteId}/overview`,
-        {signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)},
-      );
-      if (oRes.ok) {
-        const oData = (await oRes.json()) as any;
-        const news: any[] = Array.isArray(oData?.news) ? oData.news : [];
-        const lead = news.find((n) => n?.description) ?? news[0];
-        if (lead?.description) {
-          detail.analysis = String(lead.description);
-        }
-        const bio = oData?.bio ?? oData?.athlete?.bio;
-        if (bio && typeof bio === 'string') {
-          detail.bio = bio;
-        }
-      }
-    } catch (_) {
-      // ignore
-    }
+  // Fetch news in the background (using alternativeId — this is the right id for the URL)
+  if (profileId) {
+    detail.news = await fetchAthleteNews(profileId);
   }
 
   return detail;

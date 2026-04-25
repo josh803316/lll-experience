@@ -338,6 +338,13 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
 
 // ─── Pick detail modal ──────────────────────────────────────────────────────
 
+export interface PickModalNewsItem {
+  headline: string;
+  description: string;
+  link: string;
+  publishedAt?: string;
+}
+
 export interface PickModalData {
   pickNumber: number;
   round: number;
@@ -345,23 +352,44 @@ export interface PickModalData {
   teamName: string;
   playerName: string | null;
   position: string | null;
-  jersey: string | null;
   height: string | null;
   weight: string | null;
-  displayDOB: string | null;
-  age: number | null;
   college: string | null;
-  hometown: string | null;
+  collegeAbbr: string | null;
   headshotUrl: string | null;
-  bio: string | null;
-  analysis: string | null;
+  draftGrade: string | null;
+  positionRank: string | null;
+  overallRank: string | null;
   espnLink: string | null;
+  news: PickModalNewsItem[];
+}
+
+function relativeDate(iso?: string): string | null {
+  if (!iso) {
+    return null;
+  }
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) {
+    return null;
+  }
+  const diffMs = Date.now() - t;
+  const day = 86_400_000;
+  if (diffMs < day) {
+    const h = Math.max(1, Math.round(diffMs / 3_600_000));
+    return `${h}h ago`;
+  }
+  const days = Math.round(diffMs / day);
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+  return new Date(t).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
 }
 
 /** Render the modal body for a pick. Returns the inner content (without backdrop). */
 export function pickModalFragment(d: PickModalData): string {
   const tm = getTeamMeta(d.teamName);
   const ovrLabel = `Round ${d.round}, Pick ${d.pickInRound} (${d.pickNumber} OVR)`;
+
   const stats: Array<[string, string]> = [];
   if (d.position) {
     stats.push(['Position', d.position]);
@@ -375,14 +403,11 @@ export function pickModalFragment(d: PickModalData): string {
   if (d.weight) {
     stats.push(['Weight', d.weight]);
   }
-  if (d.jersey) {
-    stats.push(['Jersey', `#${d.jersey}`]);
+  if (d.positionRank) {
+    stats.push(['Position rank', `#${d.positionRank}`]);
   }
-  if (d.age != null) {
-    stats.push(['Age', String(d.age)]);
-  }
-  if (d.hometown) {
-    stats.push(['Hometown', d.hometown]);
+  if (d.overallRank) {
+    stats.push(['Overall rank', `#${d.overallRank}`]);
   }
 
   const statRows = stats
@@ -396,34 +421,44 @@ export function pickModalFragment(d: PickModalData): string {
     .join('');
 
   const headshot = d.headshotUrl
-    ? `<img src="${escapeHtml(d.headshotUrl)}" alt="${escapeHtml(d.playerName ?? '')}" class="w-20 h-20 rounded-full object-cover border-2 border-white/20 shrink-0" loading="lazy" />`
-    : `<div class="w-20 h-20 rounded-full flex items-center justify-center font-extrabold text-xl shrink-0 border-2 border-white/20" style="background:${tm.primary};color:${tm.secondary}">${escapeHtml((d.playerName ?? '?').charAt(0))}</div>`;
+    ? `<img src="${escapeHtml(d.headshotUrl)}" alt="${escapeHtml(d.playerName ?? '')}" class="w-24 h-24 rounded-full object-cover border-2 border-white/20 shrink-0 bg-slate-700" loading="lazy" />`
+    : `<div class="w-24 h-24 rounded-full flex items-center justify-center font-extrabold text-2xl shrink-0 border-2 border-white/20" style="background:${tm.primary};color:${tm.secondary}">${escapeHtml((d.playerName ?? '?').charAt(0))}</div>`;
 
-  const analysisBlock = d.analysis
-    ? `
-    <div class="mt-4 p-3 rounded-lg bg-slate-800/60 border border-slate-700">
-      <div class="text-[10px] uppercase tracking-wider text-slate-400 mb-1 font-semibold">Scouting / News</div>
-      <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(d.analysis)}</p>
-    </div>`
+  const gradeBadge = d.draftGrade
+    ? `<div class="shrink-0 flex flex-col items-center justify-center rounded-lg bg-amber-500/20 border border-amber-400/40 px-3 py-1">
+        <div class="text-[9px] uppercase tracking-wider text-amber-300 font-bold">Grade</div>
+        <div class="text-2xl font-black text-amber-200 leading-none">${escapeHtml(d.draftGrade)}</div>
+      </div>`
     : '';
 
-  const bioBlock =
-    d.bio && d.bio !== d.analysis
+  const newsBlock =
+    d.news.length > 0
       ? `
-    <div class="mt-3 p-3 rounded-lg bg-slate-800/60 border border-slate-700">
-      <div class="text-[10px] uppercase tracking-wider text-slate-400 mb-1 font-semibold">Bio</div>
-      <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(d.bio)}</p>
+    <div class="mt-4">
+      <div class="text-[10px] uppercase tracking-wider text-slate-400 mb-2 font-semibold">What experts are saying</div>
+      <div class="space-y-2">
+        ${d.news
+          .map((n) => {
+            const when = relativeDate(n.publishedAt);
+            return `
+        <a href="${escapeHtml(n.link)}" target="_blank" rel="noopener"
+           class="block p-3 rounded-lg bg-slate-800/60 border border-slate-700 hover:border-slate-500 hover:bg-slate-800 transition-colors">
+          <div class="text-sm font-semibold text-white leading-snug">${escapeHtml(n.headline)}</div>
+          ${n.description ? `<div class="text-xs text-slate-300 mt-1 leading-relaxed line-clamp-2">${escapeHtml(n.description)}</div>` : ''}
+          <div class="flex items-center gap-2 mt-1.5 text-[10px] text-slate-500">
+            <span>ESPN</span>
+            ${when ? `<span>·</span><span>${escapeHtml(when)}</span>` : ''}
+            <span class="ml-auto text-blue-400">Read →</span>
+          </div>
+        </a>`;
+          })
+          .join('')}
+      </div>
     </div>`
-      : '';
-
-  const noNarrative = !d.analysis && !d.bio;
-  const fallback = noNarrative
-    ? `
+      : `
     <div class="mt-4 p-3 rounded-lg bg-slate-800/60 border border-slate-700 text-sm text-slate-300">
-      No public scouting analysis available for this pick yet.
-      ${d.espnLink ? `<a href="${escapeHtml(d.espnLink)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 underline ml-1">View on ESPN →</a>` : ''}
-    </div>`
-    : '';
+      No expert commentary indexed for this pick yet.${d.espnLink ? ` <a href="${escapeHtml(d.espnLink)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 underline ml-1">View on ESPN →</a>` : ''}
+    </div>`;
 
   return `
   <div class="relative max-w-lg w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden" data-pick-modal-card>
@@ -438,19 +473,19 @@ export function pickModalFragment(d: PickModalData): string {
         ${headshot}
         <div class="min-w-0 flex-1">
           <div class="text-[10px] uppercase tracking-wider text-slate-300 font-semibold">${ovrLabel}</div>
-          <div class="text-xl font-bold text-white truncate">${escapeHtml(d.playerName ?? 'On the clock')}</div>
+          <div class="text-xl font-bold text-white">${escapeHtml(d.playerName ?? 'On the clock')}</div>
           <div class="text-sm text-slate-300 truncate">${escapeHtml(d.teamName)}${d.position ? ` · <span class="text-white/90 font-semibold">${escapeHtml(d.position)}</span>` : ''}</div>
+          ${d.college ? `<div class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(d.college)}${d.collegeAbbr ? ` (${escapeHtml(d.collegeAbbr)})` : ''}</div>` : ''}
         </div>
+        ${gradeBadge}
       </div>
     </div>
 
     <div class="p-5">
       ${statRows ? `<div class="grid grid-cols-1">${statRows}</div>` : ''}
-      ${analysisBlock}
-      ${bioBlock}
-      ${fallback}
+      ${newsBlock}
       ${
-        d.espnLink && !noNarrative
+        d.espnLink
           ? `<div class="mt-3 text-right"><a href="${escapeHtml(d.espnLink)}" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 underline">View full profile on ESPN →</a></div>`
           : ''
       }
