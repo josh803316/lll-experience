@@ -1,6 +1,16 @@
 node_modules/
 .env
 .env.local
+.env.vercel
 dist/
 *.tsbuildinfo
 .DS_Store
+.vercel
+
+# Claude Code per-developer settings
+.claude/settings.local.json
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
