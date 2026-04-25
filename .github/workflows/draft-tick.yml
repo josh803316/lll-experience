@@ -1,14 +1,20 @@
 name: Draft Tick
 
-# Pings /api/cron/sync-draft-picks frequently during the draft. The endpoint
-# is idempotent — when there are no pending picks/writeups, it returns fast.
-# GitHub Actions enforces a 5-minute minimum for scheduled triggers and may
-# queue events under load, so expect some drift; this is good enough for
-# user-facing freshness during the draft.
+# Sync picks + generate writeups during the draft. GitHub Actions cron is
+# best-effort (5-min minimum + frequent queue skips), so each invocation
+# loops internally for ~4 minutes hitting the cron every 30s. That way a
+# single scheduled run covers a full 5-minute window even if subsequent
+# scheduled runs are delayed or skipped.
+#
+# Triggers: every 5 minutes (best-effort), on every push (immediate after
+# deploy), and on-demand via workflow_dispatch.
 
 on:
   schedule:
     - cron: '*/5 * * * *'
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +24,7 @@ concurrency:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - name: Sync picks + generate writeups
         env:
@@ -30,16 +36,27 @@ jobs:
             echo "::error::SITE_URL or CRON_SECRET secret is not set"
             exit 1
           fi
-          echo "=== Draft tick at $(date -u) ==="
-          for endpoint in sync-draft-picks generate-writeups; do
-            echo "→ /api/cron/$endpoint"
-            STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
-              -H "Authorization: Bearer $CRON_SECRET" \
-              "$SITE_URL/api/cron/$endpoint?batch=5")
-            echo "HTTP $STATUS"
-            cat /tmp/resp.json | head -c 600
+          echo "=== Draft tick window starting at $(date -u) ==="
+          # Loop for up to ~4 minutes (8 ticks * 30s). Even if scheduled runs
+          # are delayed/skipped, this guarantees frequent updates while one
+          # run is alive.
+          for tick in 1 2 3 4 5 6 7 8; do
             echo
-            if [ "$STATUS" != "200" ]; then
-              echo "::warning::$endpoint returned $STATUS"
+            echo "--- tick $tick / 8 at $(date -u +%H:%M:%S) ---"
+            for endpoint in sync-draft-picks generate-writeups; do
+              STATUS=$(curl -sS -o /tmp/resp.json -w "%{http_code}" --max-time 25 \
+                -H "Authorization: Bearer $CRON_SECRET" \
+                "$SITE_URL/api/cron/$endpoint?batch=5" || echo "000")
+              BODY=$(cat /tmp/resp.json 2>/dev/null | head -c 250 || true)
+              echo "$endpoint: HTTP $STATUS — $BODY"
+              if [ "$STATUS" != "200" ]; then
+                echo "::warning::$endpoint returned $STATUS"
+              fi
+            done
+            # Sleep between ticks unless this was the last one
+            if [ "$tick" != "8" ]; then
+              sleep 30
             fi
           done
+          echo
+          echo "=== Tick window done at $(date -u) ==="
