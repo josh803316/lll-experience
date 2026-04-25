@@ -450,28 +450,31 @@ export function chatPage(
     .msg-bubble .react-bar.active { display: block !important; }
     .ticker-scroll::-webkit-scrollbar { display: none; }
   </style>
-  <div class="min-h-screen bg-slate-800 text-gray-100 flex flex-col">
+  <div class="bg-slate-800 text-gray-100 flex flex-col overflow-hidden" style="height:100dvh">
     ${draftTopBar(year, 'chat', isAdmin)}
-    <div class="flex-1 flex flex-col max-w-4xl w-full mx-auto px-4 pt-3 pb-4 overflow-hidden" style="height: calc(100dvh - 57px)">
+    <div class="flex-1 flex flex-col min-h-0 max-w-4xl w-full mx-auto px-4 pt-3 pb-4">
 
-      <!-- Group selector -->
-      <div class="shrink-0 mb-2">
-        ${chatGroupBar(groups, activeGroupId, year)}
-        ${chatInviteSection(activeGroup.id, year, activeGroup.isDefault)}
-      </div>
+      <!-- Scrollable messages area; ticker sticks to top so older messages scroll behind it -->
+      <div id="chat-messages-scroll" class="flex-1 overflow-y-auto min-h-0 -mx-1 px-1">
 
-      <!-- Draft ticker — polls every 10s when live, 30s otherwise -->
-      <div id="chat-ticker" class="shrink-0 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 mb-3"
-           hx-get="/draft/${year}/chat/ticker"
-           hx-trigger="every ${isLive ? '10' : '30'}s"
-           hx-swap="innerHTML"
-           data-current-round="${ticker.currentRound}">
-        ${chatTickerFragment(ticker.picks, isLive, ticker.currentRound)}
-      </div>
+        <!-- Sticky header: group selector + ticker -->
+        <div class="sticky top-0 z-20 bg-slate-800 pb-2 -mx-1 px-1">
+          <div class="mb-2">
+            ${chatGroupBar(groups, activeGroupId, year)}
+            ${chatInviteSection(activeGroup.id, year, activeGroup.isDefault)}
+          </div>
 
-      <!-- Messages area -->
-      <div id="chat-messages-scroll" class="flex-1 overflow-y-auto min-h-0 px-1 py-2">
-        <div id="chat-messages">
+          <!-- Draft ticker — polls every 10s when live, 30s otherwise -->
+          <div id="chat-ticker" class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg px-3 py-2"
+               hx-get="/draft/${year}/chat/ticker"
+               hx-trigger="every ${isLive ? '10' : '30'}s"
+               hx-swap="innerHTML"
+               data-current-round="${ticker.currentRound}">
+            ${chatTickerFragment(ticker.picks, isLive, ticker.currentRound)}
+          </div>
+        </div>
+
+        <div id="chat-messages" class="py-2">
           ${messagesHtml}
         </div>
         <!-- Polling sentinel -->
@@ -542,11 +545,16 @@ export function chatPage(
 
       ticker.addEventListener('scroll', updateArrows, {passive: true});
 
-      // Auto-scroll to "On The Clock" card (has border-amber-400)
+      // Auto-scroll so the most-recently-completed pick is at the left edge,
+      // keeping it, the on-the-clock card, and upcoming picks all in view.
       var onClock = ticker.querySelector('.border-amber-400');
       if (onClock) {
-        var offset = onClock.offsetLeft - ticker.offsetLeft - 40;
+        var anchor = onClock.previousElementSibling || onClock;
+        var offset = anchor.offsetLeft - ticker.offsetLeft - 8;
         ticker.scrollLeft = Math.max(0, offset);
+      } else {
+        // Round complete: show the tail (latest completed pick) on the right
+        ticker.scrollLeft = ticker.scrollWidth;
       }
       setTimeout(updateArrows, 50);
     }
