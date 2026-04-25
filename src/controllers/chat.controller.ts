@@ -1,32 +1,20 @@
 import {Elysia, t} from 'elysia';
 import {authGuard} from '../guards/auth-guard.js';
 import {getDB} from '../db/index.js';
-import {
-  apps,
-  users,
-  chatGroups,
-  chatGroupMembers,
-  chatMessages,
-  chatMessageReactions,
-  officialDraftResults,
-  draftSettings,
-  draftMockState,
-} from '../db/schema.js';
+import {apps, users, chatGroups, chatGroupMembers, chatMessages, chatMessageReactions} from '../db/schema.js';
 import {eq, and, gt, asc, desc, sql, inArray} from 'drizzle-orm';
 import {UsersModel} from '../models/users.model.js';
 import {getClerkProfile, isAdminUserId} from '../lib/clerk-email.js';
-import {getFirstRoundTeams, CURRENT_DRAFT_YEAR, getPositionForPlayer} from '../config/draft-data.js';
 import {
   chatPage,
   chatMessagesFragment,
   chatSingleMessageFragment,
-  chatTickerFragment,
   messageReactionsFragment,
   type ChatMessageDisplay,
   type ChatGroupDisplay,
-  type TickerPick,
   type ReactionGroup,
 } from '../views/chat-templates.js';
+import {buildTickerData} from '../services/ticker.js';
 
 const usersModel = new UsersModel();
 
@@ -237,146 +225,6 @@ async function loadMessages(
   return result;
 }
 
-async function isDraftLive(appId: number, year: number): Promise<boolean> {
-  const db = getDB();
-  const [row] = await db
-    .select()
-    .from(draftSettings)
-    .where(and(eq(draftSettings.appId, appId), eq(draftSettings.year, year)))
-    .limit(1);
-  return row?.draftStartedAt != null;
-}
-
-async function isMockActive(appId: number, year: number): Promise<boolean> {
-  const db = getDB();
-  const [row] = await db
-    .select()
-    .from(draftMockState)
-    .where(and(eq(draftMockState.appId, appId), eq(draftMockState.year, year)))
-    .limit(1);
-  return !!row;
-}
-
-interface TickerState {
-  picks: TickerPick[];
-  draftLive: boolean;
-  mockActive: boolean;
-  currentRound: number;
-}
-
-/** Compute round and pick-in-round from overall pick number. NFL draft has 32 picks per round (roughly). */
-function pickToRound(overall: number): {round: number; pickInRound: number} {
-  // Standard: 32 picks per round for R1, may vary in later rounds due to compensatory
-  // For simplicity, use the ESPN-provided round info when available; this is a fallback
-  const round = Math.ceil(overall / 32);
-  const pickInRound = overall - (round - 1) * 32;
-  return {round, pickInRound};
-}
-
-/** Fetch live draft data directly from ESPN API for the ticker. */
-async function fetchLiveTickerFromESPN(year: number): Promise<{picks: TickerPick[]; currentRound: number} | null> {
-  try {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/draft?season=${year}`;
-    const res = await fetch(url, {signal: AbortSignal.timeout(10000)});
-    if (!res.ok) {
-      return null;
-    }
-
-    const data = (await res.json()) as any;
-    const allPicks: any[] = Array.isArray(data?.picks) ? data.picks : [];
-    if (allPicks.length === 0) {
-      return null;
-    }
-
-    // Build team lookup
-    const teamLookup = new Map<string, string>();
-    if (Array.isArray(data?.teams)) {
-      for (const t of data.teams) {
-        if (t?.id && t?.displayName) {
-          teamLookup.set(String(t.id), t.displayName);
-        }
-      }
-    }
-
-    // Find the "on the clock" pick — first one without SELECTION_MADE status
-    let currentRound = 1;
-    const onClock = allPicks.find((p: any) => p?.status && p.status !== 'SELECTION_MADE' && p.status !== 'PICK_IS_IN');
-    if (onClock) {
-      currentRound = onClock.round ?? pickToRound(onClock.overall ?? 1).round;
-    } else {
-      // All picks made — show the last round that has picks
-      const lastMade = allPicks.filter((p: any) => p?.status === 'SELECTION_MADE' || p?.status === 'PICK_IS_IN');
-      if (lastMade.length > 0) {
-        currentRound = lastMade[lastMade.length - 1].round ?? 1;
-      }
-    }
-
-    console.log(
-      `[TICKER] ESPN live: ${allPicks.length} picks, currentRound=${currentRound}, onClock=${onClock?.overall ?? 'none'}`,
-    );
-
-    const picks: TickerPick[] = allPicks.map((p: any) => {
-      const overall = p?.overall ?? p?.pick ?? 0;
-      const round = p?.round ?? pickToRound(overall).round;
-      const pickInRound = p?.pick ?? pickToRound(overall).pickInRound;
-      const teamId = String(p?.teamId ?? '');
-      const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? `Pick ${overall}`;
-      const isMade = p?.status === 'SELECTION_MADE' || p?.status === 'PICK_IS_IN';
-      const playerName = isMade ? (p?.athlete?.displayName ?? p?.displayName ?? null) : null;
-      const posId = p?.athlete?.position?.id;
-
-      return {
-        pickNumber: overall,
-        round,
-        pickInRound,
-        teamName,
-        playerName,
-        position: playerName ? (getPositionForPlayer(playerName, year) ?? null) : null,
-      };
-    });
-
-    return {picks, currentRound};
-  } catch (err: any) {
-    console.error('[TICKER] ESPN fetch failed:', err?.message ?? err);
-    return null;
-  }
-}
-
-async function buildTickerData(appId: number, year: number): Promise<TickerState> {
-  const draftLive = await isDraftLive(appId, year);
-  const mockActive = await isMockActive(appId, year);
-
-  // Try live ESPN data first (always fresh)
-  const live = await fetchLiveTickerFromESPN(year);
-  if (live && live.picks.length > 0) {
-    return {picks: live.picks, draftLive, mockActive, currentRound: live.currentRound};
-  }
-
-  console.log('[TICKER] ESPN fetch returned no data, falling back to DB');
-  // Fallback: DB data (Round 1 only from officialDraftResults)
-  const db = getDB();
-  const teams = getFirstRoundTeams(year);
-  const official = await db
-    .select()
-    .from(officialDraftResults)
-    .where(and(eq(officialDraftResults.appId, appId), eq(officialDraftResults.year, year)))
-    .orderBy(officialDraftResults.pickNumber);
-
-  const picks: TickerPick[] = [];
-  for (let num = 1; num <= 32; num++) {
-    const result = official.find((r) => r.pickNumber === num);
-    picks.push({
-      pickNumber: num,
-      round: 1,
-      pickInRound: num,
-      teamName: result?.teamName || teams[num] || `Pick ${num}`,
-      playerName: result?.playerName ?? null,
-      position: result?.playerName ? (getPositionForPlayer(result.playerName, year) ?? null) : null,
-    });
-  }
-  return {picks, draftLive, mockActive, currentRound: 1};
-}
-
 // ─── Controller ──────────────────────────────────────────────────────────────
 
 export const chatController = new Elysia({prefix: '/draft'})
@@ -517,25 +365,6 @@ export const chatController = new Elysia({prefix: '/draft'})
       }),
     },
   )
-
-  // GET /draft/:year/chat/ticker — draft ticker fragment
-  .get('/:year/chat/ticker', async (ctx: any) => {
-    const year = parseYear(ctx.params?.year);
-    if (year == null) {
-      ctx.set.status = 404;
-      return '';
-    }
-
-    const app = await getApp('nfl-draft');
-    if (!app) {
-      return '';
-    }
-
-    const ticker = await buildTickerData(app.id, year);
-    const requestedRound = Number(ctx.query?.round) || ticker.currentRound;
-    ctx.set.headers['Content-Type'] = 'text/html';
-    return chatTickerFragment(ticker.picks, ticker.draftLive || ticker.mockActive, requestedRound);
-  })
 
   // POST /draft/:year/chat/groups — create a new group
   .post(

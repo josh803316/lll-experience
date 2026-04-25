@@ -6,6 +6,7 @@ import {clerkPlugin} from 'elysia-clerk';
 import {draftController} from './controllers/draft.controller.js';
 import {adminController} from './controllers/admin.controller.js';
 import {chatController} from './controllers/chat.controller.js';
+import {tickerController} from './controllers/ticker.controller.js';
 import {authGuard} from './guards/auth-guard.js';
 import {useLogger} from './middleware/logger.middleware.js';
 import {isProtectedRoute} from './config/route-protection.js';
@@ -88,6 +89,7 @@ const app = baseApp
 
   .use(draftController)
   .use(chatController)
+  .use(tickerController)
   .use(adminController)
 
   .onError(({error, code, request}) => {

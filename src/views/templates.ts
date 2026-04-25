@@ -6,6 +6,7 @@ import {
 } from '../config/draft-data.js';
 import {PLAYER_SCOUTING_2026} from '../config/player-scouting.js';
 import {getAppVersion} from '../lib/version.js';
+import {globalTickerSection} from './ticker-section.js';
 
 export interface App {
   id: number;
@@ -580,6 +581,7 @@ export function draftLayout(
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100" data-draft-year="${year}">
     ${draftTopBar(year, 'picks', isAdmin)}
+    ${globalTickerSection(year)}
     <div class="max-w-7xl mx-auto py-6 px-4">
       ${yearSelector}
 
@@ -2450,6 +2452,7 @@ export function leaderboardPage(
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
     ${draftTopBar(year, 'leaderboard')}
+    ${globalTickerSection(year)}
     <div class="max-w-5xl mx-auto py-8 px-4">
       ${yearSelector(year, availableYears, 'leaderboard')}
       <div class="${showRightPanel ? 'grid grid-cols-1 lg:grid-cols-[1fr_24rem] gap-6 items-start' : ''}">
@@ -2503,6 +2506,7 @@ export function submittedMocksPage(
     .join('');
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
+    ${globalTickerSection(year)}
     <div class="max-w-4xl mx-auto py-8 px-4">
       <a href="/draft/${year}" class="text-sm text-slate-300 hover:text-white">← Back to draft</a>
       <h1 class="text-2xl font-bold mt-2">${year} — Submitted mocks</h1>
@@ -2546,6 +2550,7 @@ export function resultsPage(
       : '<tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">No official results yet. Results will update when the draft runs and data is entered (or synced from the NFL).</td></tr>';
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
+    ${globalTickerSection(year)}
     <div class="max-w-4xl mx-auto py-8 px-4">
       <a href="/draft/${year}" class="text-sm text-slate-300 hover:text-white">← Back to draft</a>
       <h1 class="text-2xl font-bold mt-2">${year} — Results</h1>

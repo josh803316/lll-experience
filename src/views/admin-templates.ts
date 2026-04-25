@@ -1,5 +1,6 @@
 import {baseLayout, escapeHtml, type Pick} from './templates.js';
 import {getFirstRoundTeams, CURRENT_DRAFT_YEAR} from '../config/draft-data.js';
+import {globalTickerSection} from './ticker-section.js';
 
 export interface HistoricalWinner {
   id: number;
@@ -250,6 +251,7 @@ export function adminDashboardPage(
   const content = `
   <div class="min-h-screen bg-gray-50">
     ${adminTopBar(year)}
+    ${globalTickerSection(year)}
     <div class="max-w-7xl mx-auto py-6 px-4 space-y-6">
 
       <!-- Status bar -->
@@ -488,6 +490,7 @@ export function simulatorPage(
   const content = `
   <div class="min-h-screen bg-slate-800 text-gray-100">
     ${adminTopBar(year)}
+    ${globalTickerSection(year)}
     <div class="max-w-4xl mx-auto py-6 px-4">
       <p class="text-slate-400 text-sm mb-4">
         Simulate the draft by revealing one pick at a time. Your saved picks are shown in "Your Pick". Random players are assigned as official picks. Score updates live. Only visible to admins.

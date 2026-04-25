@@ -1,4 +1,5 @@
 import {baseLayout, escapeHtml, draftTopBar} from './templates.js';
+import {pickModalContainer, pickModalScript} from './ticker-section.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ export interface TickerPick {
   teamName: string;
   playerName: string | null;
   position: string | null;
+  athleteId?: string | null; // ESPN athlete id, when available
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -267,17 +269,19 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
       }
 
       if (isComplete) {
+        const athleteAttr = p.athleteId ? ` data-athlete-id="${escapeHtml(p.athleteId)}"` : '';
         return `
-        <div class="ticker-card shrink-0 w-36 rounded-lg px-3 py-2 border border-slate-600 relative" data-pick="${p.pickNumber}" style="background:linear-gradient(135deg, ${tm.primary}40, ${tm.primary}15)">
+        <button type="button" class="ticker-card ticker-card-clickable shrink-0 w-36 rounded-lg px-3 py-2 border border-slate-600 relative text-left hover:border-slate-400 transition-colors" data-pick="${p.pickNumber}"${athleteAttr} style="background:linear-gradient(135deg, ${tm.primary}40, ${tm.primary}15)">
           <div class="flex items-center gap-2">
             ${teamLogo(tm, 'sm')}
             <div class="min-w-0 flex-1">
               <div class="text-white text-[11px] font-bold truncate">${escapeHtml(p.playerName ?? '')}</div>
-              <div class="text-[10px] text-slate-400 truncate">${escapeHtml(p.teamName)}${p.position ? ` · <span class="text-slate-300">${escapeHtml(p.position)}</span>` : ''}</div>
+              ${p.position ? `<div class="text-[10px] font-semibold text-slate-300 truncate">${escapeHtml(p.position)}</div>` : ''}
+              <div class="text-[10px] text-slate-400 truncate">${escapeHtml(p.teamName)}</div>
             </div>
           </div>
           <div class="text-[9px] text-slate-500 mt-1">${ovrLabel}</div>
-        </div>`;
+        </button>`;
       }
 
       // Future pick
@@ -329,6 +333,141 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
     <button type="button" class="ticker-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
     </button>
+  </div>`;
+}
+
+// ─── Pick detail modal ──────────────────────────────────────────────────────
+
+export interface PickModalData {
+  pickNumber: number;
+  round: number;
+  pickInRound: number;
+  teamName: string;
+  playerName: string | null;
+  position: string | null;
+  jersey: string | null;
+  height: string | null;
+  weight: string | null;
+  displayDOB: string | null;
+  age: number | null;
+  college: string | null;
+  hometown: string | null;
+  headshotUrl: string | null;
+  bio: string | null;
+  analysis: string | null;
+  espnLink: string | null;
+}
+
+/** Render the modal body for a pick. Returns the inner content (without backdrop). */
+export function pickModalFragment(d: PickModalData): string {
+  const tm = getTeamMeta(d.teamName);
+  const ovrLabel = `Round ${d.round}, Pick ${d.pickInRound} (${d.pickNumber} OVR)`;
+  const stats: Array<[string, string]> = [];
+  if (d.position) {
+    stats.push(['Position', d.position]);
+  }
+  if (d.college) {
+    stats.push(['College', d.college]);
+  }
+  if (d.height) {
+    stats.push(['Height', d.height]);
+  }
+  if (d.weight) {
+    stats.push(['Weight', d.weight]);
+  }
+  if (d.jersey) {
+    stats.push(['Jersey', `#${d.jersey}`]);
+  }
+  if (d.age != null) {
+    stats.push(['Age', String(d.age)]);
+  }
+  if (d.hometown) {
+    stats.push(['Hometown', d.hometown]);
+  }
+
+  const statRows = stats
+    .map(
+      ([k, v]) => `
+      <div class="flex justify-between gap-4 py-1.5 border-b border-slate-700 last:border-0">
+        <span class="text-xs text-slate-400">${escapeHtml(k)}</span>
+        <span class="text-xs font-semibold text-white text-right">${escapeHtml(v)}</span>
+      </div>`,
+    )
+    .join('');
+
+  const headshot = d.headshotUrl
+    ? `<img src="${escapeHtml(d.headshotUrl)}" alt="${escapeHtml(d.playerName ?? '')}" class="w-20 h-20 rounded-full object-cover border-2 border-white/20 shrink-0" loading="lazy" />`
+    : `<div class="w-20 h-20 rounded-full flex items-center justify-center font-extrabold text-xl shrink-0 border-2 border-white/20" style="background:${tm.primary};color:${tm.secondary}">${escapeHtml((d.playerName ?? '?').charAt(0))}</div>`;
+
+  const analysisBlock = d.analysis
+    ? `
+    <div class="mt-4 p-3 rounded-lg bg-slate-800/60 border border-slate-700">
+      <div class="text-[10px] uppercase tracking-wider text-slate-400 mb-1 font-semibold">Scouting / News</div>
+      <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(d.analysis)}</p>
+    </div>`
+    : '';
+
+  const bioBlock =
+    d.bio && d.bio !== d.analysis
+      ? `
+    <div class="mt-3 p-3 rounded-lg bg-slate-800/60 border border-slate-700">
+      <div class="text-[10px] uppercase tracking-wider text-slate-400 mb-1 font-semibold">Bio</div>
+      <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(d.bio)}</p>
+    </div>`
+      : '';
+
+  const noNarrative = !d.analysis && !d.bio;
+  const fallback = noNarrative
+    ? `
+    <div class="mt-4 p-3 rounded-lg bg-slate-800/60 border border-slate-700 text-sm text-slate-300">
+      No public scouting analysis available for this pick yet.
+      ${d.espnLink ? `<a href="${escapeHtml(d.espnLink)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 underline ml-1">View on ESPN →</a>` : ''}
+    </div>`
+    : '';
+
+  return `
+  <div class="relative max-w-lg w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden" data-pick-modal-card>
+    <button type="button" data-pick-modal-close
+      class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600 transition-colors z-10"
+      aria-label="Close">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+
+    <div class="p-5" style="background:linear-gradient(135deg, ${tm.primary}66, ${tm.primary}10)">
+      <div class="flex items-start gap-4">
+        ${headshot}
+        <div class="min-w-0 flex-1">
+          <div class="text-[10px] uppercase tracking-wider text-slate-300 font-semibold">${ovrLabel}</div>
+          <div class="text-xl font-bold text-white truncate">${escapeHtml(d.playerName ?? 'On the clock')}</div>
+          <div class="text-sm text-slate-300 truncate">${escapeHtml(d.teamName)}${d.position ? ` · <span class="text-white/90 font-semibold">${escapeHtml(d.position)}</span>` : ''}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="p-5">
+      ${statRows ? `<div class="grid grid-cols-1">${statRows}</div>` : ''}
+      ${analysisBlock}
+      ${bioBlock}
+      ${fallback}
+      ${
+        d.espnLink && !noNarrative
+          ? `<div class="mt-3 text-right"><a href="${escapeHtml(d.espnLink)}" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 underline">View full profile on ESPN →</a></div>`
+          : ''
+      }
+    </div>
+  </div>`;
+}
+
+/** A standard "no detail available" fragment used when ESPN has no record. */
+export function pickModalEmptyFragment(pickNumber: number, year: number): string {
+  return `
+  <div class="relative max-w-md w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl p-6 text-center" data-pick-modal-card>
+    <button type="button" data-pick-modal-close
+      class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600 transition-colors"
+      aria-label="Close">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+    <div class="text-sm text-slate-300">Detail isn't available yet for pick ${pickNumber} of the ${year} draft.</div>
   </div>`;
 }
 
@@ -465,8 +604,8 @@ export function chatPage(
           </div>
 
           <!-- Draft ticker — polls every 10s when live, 30s otherwise -->
-          <div id="chat-ticker" class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg px-3 py-2"
-               hx-get="/draft/${year}/chat/ticker"
+          <div id="chat-ticker" class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg px-3 py-2" data-year="${year}"
+               hx-get="/draft/${year}/ticker"
                hx-trigger="every ${isLive ? '10' : '30'}s"
                hx-swap="innerHTML"
                data-current-round="${ticker.currentRound}">
@@ -509,6 +648,8 @@ export function chatPage(
       </div>
     </div>
   </div>
+  ${pickModalContainer()}
+  ${pickModalScript(year)}
 
   <script>
   (function() {
