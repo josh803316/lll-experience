@@ -35,7 +35,7 @@ const config = [
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'patches/'],
+    ignores: ['dist/', 'node_modules/', 'patches/', 'tests/', 'playwright.config.ts'],
   },
 ];
 
