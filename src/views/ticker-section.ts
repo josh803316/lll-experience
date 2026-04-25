@@ -47,6 +47,16 @@ export function pickModalScript(defaultYear: number): string {
     }
     window.__closePickModal = closeModal;
 
+    function getFreshToken() {
+      // Prefer an on-demand Clerk token so we don't fire a stale one. Falls
+      // back to the cached __clerkToken populated by the global refresher.
+      var clerk = window.Clerk;
+      if (clerk && clerk.session && typeof clerk.session.getToken === 'function') {
+        return clerk.session.getToken().catch(function () { return window.__clerkToken; });
+      }
+      return Promise.resolve(window.__clerkToken);
+    }
+
     document.addEventListener('click', function(e) {
       var card = e.target.closest && e.target.closest('.ticker-card-clickable');
       if (card) {
@@ -55,13 +65,23 @@ export function pickModalScript(defaultYear: number): string {
         var yearEl = card.closest('[data-year]');
         var year = yearEl ? (yearEl.getAttribute('data-year') || DEFAULT_YEAR) : DEFAULT_YEAR;
         openModal('<div class="max-w-md w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl p-6 text-center text-slate-300 text-sm">Loading…</div>');
-        fetch('/draft/' + year + '/pick/' + encodeURIComponent(pick), {
-          headers: {'Authorization': window.__clerkToken ? 'Bearer ' + window.__clerkToken : ''}
+        getFreshToken().then(function(token) {
+          return fetch('/draft/' + year + '/pick/' + encodeURIComponent(pick), {
+            headers: token ? {'Authorization': 'Bearer ' + token} : {},
+            cache: 'no-store',
+          });
         })
-        .then(function(r) { return r.ok ? r.text() : Promise.reject(r.status); })
+        .then(function(r) {
+          if (r.ok) return r.text();
+          return Promise.reject(new Error('HTTP ' + r.status));
+        })
         .then(function(html) { openModal(html); })
-        .catch(function() {
-          openModal('<div class="max-w-md w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl p-6 text-center text-slate-300 text-sm">Couldn\\'t load pick detail.</div>');
+        .catch(function(err) {
+          var msg = (err && err.message) ? err.message : 'unknown';
+          openModal('<div class="relative max-w-md w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl p-6 text-center text-slate-300 text-sm" data-pick-modal-card>'
+            + '<button type="button" data-pick-modal-close class="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-600">×</button>'
+            + 'Couldn\\'t load pick detail (' + msg + ').'
+            + '</div>');
         });
         return;
       }

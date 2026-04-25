@@ -92,7 +92,9 @@ async function fetchFromESPNSite(
   const teamsBySlot = new Map<number, string>();
   for (const p of allPicks) {
     const overall = p?.overall ?? p?.pick;
-    if (!overall || overall > 32) {continue;} // team slot map only for R1
+    if (!overall || overall > 32) {
+      continue;
+    } // team slot map only for R1
     const teamId = String(p?.teamId ?? '');
     const teamName = teamLookup.get(teamId) ?? p?.team?.displayName ?? null;
     if (teamName) {
@@ -328,6 +330,19 @@ export async function runDraftAutoTick(year: number): Promise<void> {
     const {synced, source} = await syncOfficialPicksFromMultipleSources(appId, year);
     if (synced > 0) {
       console.log('[DRAFT-AUTO] Synced', synced, 'official picks from', source, 'for year', year);
+    }
+
+    // Best-effort: generate writeups for newly-announced picks. Bounded to a
+    // small batch so a single tick can't time out. Errors are swallowed so
+    // they never block sync.
+    try {
+      const {generatePendingPickWriteups} = await import('./pick-writeup-cron.js');
+      const result = await generatePendingPickWriteups(year, 2);
+      if (result.generated > 0) {
+        console.log('[DRAFT-AUTO] Generated', result.generated, 'writeups for year', year);
+      }
+    } catch (err: any) {
+      console.error('[DRAFT-AUTO] Writeup generation failed:', err?.message ?? err);
     }
   }
 }
