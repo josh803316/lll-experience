@@ -1,0 +1,139 @@
+/* LLL Draft Analyzer — design tokens */
+:root {
+  /* Editorial cream + ink palette */
+  --paper: #f3ede0;
+  --paper-2: #ebe4d3;
+  --paper-3: #ded5bf;
+  --ink: #14110b;
+  --ink-2: #2a251a;
+  --ink-mute: #6b5e44;
+  --ink-faint: #8a7d62;
+  --rule: #1b160b;
+  --rule-soft: rgba(20, 17, 11, 0.18);
+
+  /* Single bold accent — vermilion */
+  --accent: #c9341d;
+  --accent-deep: #8a1f10;
+
+  /* Data colors — muted, harmonious */
+  --pos: #2f6b3a; /* good / hit */
+  --neg: #b03a26; /* bad / bust */
+  --neutral: #8a7d62;
+  --grade-a: #2f6b3a;
+  --grade-b: #5a7d2a;
+  --grade-c: #b88216;
+  --grade-d: #b03a26;
+  --grade-f: #6b1a10;
+
+  /* Type */
+  --serif: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+  --sans: 'Inter Tight', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Spacing */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 14px;
+}
+
+/* Optional dark "terminal" mode the tweaks panel can toggle */
+.theme-terminal {
+  --paper: #0c0f14;
+  --paper-2: #131720;
+  --paper-3: #1c2230;
+  --ink: #e8edf5;
+  --ink-2: #c2cad6;
+  --ink-mute: #7d8696;
+  --ink-faint: #54607a;
+  --rule: #2a3142;
+  --rule-soft: rgba(255, 255, 255, 0.08);
+  --accent: #ff7752;
+  --accent-deep: #d44a25;
+  --pos: #4ec07c;
+  --neg: #ff6f5f;
+  --grade-a: #4ec07c;
+  --grade-b: #9bd25a;
+  --grade-c: #f5c14a;
+  --grade-d: #ff8a5a;
+  --grade-f: #ff6f5f;
+}
+
+/* Element resets within prototype panels */
+.lll * {
+  box-sizing: border-box;
+}
+.lll {
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01', 'cv11', 'tnum';
+}
+.lll .mono {
+  font-family: var(--mono);
+  font-feature-settings: 'tnum', 'zero';
+  letter-spacing: -0.01em;
+}
+.lll .serif {
+  font-family: var(--serif);
+}
+.lll .rule {
+  border-top: 1px solid var(--rule);
+}
+.lll .rule-soft {
+  border-top: 1px solid var(--rule-soft);
+}
+.lll .eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.lll .tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grade chip */
+.lll .grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+.lll .grade.lg {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  border-radius: 4px;
+}
+.lll .grade.xl {
+  width: 72px;
+  height: 72px;
+  font-size: 38px;
+  border-radius: 6px;
+}
+
+/* Tiny sparkline fill */
+.lll .spark {
+  display: block;
+}
+
+/* Scrollbar trims inside frames */
+.lll ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.lll ::-webkit-scrollbar-thumb {
+  background: var(--rule-soft);
+  border-radius: 2px;
+}
+.lll ::-webkit-scrollbar-track {
+  background: transparent;
+}

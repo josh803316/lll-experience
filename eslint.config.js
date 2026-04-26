@@ -35,7 +35,15 @@ const config = [
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'patches/', 'tests/', 'playwright.config.ts'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'patches/',
+      'tests/',
+      'playwright.config.ts',
+      // GitHub Pages demo files — loaded via @babel/standalone in the browser, not part of the app build
+      '*.jsx',
+    ],
   },
 ];
 
