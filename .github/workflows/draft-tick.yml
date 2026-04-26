@@ -10,11 +10,8 @@ name: Draft Tick
 # deploy), and on-demand via workflow_dispatch.
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
-  push:
-    branches:
-      - main
+  # Schedule + push triggers disabled post-draft. Run manually via
+  # workflow_dispatch if you need to backfill writeups.
   workflow_dispatch:
     inputs:
       force:

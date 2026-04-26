@@ -1,9 +1,12 @@
 name: Keep Alive
 
 on:
-  # Once daily at noon UTC (8 AM ET) — keeps Supabase DB from pausing
+  # Twice weekly (Sun + Wed at noon UTC / 8 AM ET) — keeps Supabase DB from
+  # pausing. Supabase pauses free projects after 7 days of inactivity, and
+  # GitHub Actions cron is best-effort, so two runs/week gives headroom if
+  # one is skipped.
   schedule:
-    - cron: '0 12 * * *'
+    - cron: '0 12 * * 0,3'
   workflow_dispatch:
 
 jobs:
