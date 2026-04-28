@@ -162,6 +162,7 @@ export const chatMessages = pgTable('chat_messages', {
 });
 
 export const chatMessageReactions = pgTable('chat_message_reactions', {
+  id: serial('id').primaryKey(),
   messageId: integer('message_id')
     .references(() => chatMessages.id, {onDelete: 'cascade'})
     .notNull(),
