@@ -8,6 +8,7 @@ import {
   playerProfile,
   timelineFragment,
 } from '../views/analyzer-templates.js';
+import type {ExpertAccuracy, TeamSuccess} from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
 import {ExpertAuditService} from '../services/expert-audit.js';
 
@@ -29,13 +30,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/experts', async (ctx) => {
-    const data = await ExpertAuditService.getOracleLeaderboard(2023);
+    const data = (await ExpertAuditService.getOracleLeaderboard(2023)) as ExpertAccuracy[];
     ctx.set.headers['Content-Type'] = 'text/html';
     return expertLeaderboard(data, CLERK_KEY);
   })
 
   .get('/teams', (ctx) => {
-    const data = [
+    const data: TeamSuccess[] = [
       {team: 'Detroit Lions', retention: 92, value: 85, grade: 'A'},
       {team: 'Houston Texans', retention: 88, value: 94, grade: 'A+'},
       {team: 'Carolina Panthers', retention: 42, value: 15, grade: 'D'},
@@ -115,6 +116,6 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/fragment/top-experts-mini', async () => {
-    const data = await ExpertAuditService.getOracleLeaderboard(2023);
+    const data = (await ExpertAuditService.getOracleLeaderboard(2023)) as ExpertAccuracy[];
     return topExpertsMini(data);
   });
