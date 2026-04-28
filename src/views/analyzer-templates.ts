@@ -2,7 +2,7 @@ import {baseLayout} from './templates.js';
 
 export interface ExpertAccuracy {
   expertName: string;
-  org: string;
+  org: string | null;
   rmse: string;
   sampleSize: number;
 }
