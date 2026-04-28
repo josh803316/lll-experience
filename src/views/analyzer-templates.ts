@@ -67,50 +67,95 @@ export function analyzerDashboard(clerkKey?: string): string {
       </div>
     </header>
 
-    <main class="max-w-5xl mx-auto py-8 px-4 grid grid-cols-1 md:grid-cols-3 gap-8">
-      <!-- Live Feed / News -->
-      <section class="md:col-span-2 space-y-6">
-        <h2 class="text-2xl font-bold border-b-2 border-black pb-2 text-black">LATEST UPDATES</h2>
-        <div id="timeline-feed" hx-get="/analyzer/fragment/timeline" hx-trigger="load">
-          <p class="italic py-4 text-muted">Loading intel feed...</p>
-        </div>
-      </section>
+    <main class="max-w-5xl mx-auto py-8 px-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+        <!-- Main Content -->
+        <div class="md:col-span-2 space-y-12">
+          <!-- Hero Section -->
+          <section>
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-accent mb-2">State of the league · April 2026</div>
+            <h2 class="text-5xl font-bold tracking-tighter text-black leading-none mb-4">
+              Detroit is hitting on <span class="text-accent italic">4 of 5</span> first-rounders.
+            </h2>
+            <p class="text-lg text-muted serif italic max-w-xl">
+              LLL re-grades every pick on the day it ages: combine times, camp reps, snap counts, and retention.
+            </p>
+          </section>
 
-      <!-- Proprietary LLL Ratings Sidebar -->
-      <aside class="space-y-6">
-        <div class="card-paper p-6 rounded-lg border-t-4 border-accent">
-          <h3 class="font-bold text-lg mb-4 text-black">LLL RATINGS</h3>
-          <p class="text-xs text-muted mb-4 uppercase tracking-wider">Our proprietary success metrics</p>
-          <div class="space-y-4">
-            <div>
-              <div class="flex justify-between text-sm font-bold mb-1 text-black">
-                <span>RETENTION</span>
-                <span>84%</span>
-              </div>
-              <div class="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
-                <div class="h-full bg-accent" style="width: 84%"></div>
-              </div>
+          <!-- Latest Updates Feed -->
+          <section class="space-y-6">
+            <h3 class="text-xs font-bold uppercase tracking-[0.2em] border-b border-black pb-2 text-black">LATEST INTEL</h3>
+            <div id="timeline-feed" hx-get="/analyzer/fragment/timeline" hx-trigger="load">
+              <p class="italic py-4 text-muted text-sm">Loading intel feed...</p>
             </div>
-            <div>
-              <div class="flex justify-between text-sm font-bold mb-1 text-black">
-                <span>VALUE ADDED</span>
-                <span>+12.4</span>
+          </section>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-8">
+          <!-- Index Movers -->
+          <div class="card-paper p-6 rounded-lg border-t-8 border-black">
+            <h3 class="text-xs font-bold uppercase tracking-[0.2em] mb-4 text-black">INDEX MOVERS · 24H</h3>
+            <div class="space-y-4">
+              <div class="flex justify-between items-center">
+                <div>
+                  <div class="font-bold text-sm text-black">LIONS</div>
+                  <div class="text-[10px] text-muted uppercase">Hutchinson uncapped</div>
+                </div>
+                <div class="font-mono font-bold text-accent">+1.4</div>
               </div>
-              <div class="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
-                <div class="h-full bg-black" style="width: 70%"></div>
+              <div class="flex justify-between items-center border-t border-black/5 pt-4">
+                <div>
+                  <div class="font-bold text-sm text-black">EAGLES</div>
+                  <div class="text-[10px] text-muted uppercase">Rookie LB earns 1s</div>
+                </div>
+                <div class="font-mono font-bold text-accent">+0.8</div>
+              </div>
+              <div class="flex justify-between items-center border-t border-black/5 pt-4">
+                <div>
+                  <div class="font-bold text-sm text-black">PANTHERS</div>
+                  <div class="text-[10px] text-muted uppercase">2023 QB benched</div>
+                </div>
+                <div class="font-mono font-bold text-black opacity-40">−0.6</div>
               </div>
             </div>
           </div>
-          <button class="w-full mt-6 py-2 border-2 border-black font-bold text-xs uppercase tracking-widest hover:bg-black hover:text-white transition-all text-black">View All Teams</button>
-        </div>
 
-        <div class="card-paper p-6 rounded-lg">
-          <h3 class="font-bold text-lg mb-2 text-black">TOP EXPERTS</h3>
-          <div id="top-experts-mini" hx-get="/analyzer/api/experts/leaderboard" hx-trigger="load" hx-swap="outerHTML">
-             <p class="text-sm italic text-muted">Calculating accuracy...</p>
+          <!-- Top Experts Mini-Board -->
+          <div class="card-paper p-6 rounded-lg">
+            <h3 class="text-xs font-bold uppercase tracking-[0.2em] mb-4 text-black">TOP ACCURACY · 10Y</h3>
+            <div id="top-experts-mini" hx-get="/analyzer/fragment/top-experts-mini" hx-trigger="load">
+               <p class="text-xs italic text-muted text-center py-4">Calculating receipts...</p>
+            </div>
+          </div>
+
+          <!-- LLL Ratings Card -->
+          <div class="card-paper p-6 rounded-lg border-b-8 border-accent">
+            <h3 class="font-bold text-lg mb-4 text-black font-serif">LLL RATINGS</h3>
+            <div class="space-y-4">
+              <div>
+                <div class="flex justify-between text-[10px] font-bold uppercase mb-1 text-muted">
+                  <span>RETENTION</span>
+                  <span class="text-black">84%</span>
+                </div>
+                <div class="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
+                  <div class="h-full bg-black" style="width: 84%"></div>
+                </div>
+              </div>
+              <div>
+                <div class="flex justify-between text-[10px] font-bold uppercase mb-1 text-muted">
+                  <span>VALUE ADDED</span>
+                  <span class="text-accent">+12.4</span>
+                </div>
+                <div class="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
+                  <div class="h-full bg-accent" style="width: 70%"></div>
+                </div>
+              </div>
+            </div>
+            <a href="/analyzer/teams" class="block w-full mt-6 py-2 border-2 border-black font-bold text-[10px] uppercase tracking-widest hover:bg-black hover:text-white transition-all text-center text-black">SUCCESS INDEX</a>
           </div>
         </div>
-      </aside>
+      </div>
     </main>
 
     <!-- Mobile Navigation (Prototype Style) -->
@@ -226,4 +271,114 @@ export function teamLeaderboard(teams: TeamSuccess[], clerkKey?: string): string
     </div>
   `;
   return analyzerLayout(content, 'Team Success Index — LLL', clerkKey);
+}
+
+export function topExpertsMini(experts: ExpertAccuracy[]): string {
+  const items = experts
+    .slice(0, 3)
+    .map(
+      (e, i) => `
+    <div class="flex justify-between items-center ${i < 2 ? 'border-b border-black/5 pb-3 mb-3' : ''}">
+      <div>
+        <div class="font-bold text-sm text-black">${e.expertName}</div>
+        <div class="text-[9px] text-muted uppercase tracking-widest">${e.org}</div>
+      </div>
+      <div class="text-right">
+        <div class="font-mono font-bold text-black">${e.rmse}</div>
+        <div class="text-[9px] text-accent font-bold uppercase">Rank #${i + 1}</div>
+      </div>
+    </div>
+  `,
+    )
+    .join('');
+
+  return `
+    <div class="space-y-1">
+      ${items}
+      <a href="/analyzer/experts" class="block text-center text-[9px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mt-4 transition-colors">View All Receipts</a>
+    </div>
+  `;
+}
+
+export function timelineFragment(events: any[]): string {
+  return events
+    .map(
+      (item, i) => `
+    <div class="py-6 ${i < events.length - 1 ? 'border-b border-black/5' : ''}">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="mono text-[9px] font-bold uppercase tracking-[0.1em] bg-black text-white px-2 py-0.5">
+          ${item.type}
+        </span>
+        <span class="mono text-[10px] text-muted ml-auto">${new Date(item.date).toLocaleDateString()}</span>
+      </div>
+      <div class="serif text-xl font-bold leading-tight text-black mb-2">${item.title}</div>
+      <div class="text-sm text-muted mb-3">${item.content}</div>
+      <div class="mono text-[10px] ${item.content.includes('increased') ? 'text-accent' : 'text-black'} font-bold">
+        ↳ LLL Delta: ${item.content.includes('increased') ? '+' : ''}4.2%
+      </div>
+    </div>
+  `,
+    )
+    .join('');
+}
+
+export function playerProfile(profile: any, clerkKey?: string): string {
+  const performanceRows = profile.performanceHistory
+    .map(
+      (p: any) => `
+    <div class="flex justify-between items-center py-4 border-b border-black/5">
+      <div>
+        <div class="text-[10px] font-bold uppercase tracking-widest text-muted">${p.evaluationYear} EVALUATION</div>
+        <div class="font-bold text-black text-lg">${p.justification}</div>
+      </div>
+      <div class="text-right text-black">
+        <div class="text-3xl font-bold text-accent">${p.rating}</div>
+        <div class="text-[10px] font-bold uppercase tracking-tighter text-muted">0-10 SCALE</div>
+      </div>
+    </div>
+  `,
+    )
+    .join('');
+
+  const content = `
+    <div class="max-w-5xl mx-auto py-8 px-4">
+      <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-8 inline-block transition-colors">← Back to Dashboard</a>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+        <!-- Player Info -->
+        <div class="md:col-span-2 space-y-8">
+          <section>
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-accent mb-2">Drafted 2023 · Round 1, Pick 2</div>
+            <h2 class="text-6xl font-bold tracking-tighter text-black leading-none mb-4">${profile.playerName.toUpperCase()}</h2>
+            <p class="text-xl text-muted serif italic mb-8">Currently rated as a <span class="text-black font-bold border-b-2 border-black">${profile.careerStatus}</span></p>
+            
+            <div class="space-y-6">
+              <h3 class="text-xs font-bold uppercase tracking-[0.2em] border-b border-black pb-2 text-black">CAREER TRAJECTORY</h3>
+              ${performanceRows}
+            </div>
+          </section>
+        </div>
+
+        <!-- Sidebar Details -->
+        <div class="space-y-8 text-black">
+          <div class="card-paper p-6 rounded-lg border-t-8 border-black">
+            <h3 class="text-xs font-bold uppercase tracking-[0.2em] mb-4 text-black">EXPERT ACCURACY DELTA</h3>
+            <div class="space-y-4">
+              ${profile.accuracySummary
+                .map(
+                  (a: any) => `
+                <div class="flex justify-between text-sm">
+                  <span class="font-bold">${a.expert}</span>
+                  <span class="${a.isAccurate ? 'text-accent' : 'text-muted'} font-bold font-mono">${a.predictedRank}</span>
+                </div>
+              `,
+                )
+                .join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  return analyzerLayout(content, `${profile.playerName} — LLL Profile`, clerkKey);
 }

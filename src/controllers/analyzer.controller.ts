@@ -1,6 +1,13 @@
 import {Elysia} from 'elysia';
 import {authGuard} from '../guards/auth-guard.js';
-import {analyzerDashboard, expertLeaderboard, teamLeaderboard} from '../views/analyzer-templates.js';
+import {
+  analyzerDashboard,
+  expertLeaderboard,
+  teamLeaderboard,
+  topExpertsMini,
+  playerProfile,
+  timelineFragment,
+} from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
 import {ExpertAuditService} from '../services/expert-audit.js';
 
@@ -35,6 +42,12 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     ];
     ctx.set.headers['Content-Type'] = 'text/html';
     return teamLeaderboard(data, CLERK_KEY);
+  })
+
+  .get('/player/:name', async (ctx) => {
+    const data = await DraftScoutService.getPlayerCareerProfile(ctx.params.name);
+    ctx.set.headers['Content-Type'] = 'text/html';
+    return playerProfile(data, CLERK_KEY);
   })
 
   // --- API ROUTES (JSON - For Web HTMX & Future Mobile App) ---
@@ -80,14 +93,28 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
 
   // --- HTMX FRAGMENTS (For the Web Frontend only) ---
   .get('/fragment/timeline', () => {
-    // Reuses the API logic but returns HTML
-    return `
-      <div class="space-y-4">
-        <div class="border-l-4 border-black pl-4 py-2">
-          <span class="text-xs font-bold uppercase tracking-widest text-accent">Combine Update</span>
-          <h3 class="font-bold text-lg text-black">Lions' core metrics show high retention</h3>
-          <p class="text-sm text-muted">Analysis of 2024-2025 draft cycles indicates Detroit leads the league.</p>
-        </div>
-      </div>
-    `;
+    const events = [
+      {
+        id: 1,
+        type: 'Combine',
+        title: "Lions' core metrics show high retention",
+        content:
+          'Analysis of 2024-2025 draft cycles indicates Detroit leads the league in "Pick to Roster" percentage.',
+        date: new Date().toISOString(),
+      },
+      {
+        id: 2,
+        type: 'Scouting',
+        title: 'Expert Accuracy Report: Kiper vs Jeremiah',
+        content:
+          'A look back at 3 years of historical rankings reveals a significant drift in value prediction for QBs.',
+        date: new Date().toISOString(),
+      },
+    ];
+    return timelineFragment(events);
+  })
+
+  .get('/fragment/top-experts-mini', async () => {
+    const data = await ExpertAuditService.getOracleLeaderboard(2023);
+    return topExpertsMini(data);
   });
