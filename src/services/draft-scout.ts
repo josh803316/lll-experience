@@ -1,5 +1,5 @@
 import {getDB} from '../db/index.js';
-import {expertRankings, playerPerformanceRatings, experts} from '../db/schema.js';
+import {expertRankings, playerPerformanceRatings, experts, officialDraftResults} from '../db/schema.js';
 import {eq, and, gte} from 'drizzle-orm';
 import {LLLRatingEngine} from './lll-rating-engine.js';
 
