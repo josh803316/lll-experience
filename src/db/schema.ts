@@ -1,4 +1,15 @@
-import {text, timestamp, pgTable, serial, integer, boolean, bigint, jsonb, unique} from 'drizzle-orm/pg-core';
+import {
+  text,
+  timestamp,
+  pgTable,
+  serial,
+  integer,
+  boolean,
+  bigint,
+  jsonb,
+  unique,
+  doublePrecision,
+} from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -77,9 +88,13 @@ export const officialDraftResults = pgTable('official_draft_results', {
     .references(() => apps.id, {onDelete: 'cascade'})
     .notNull(),
   year: integer('year').notNull(),
+  round: integer('round'),
   pickNumber: integer('pick_number').notNull(),
   playerName: text('player_name'),
   teamName: text('team_name'),
+  position: text('position'),
+  college: text('college'),
+  contractOutcome: text('contract_outcome'), // TOP_OF_MARKET, MARKET_OR_ABOVE, etc.
 });
 
 /**
@@ -211,7 +226,7 @@ export const playerPerformanceRatings = pgTable('player_performance_ratings', {
   playerName: text('player_name').notNull(),
   draftYear: integer('draft_year').notNull(),
   evaluationYear: integer('evaluation_year').notNull(), // Year the rating was given
-  rating: integer('rating').notNull(), // 0-10 scale
+  rating: doublePrecision('rating').notNull(), // 0-10 scale
   isCareerRating: boolean('is_career_rating').default(false).notNull(),
   justification: text('justification'),
   metadata: jsonb('metadata'), // Stats, snaps, etc.

@@ -34,24 +34,39 @@ export class DraftScoutService {
       )
       .orderBy(playerPerformanceRatings.evaluationYear);
 
-    // 3. Calculate "Expert Accuracy" for this specific player
-    // Compare expert grade/rank to the final LLL performance rating
-    const latestRating = performance[performance.length - 1]?.rating || 0;
+    // 3. Get Draft Round for Expectation (fetch from official results)
+    const officialPick = (
+      await db.select().from(officialDraftResults).where(eq(officialDraftResults.playerName, playerName)).limit(1)
+    )[0];
+    const round = officialPick?.round || 1;
 
+    // 4. Calculate Final LLL Score & Final Grade (Option B)
+    const yearlyScores = performance.map((p) => p.rating);
+    const performanceScore = LLLRatingEngine.calculateFinalPerformanceScore(
+      yearlyScores,
+      officialPick?.contractOutcome || undefined,
+    );
+    const finalGrade = LLLRatingEngine.calculateFinalGrade(performanceScore, round);
+    const outcome = LLLRatingEngine.getGradeOutcomeLabel(finalGrade);
+
+    // 5. Calculate "Expert Accuracy" for this specific player
     const expertAccuracy = rankings.map((r) => ({
       expert: r.expertName,
       predictedRank: r.rank,
-      actualSuccess: LLLRatingEngine.getRatingLabel(latestRating),
-      isAccurate: Math.abs((r.rank || 0) - latestRating * 10) < 20, // Simple delta for now
+      actualSuccess: LLLRatingEngine.getRatingLabel(performanceScore),
+      isAccurate: Math.abs((r.rank || 0) - performanceScore * 10) < 20,
     }));
 
     return {
       playerName,
-      careerRating: latestRating,
-      careerStatus: LLLRatingEngine.getRatingLabel(latestRating),
+      round,
+      weightedScore: performanceScore,
+      finalGrade,
+      outcome,
       performanceHistory: performance,
       expertRankings: rankings,
       accuracySummary: expertAccuracy,
+      contractOutcome: officialPick?.contractOutcome,
     };
   }
 }

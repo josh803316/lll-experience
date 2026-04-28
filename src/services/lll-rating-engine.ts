@@ -24,25 +24,90 @@ export const LLL_RATING_SCALE: Record<number, LLLRatingDefinition> = {
   0: {value: 0, label: 'Cut', description: 'Released from the team'},
 };
 
+export const EXPECTED_VALUE_BY_ROUND: Record<number, number> = {
+  1: 7.5, // Averaging 8/7 as 7.5 for baseline, or we can use 8.0 for top tier
+  2: 6.0,
+  3: 5.0,
+  4: 4.0,
+  5: 3.0,
+  6: 2.0,
+  7: 1.0,
+};
+
+export const CONTRACT_BONUSES: Record<string, number> = {
+  TOP_OF_MARKET: 2.0,
+  MARKET_OR_ABOVE: 1.5,
+  OTHER_TEAM_PAID: 1.0,
+  FIFTH_YEAR_PICKED_UP: 0.5,
+  WALKED_FOR_CHEAP: 0,
+  CUT_BEFORE_END: -1.0,
+  CUT_FIRST_2_YEARS: -2.0,
+};
+
 export class LLLRatingEngine {
   /**
-   * The "Black Box" algorithm.
-   * Calculates a score based on draft position vs actual performance ratings.
-   *
-   * Value = (Performance Rating * Performance Weight) - (Draft Position Expectation * Position Weight)
+   * Calculates a single season's score based on the 30/30/40 split.
    */
-  static calculateDraftValue(draftSlot: number, performanceRating: number): number {
-    // Draft expectation curve (1st pick expected to be 9-10, 32nd pick expected to be 6-7)
-    const expectation = this.getExpectedRatingForSlot(draftSlot);
-    return performanceRating - expectation;
+  static calculateSeasonScore(peerScore: number, prodScore: number, roleScore: number): number {
+    return peerScore * 0.3 + prodScore * 0.3 + roleScore * 0.4;
   }
 
-  private static getExpectedRatingForSlot(slot: number): number {
-    if (slot === 1) {return 9.5;}
-    if (slot <= 5) {return 8.5;}
-    if (slot <= 10) {return 7.5;}
-    if (slot <= 32) {return 6.0;}
-    return 4.0;
+  /**
+   * Option B: Best 4 of 6 Average + Trajectory + Contract
+   */
+  static calculateFinalPerformanceScore(yearlyScores: number[], contractType?: string): number {
+    if (yearlyScores.length === 0) {return 0;}
+
+    // 1. Take best 4 of 6 (or fewer if career is shorter)
+    const sorted = [...yearlyScores].sort((a, b) => b - a);
+    const best4 = sorted.slice(0, 4);
+    const avgBest4 = best4.reduce((a, b) => a + b, 0) / best4.length;
+
+    // 2. Trajectory Modifier
+    const trajectoryMod = this.calculateTrajectoryModifier(yearlyScores);
+
+    // 3. Contract Bonus
+    const contractBonus = contractType ? CONTRACT_BONUSES[contractType] || 0 : 0;
+
+    return Number((avgBest4 + trajectoryMod + contractBonus).toFixed(2));
+  }
+
+  private static calculateTrajectoryModifier(scores: number[]): number {
+    if (scores.length < 2) {return 0;}
+
+    // Final 2 years
+    const final2 = scores.slice(-2);
+    const others = scores.slice(0, -2);
+
+    if (others.length === 0) {return 0;}
+
+    // Ascending: Both final 2 are better than any of the previous?
+    // Simplified: are the final 2 higher than the average of previous?
+    const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
+    const avgFinal2 = final2.reduce((a, b) => a + b, 0) / final2.length;
+
+    if (avgFinal2 > avgOthers + 1.5) {return 0.5;} // Ascending
+    if (avgFinal2 < avgOthers - 1.5) {return -0.5;} // Declining
+    return 0;
+  }
+
+  /**
+   * Player Grade = Actual Performance Score − Expected Score (by round)
+   */
+  static calculateFinalGrade(performanceScore: number, round: number): number {
+    const expected = EXPECTED_VALUE_BY_ROUND[round] || 0;
+    return Number((performanceScore - expected).toFixed(2));
+  }
+
+  /**
+   * Map Delta to descriptive label
+   */
+  static getGradeOutcomeLabel(delta: number): string {
+    if (delta >= 1.5) {return 'ELITE HIT';}
+    if (delta > 0.5) {return 'HIT';}
+    if (delta >= -0.5) {return 'MET EXPECTATION';}
+    if (delta >= -1.5) {return 'UNDERPERFORMED';}
+    return 'BUST';
   }
 
   static getRatingLabel(rating: number): string {
@@ -55,7 +120,9 @@ export class LLLRatingEngine {
    * Lower is better (0 = perfect).
    */
   static calculateRMSE(predictions: {predicted: number; actual: number}[]): number {
-    if (predictions.length === 0) {return 0;}
+    if (predictions.length === 0) {
+      return 0;
+    }
     const sumOfSquares = predictions.reduce((sum, p) => {
       return sum + Math.pow(p.predicted - p.actual, 2);
     }, 0);

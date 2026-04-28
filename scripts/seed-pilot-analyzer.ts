@@ -16,7 +16,9 @@ async function seed() {
   console.log('--- SEEDING 3-YEAR PILOT DATA (2023-2025) ---');
 
   const app = (await db.select().from(apps).where(eq(apps.slug, 'analyzer')).limit(1))[0];
-  if (!app) {throw new Error('Run seed-analyzer.ts first');}
+  if (!app) {
+    throw new Error('Run seed-analyzer.ts first');
+  }
 
   // 1. Seed Experts
   const expertData = [
@@ -36,27 +38,58 @@ async function seed() {
   const brugler = (await db.select().from(experts).where(eq(experts.slug, 'brugler')).limit(1))[0];
 
   // 2. Seed Sample Picks (2023)
-  // CJ Stroud - Houston Texans (Pick #2)
+  // CJ Stroud - Houston Texans (Pick #2, R1)
   await db
     .insert(officialDraftResults)
     .values({
       appId: app.id,
       year: 2023,
+      round: 1,
       pickNumber: 2,
       playerName: 'C.J. Stroud',
       teamName: 'Houston Texans',
+      contractOutcome: 'TOP_OF_MARKET',
     })
     .onConflictDoNothing();
 
-  // Bryce Young - Carolina Panthers (Pick #1)
+  // Bryce Young - Carolina Panthers (Pick #1, R1)
   await db
     .insert(officialDraftResults)
     .values({
       appId: app.id,
       year: 2023,
+      round: 1,
       pickNumber: 1,
       playerName: 'Bryce Young',
       teamName: 'Carolina Panthers',
+      contractOutcome: 'WALKED_FOR_CHEAP',
+    })
+    .onConflictDoNothing();
+
+  // Ja'ir Brown - SF (Pick #47, R2)
+  await db
+    .insert(officialDraftResults)
+    .values({
+      appId: app.id,
+      year: 2023,
+      round: 2,
+      pickNumber: 47,
+      playerName: "Ja'ir Brown",
+      teamName: 'San Francisco 49ers',
+      contractOutcome: 'CUT_BEFORE_END',
+    })
+    .onConflictDoNothing();
+
+  // 7th Rounder - (Pick #245, R7)
+  await db
+    .insert(officialDraftResults)
+    .values({
+      appId: app.id,
+      year: 2023,
+      round: 7,
+      pickNumber: 245,
+      playerName: 'John Doe',
+      teamName: 'Detroit Lions',
     })
     .onConflictDoNothing();
 
@@ -107,6 +140,15 @@ async function seed() {
       justification: 'Benched for performance.',
       metadata: {gs: 2, pb: 0, av: 1},
     },
+    // Ja'ir Brown: Y1: 7.5, Y2: 3.0, Y3: 2.5
+    {playerName: "Ja'ir Brown", draftYear: 2023, evaluationYear: 2023, rating: 7.5, justification: 'Flashed potential'},
+    {playerName: "Ja'ir Brown", draftYear: 2023, evaluationYear: 2024, rating: 3.0, justification: 'Cratered'},
+    {playerName: "Ja'ir Brown", draftYear: 2023, evaluationYear: 2025, rating: 2.5, justification: 'Depth only'},
+
+    // 7th Rounder: 3 years on roster, ~25% snaps, ST captain (Rating: 2.5)
+    {playerName: 'John Doe', draftYear: 2023, evaluationYear: 2023, rating: 2, justification: 'Roster depth'},
+    {playerName: 'John Doe', draftYear: 2023, evaluationYear: 2024, rating: 2.5, justification: 'ST Captain'},
+    {playerName: 'John Doe', draftYear: 2023, evaluationYear: 2025, rating: 3, justification: 'Solid contributor'},
   ]);
 
   console.log('Pilot Seeding Complete!');
