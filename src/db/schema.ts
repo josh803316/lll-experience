@@ -162,7 +162,6 @@ export const chatMessages = pgTable('chat_messages', {
 });
 
 export const chatMessageReactions = pgTable('chat_message_reactions', {
-  id: serial('id').primaryKey(),
   messageId: integer('message_id')
     .references(() => chatMessages.id, {onDelete: 'cascade'})
     .notNull(),
@@ -171,4 +170,71 @@ export const chatMessageReactions = pgTable('chat_message_reactions', {
     .notNull(),
   emoji: text('emoji').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── Draft Analyzer ──────────────────────────────────────────────────────────
+
+export const experts = pgTable('experts', {
+  id: serial('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  organization: text('organization'),
+  photoUrl: text('photo_url'),
+  bio: text('bio'),
+});
+
+export const expertRankings = pgTable('expert_rankings', {
+  id: serial('id').primaryKey(),
+  expertId: integer('expert_id')
+    .references(() => experts.id, {onDelete: 'cascade'})
+    .notNull(),
+  year: integer('year').notNull(),
+  playerName: text('player_name').notNull(),
+  rank: integer('rank'),
+  grade: text('grade'),
+  commentary: text('commentary'),
+});
+
+export const teamDraftAnalysis = pgTable('team_draft_analysis', {
+  id: serial('id').primaryKey(),
+  teamName: text('team_name').notNull(),
+  year: integer('year').notNull(),
+  retentionScore: integer('retention_score'), // 0-100 (percentage of picks still on roster)
+  performanceScore: integer('performance_score'), // 0-100 (aggregated performance vs expectation)
+  valueScore: integer('value_score'), // 0-100 (surplus value vs draft slot)
+  overallGrade: text('overall_grade'),
+});
+
+export const playerPerformanceRatings = pgTable('player_performance_ratings', {
+  id: serial('id').primaryKey(),
+  playerName: text('player_name').notNull(),
+  draftYear: integer('draft_year').notNull(),
+  evaluationYear: integer('evaluation_year').notNull(), // Year the rating was given
+  rating: integer('rating').notNull(), // 0-10 scale
+  isCareerRating: boolean('is_career_rating').default(false).notNull(),
+  justification: text('justification'),
+  metadata: jsonb('metadata'), // Stats, snaps, etc.
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const expertAccuracyScores = pgTable('expert_accuracy_scores', {
+  id: serial('id').primaryKey(),
+  expertId: integer('expert_id')
+    .references(() => experts.id, {onDelete: 'cascade'})
+    .notNull(),
+  year: integer('year').notNull(),
+  accuracyDelta: integer('accuracy_delta'), // Difference between predicted and LLL actual
+  rankingSuccess: integer('ranking_success'), // Percentile accuracy
+  gradeSuccess: integer('grade_success'),
+});
+
+export const draftTimelineEvents = pgTable('draft_timeline_events', {
+  id: serial('id').primaryKey(),
+  year: integer('year').notNull(),
+  eventDate: timestamp('event_date').notNull(),
+  type: text('type'), // 'combine', 'mini-camp', 'pre-season', 'news'
+  title: text('title').notNull(),
+  content: text('content'),
+  playerName: text('player_name'),
+  teamName: text('team_name'),
 });

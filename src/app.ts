@@ -7,6 +7,7 @@ import {draftController} from './controllers/draft.controller.js';
 import {adminController} from './controllers/admin.controller.js';
 import {chatController} from './controllers/chat.controller.js';
 import {tickerController} from './controllers/ticker.controller.js';
+import {analyzerController} from './controllers/analyzer.controller.js';
 import {authGuard} from './guards/auth-guard.js';
 import {useLogger} from './middleware/logger.middleware.js';
 import {isProtectedRoute} from './config/route-protection.js';
@@ -114,6 +115,7 @@ const app = baseApp
   .use(chatController)
   .use(tickerController)
   .use(adminController)
+  .use(analyzerController)
 
   .onError(({error, code, request}) => {
     const url = new URL(request.url);
