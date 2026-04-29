@@ -1,7 +1,7 @@
 import {getDB} from '../db/index.js';
 import {officialDraftResults, playerPerformanceRatings} from '../db/schema.js';
 import {eq, gte, lte, and} from 'drizzle-orm';
-import {LLLRatingEngine, canonicalTeam, EXPECTED_VALUE_BY_ROUND} from './lll-rating-engine.js';
+import {LLLRatingEngine, canonicalTeam, EXPECTED_VALUE_BY_ROUND, type AwardFlags} from './lll-rating-engine.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
 const DEFAULT_WINDOW = 6;
@@ -30,6 +30,7 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
       .select({
         playerName: playerPerformanceRatings.playerName,
         rating: playerPerformanceRatings.rating,
+        metadata: playerPerformanceRatings.metadata,
       })
       .from(playerPerformanceRatings)
       .where(
@@ -39,13 +40,19 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
         ),
       );
     for (const r of rows) {
-      map.set(LLLRatingEngine.normalizeName(r.playerName), r.rating);
+      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
+      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
+      map.set(LLLRatingEngine.normalizeName(r.playerName), final);
     }
   } else {
     // Career mode: per Tim's methodology, use Option B = best-4-of-6 of the
     // per-season ratings. This rewards peak performance and isn't dragged
     // down by injury years (Bosa, Aiyuk, Deebo all moved up correctly when
     // we A/B'd this against the cumulative-wav shortcut).
+    //
+    // Award floor (Pro Bowl / All-Pro / DPOY etc.) is applied to each season
+    // rating BEFORE we pick the top 4, so a single dominant year still lifts
+    // the average appropriately.
     //
     // Players with no per-season ratings (mostly OL — nflverse doesn't ship
     // their stats) fall back to the cumulative-wav baseline so they aren't
@@ -55,6 +62,7 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
         .select({
           playerName: playerPerformanceRatings.playerName,
           rating: playerPerformanceRatings.rating,
+          metadata: playerPerformanceRatings.metadata,
         })
         .from(playerPerformanceRatings)
         .where(eq(playerPerformanceRatings.isCareerRating, false)),
@@ -68,12 +76,14 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
         .where(eq(playerPerformanceRatings.isCareerRating, true)),
     ]);
 
-    // Group season ratings by player.
+    // Group season ratings by player, applying the award floor first.
     const seasonsByName = new Map<string, number[]>();
     for (const r of seasonRows) {
       const key = LLLRatingEngine.normalizeName(r.playerName);
+      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
+      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
       const list = seasonsByName.get(key) ?? [];
-      list.push(r.rating);
+      list.push(final);
       seasonsByName.set(key, list);
     }
 

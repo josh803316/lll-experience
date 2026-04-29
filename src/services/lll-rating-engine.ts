@@ -13,6 +13,17 @@ export interface LLLRatingDefinition {
   description: string;
 }
 
+export interface AwardFlags {
+  proBowl?: boolean;
+  allPro1?: boolean;
+  allPro2?: boolean;
+  mvp?: boolean;
+  opoy?: boolean;
+  dpoy?: boolean;
+  oroy?: boolean;
+  droy?: boolean;
+}
+
 export const LLL_RATING_SCALE: Record<number, LLLRatingDefinition> = {
   10: {value: 10, label: 'Franchise', description: 'Cornerstone player, face of the franchise'},
   9: {value: 9, label: 'Top 5', description: 'Elite performer, top 5 at their position'},
@@ -75,6 +86,40 @@ export class LLLRatingEngine {
   static applyCareerBonus(seasonRating: number, yearsInNFL: number): number {
     const bonus = Math.min(1.0, Math.max(0, (yearsInNFL - 2) * 0.25));
     return Math.min(10, Number((seasonRating + bonus).toFixed(2)));
+  }
+
+  /**
+   * Per Jeff/Tim spec: a player who won DPOY / MVP / All-Pro can never grade
+   * BUST for that season. Honors observed by the league set a hard floor on
+   * the season rating.
+   *
+   *   Pro Bowl                  → ≥ 5.5
+   *   2nd-team All-Pro          → ≥ 6.5
+   *   1st-team All-Pro          → ≥ 8.0
+   *   MVP / OPOY / DPOY         → ≥ 9.0
+   *   OROY / DROY (rookie year) → ≥ 7.5
+   */
+  static applyAwardFloor(seasonRating: number, awards: AwardFlags | null | undefined): number {
+    if (!awards) {
+      return seasonRating;
+    }
+    let floor = 0;
+    if (awards.proBowl) {
+      floor = Math.max(floor, 5.5);
+    }
+    if (awards.allPro2) {
+      floor = Math.max(floor, 6.5);
+    }
+    if (awards.allPro1) {
+      floor = Math.max(floor, 8.0);
+    }
+    if (awards.oroy || awards.droy) {
+      floor = Math.max(floor, 7.5);
+    }
+    if (awards.mvp || awards.opoy || awards.dpoy) {
+      floor = Math.max(floor, 9.0);
+    }
+    return Math.max(seasonRating, floor);
   }
 
   /**
