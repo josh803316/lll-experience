@@ -271,12 +271,15 @@ async function run() {
     }
     const yearsInNFL = Math.max(1, agg.season - drafted.draftYear + 1);
 
-    // Snap share — pick the dominant side. If a player splits, take the higher.
+    // Snap share — for most positions, only off/def snaps count toward the
+    // rating. ST snaps are bonus work but don't make a TE3 a "starter" in
+    // any real sense. K/P/LS are the exception — ST IS their whole role.
     const offPct = agg.offGames > 0 ? agg.offPctSum / agg.offGames : 0;
     const defPct = agg.defGames > 0 ? agg.defPctSum / agg.defGames : 0;
     const stPct = agg.stGames > 0 ? agg.stPctSum / agg.stGames : 0;
-    const dominantSide = offPct >= defPct ? (offPct >= stPct ? 'OFF' : 'ST') : defPct >= stPct ? 'DEF' : 'ST';
-    const dominantPct = Math.max(offPct, defPct, stPct);
+    const isSpecialist = ['K', 'P', 'LS', 'PK'].includes(agg.position.toUpperCase());
+    const dominantPct = isSpecialist ? stPct : Math.max(offPct, defPct);
+    const dominantSide = isSpecialist ? 'ST' : offPct >= defPct ? 'OFF' : 'DEF';
     const snapBase = snapShareToRating(dominantPct);
 
     const existingKey = `${key}::${agg.season}`;
