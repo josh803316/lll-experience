@@ -1,5 +1,6 @@
 import {Elysia} from 'elysia';
 import {authGuard} from '../guards/auth-guard.js';
+import {isAdminUserId} from '../lib/clerk-email.js';
 import {
   analyzerDashboard,
   expertLeaderboard,
@@ -24,6 +25,7 @@ import {
   TEAM_WINDOW_END_DEFAULT,
   type ScoutOptions,
   type ScoutMode,
+  type ScoredPick,
 } from '../services/team-scout.js';
 import {getDB} from '../db/index.js';
 import {experts, officialDraftResults} from '../db/schema.js';
@@ -40,7 +42,22 @@ function parseScoutOpts(query: Record<string, string | undefined>): ScoutOptions
   return {mode, season, window};
 }
 
-async function buildDashboardSnapshot(opts: ScoutOptions = {}): Promise<DashboardSnapshot> {
+/** Resolve the current user's admin status + their requested debug flag. */
+async function resolveAdminContext(ctx: any): Promise<{
+  isAdmin: boolean;
+  debug: boolean;
+}> {
+  const userId = (ctx?.auth?.() as {userId?: string | number} | undefined)?.userId;
+  const isAdmin = userId ? await isAdminUserId(String(userId)) : false;
+  const q = (ctx?.query ?? {}) as Record<string, string | undefined>;
+  const debug = isAdmin && (q.debug === '1' || q.debug === 'true');
+  return {isAdmin, debug};
+}
+
+async function buildDashboardSnapshot(
+  opts: ScoutOptions = {},
+  admin: {isAdmin?: boolean; debug?: boolean} = {},
+): Promise<DashboardSnapshot> {
   const db = getDB();
   const window = opts.window ?? TEAM_WINDOW_DEFAULT;
   const endYear = opts.endYear ?? TEAM_WINDOW_END_DEFAULT;
@@ -70,6 +87,8 @@ async function buildDashboardSnapshot(opts: ScoutOptions = {}): Promise<Dashboar
     mode: opts.mode ?? 'career',
     selectedSeason: opts.season,
     window,
+    isAdmin: admin.isAdmin ?? false,
+    debug: admin.debug ?? false,
   };
 }
 
@@ -81,41 +100,53 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   // --- HTML ROUTES ---
   .get('/', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';
-    const snapshot = await buildDashboardSnapshot(parseScoutOpts(ctx.query as Record<string, string | undefined>));
+    const admin = await resolveAdminContext(ctx);
+    const snapshot = await buildDashboardSnapshot(
+      parseScoutOpts(ctx.query as Record<string, string | undefined>),
+      admin,
+    );
     return analyzerDashboard(snapshot, CLERK_KEY);
   })
   .get('', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';
-    const snapshot = await buildDashboardSnapshot(parseScoutOpts(ctx.query as Record<string, string | undefined>));
+    const admin = await resolveAdminContext(ctx);
+    const snapshot = await buildDashboardSnapshot(
+      parseScoutOpts(ctx.query as Record<string, string | undefined>),
+      admin,
+    );
     return analyzerDashboard(snapshot, CLERK_KEY);
   })
 
   .get('/experts', async (ctx) => {
+    const admin = await resolveAdminContext(ctx);
     const [oracle, scout] = await Promise.all([
       ExpertAuditService.getOracleLeaderboard(),
       ExpertAuditService.getScoutLeaderboard(),
     ]);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return expertLeaderboard(oracle, scout, CLERK_KEY);
+    return expertLeaderboard(oracle, scout, CLERK_KEY, admin);
   })
 
   .get('/teams', async (ctx) => {
     const opts = parseScoutOpts(ctx.query as Record<string, string | undefined>);
+    const admin = await resolveAdminContext(ctx);
     const data = await TeamScoutService.getTeamSuccessLeaderboard(opts);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return teamLeaderboard(data, CLERK_KEY, {mode: opts.mode, season: opts.season, window: opts.window});
+    return teamLeaderboard(data, CLERK_KEY, {mode: opts.mode, season: opts.season, window: opts.window}, admin);
   })
 
   .get('/player/:name', async (ctx) => {
+    const admin = await resolveAdminContext(ctx);
     const data = await DraftScoutService.getPlayerCareerProfile(ctx.params.name);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return playerProfile(data, CLERK_KEY);
+    return playerProfile(data, CLERK_KEY, admin);
   })
 
   .get('/expert/:slug', async (ctx) => {
+    const admin = await resolveAdminContext(ctx);
     const data = await getExpertProfile(ctx.params.slug);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return data ? expertProfile(data, CLERK_KEY) : expertProfileNotFound(ctx.params.slug, CLERK_KEY);
+    return data ? expertProfile(data, CLERK_KEY, admin) : expertProfileNotFound(ctx.params.slug, CLERK_KEY, admin);
   })
 
   .get('/players', async (ctx) => {
@@ -162,6 +193,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const rows = filtered.slice(start, start + pageSize);
 
     ctx.set.headers['Content-Type'] = 'text/html';
+    const admin = await resolveAdminContext(ctx);
     return playersGrid(
       rows,
       filtered.length,
@@ -176,6 +208,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
         pageSize,
       },
       CLERK_KEY,
+      admin,
     );
   })
 
@@ -209,17 +242,27 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     return searchResultsFragment(results);
   })
 
-  .get('/fragment/success-leaderboard', async ({query}) => {
-    const opts = parseScoutOpts(query as Record<string, string | undefined>);
+  .get('/fragment/success-leaderboard', async (ctx) => {
+    const opts = parseScoutOpts(ctx.query as Record<string, string | undefined>);
+    const admin = await resolveAdminContext(ctx);
     const data = await TeamScoutService.getTeamSuccessLeaderboard(opts);
-    return successLeaderboard(data.slice(0, 10), opts);
+    return successLeaderboard(data.slice(0, 10), {...opts, debug: admin.debug});
   })
 
-  .get('/fragment/team-breakdown/:teamKey', async ({params, query, set}) => {
+  .get('/fragment/team-breakdown/:teamKey', async (ctx) => {
+    const {params, query, set} = ctx;
     const opts = parseScoutOpts(query as Record<string, string | undefined>);
+    const admin = await resolveAdminContext(ctx);
     const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, opts);
+    let scored: ScoredPick[] = [];
+    if (admin.debug && breakdown) {
+      const all = await TeamScoutService.getAllScoredPicks(opts);
+      scored = all.filter((p) => p.teamKey === breakdown.teamKey);
+    }
     set.headers['Content-Type'] = 'text/html';
-    return breakdown ? teamBreakdownModal(breakdown) : teamBreakdownNotFound(params.teamKey);
+    return breakdown
+      ? teamBreakdownModal(breakdown, {...admin, debugPicks: scored})
+      : teamBreakdownNotFound(params.teamKey);
   })
 
   .get('/fragment/movers', async ({query, set}) => {

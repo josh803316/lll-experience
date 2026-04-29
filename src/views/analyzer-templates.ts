@@ -29,6 +29,8 @@ export interface DashboardSnapshot {
   mode: 'career' | 'season';
   selectedSeason?: number;
   window: number;
+  isAdmin?: boolean;
+  debug?: boolean;
 }
 
 export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', clerkPublishableKey?: string): string {
@@ -243,15 +245,36 @@ export function liveBadge(): string {
   `;
 }
 
-function header(active: 'dashboard' | 'experts' | 'teams' = 'dashboard'): string {
+/**
+ * Admin-only DEBUG toggle that flips ?debug=1 in the current URL.
+ * Renders nothing if isAdmin is false.
+ */
+export function adminDebugBadge(isAdmin: boolean, debug: boolean): string {
+  if (!isAdmin) {
+    return '';
+  }
+  const onclick = `(function(){const u=new URL(window.location.href);${debug ? "u.searchParams.delete('debug');" : "u.searchParams.set('debug','1');"}window.location.href=u.toString();})();return false;`;
+  return `
+    <a href="#" onclick="${onclick}"
+       class="text-[10px] font-bold uppercase tracking-[0.2em] ${debug ? 'text-accent border-accent' : 'text-muted hover:text-accent border-black/20'} transition-colors border px-2 py-0.5 rounded">
+      ${debug ? 'DEBUG · ON' : 'DEBUG'}
+    </a>
+  `;
+}
+
+function header(
+  active: 'dashboard' | 'experts' | 'teams' = 'dashboard',
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
   return `
     <header class="border-b border-black/10 py-6 px-4 bg-white/50 backdrop-blur-sm sticky top-0 z-[100]">
       <div class="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 class="text-4xl font-bold tracking-tighter text-black">DRAFT ANALYZER</h1>
-          <div class="flex items-center gap-3 mt-0.5">
+          <div class="flex items-center gap-3 mt-0.5 flex-wrap">
             <p class="text-[10px] text-muted font-bold uppercase tracking-widest">Intelligence &amp; Historical Tracking</p>
             ${liveBadge()}
+            ${adminDebugBadge(extras.isAdmin ?? false, extras.debug ?? false)}
           </div>
         </div>
         <div class="relative w-full md:w-64 group">
@@ -276,6 +299,10 @@ function header(active: 'dashboard' | 'experts' | 'teams' = 'dashboard'): string
   `;
 }
 
+function adminFlags(extras: {isAdmin?: boolean; debug?: boolean}): {isAdmin: boolean; debug: boolean} {
+  return {isAdmin: extras.isAdmin ?? false, debug: extras.debug ?? false};
+}
+
 export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string): string {
   const movers = renderMovers(snapshot.topMovers, snapshot.bustMovers);
   const oracle = renderOracleMini(snapshot.oracleTop);
@@ -294,7 +321,7 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
   const modeQs = `${isCareer ? 'mode=career' : `mode=season&season=${selectedSeason}`}&window=${selectedWindow}`;
 
   const content = `
-    ${header('dashboard')}
+    ${header('dashboard', adminFlags(snapshot))}
     <main class="max-w-5xl mx-auto py-6 px-4 text-black">
       <section class="mb-8">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
@@ -513,7 +540,13 @@ function renderScoutMini(rows: ExpertScoutRow[]): string {
   `;
 }
 
-export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutRow[], clerkKey?: string): string {
+export function expertLeaderboard(
+  oracle: ExpertOracleRow[],
+  scout: ExpertScoutRow[],
+  clerkKey?: string,
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
+  const _admin = adminFlags(extras);
   const oracleRows = oracle
     .map(
       (e, i) => `
@@ -551,7 +584,7 @@ export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutR
     .join('');
 
   const content = `
-    ${header('experts')}
+    ${header('experts', _admin)}
     <div class="max-w-5xl mx-auto py-12 px-4 text-black">
       <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-6 inline-block transition-colors">← Back to Dashboard</a>
       <h2 class="text-6xl font-bold tracking-tighter mb-2 text-black">EXPERT AUDIT</h2>
@@ -613,7 +646,9 @@ export function teamLeaderboard(
   teams: TeamSuccessRow[],
   clerkKey?: string,
   opts: {mode?: 'career' | 'season'; season?: number; window?: number} = {},
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
+  const _admin = adminFlags(extras);
   const isSeason = opts.mode === 'season' && opts.season !== undefined;
   const selectedSeason = opts.season ?? 2024;
   const selectedWindow = opts.window ?? 6;
@@ -686,7 +721,7 @@ export function teamLeaderboard(
     .join('');
 
   const content = `
-    ${header('teams')}
+    ${header('teams', _admin)}
     <div class="max-w-6xl mx-auto py-6 px-4 text-black">
       <a href="/analyzer?${modeQs}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
       <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
@@ -715,13 +750,14 @@ export function teamLeaderboard(
 
 export function successLeaderboard(
   teams: TeamSuccessRow[],
-  opts: {mode?: 'career' | 'season'; season?: number; window?: number} = {},
+  opts: {mode?: 'career' | 'season'; season?: number; window?: number; debug?: boolean} = {},
 ): string {
   const winQs = opts.window ? `&window=${opts.window}` : '';
+  const debugQs = opts.debug ? '&debug=1' : '';
   const modeQs =
     opts.mode === 'season' && opts.season !== undefined
-      ? `mode=season&season=${opts.season}${winQs}`
-      : `mode=career${winQs}`;
+      ? `mode=season&season=${opts.season}${winQs}${debugQs}`
+      : `mode=career${winQs}${debugQs}`;
   const rows = teams
     .map(
       (t, i) => `
@@ -778,7 +814,12 @@ export function topExpertsMini(experts: ExpertOracleRow[]): string {
   return renderOracleMini(experts);
 }
 
-export function playerProfile(profile: any, clerkKey?: string): string {
+export function playerProfile(
+  profile: any,
+  clerkKey?: string,
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
+  const snapshot = adminFlags(extras);
   const performanceRows = (profile.performanceHistory || [])
     .map(
       (p: any) => `
@@ -814,7 +855,7 @@ export function playerProfile(profile: any, clerkKey?: string): string {
     .join('');
 
   const content = `
-    ${header('dashboard')}
+    ${header('dashboard', adminFlags(snapshot))}
     <div class="max-w-5xl mx-auto py-12 px-4 text-black">
       <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-8 inline-block transition-colors">← Back to Dashboard</a>
 
@@ -982,7 +1023,12 @@ function renderBreakdownYear(y: BreakdownYear): string {
   `;
 }
 
-export function teamBreakdownModal(b: TeamBreakdown): string {
+export function teamBreakdownModal(
+  b: TeamBreakdown,
+  extras: {isAdmin?: boolean; debug?: boolean; debugPicks?: ScoredPick[]} = {},
+): string {
+  const debugPanel =
+    extras.debug && extras.debugPicks && extras.debugPicks.length > 0 ? renderTeamDebugPanel(b, extras.debugPicks) : '';
   const yearCards = b.years.map(renderBreakdownYear).join('');
   const topPick = b.topPick
     ? `<div class="text-[10px]">
@@ -1036,6 +1082,8 @@ export function teamBreakdownModal(b: TeamBreakdown): string {
             ${yearCards || '<p class="italic text-muted text-center py-12 text-sm">No picks in this window.</p>'}
           </div>
 
+          ${debugPanel}
+
           <footer class="border-t border-black/10 pt-4 text-[10px] text-muted serif italic leading-relaxed">
             ${tooltip('Outcomes', TOOLTIPS.outcomes)} are bucketed against per-round expected value. Pending = drafted in the
             last two cycles; not enough NFL seasons to grade yet. Click any player for the
@@ -1044,6 +1092,64 @@ export function teamBreakdownModal(b: TeamBreakdown): string {
         </div>
       </div>
     </div>
+  `;
+}
+
+function renderTeamDebugPanel(b: TeamBreakdown, picks: ScoredPick[]): string {
+  const expectedByRound: Record<number, number> = {1: 7.5, 2: 6.0, 3: 5.0, 4: 4.0, 5: 3.0, 6: 2.0, 7: 1.0};
+  const ratedAvg = picks.length > 0 ? Number((picks.reduce((s, p) => s + p.delta, 0) / picks.length).toFixed(3)) : 0;
+  const sortedByDelta = [...picks].sort((a, b) => b.delta - a.delta);
+
+  const rows = sortedByDelta
+    .map((p) => {
+      const exp = expectedByRound[p.round] ?? 0;
+      return `
+      <tr class="border-b border-black/5">
+        <td class="py-1.5 px-2 text-black">${escapeHtml(p.year + ' R' + p.round)}</td>
+        <td class="py-1.5 px-2 text-black">${escapeHtml(p.name)}</td>
+        <td class="py-1.5 px-2 text-center text-black">${p.position ?? '—'}</td>
+        <td class="py-1.5 px-2 text-right text-black mono">${p.rating.toFixed(2)}</td>
+        <td class="py-1.5 px-2 text-right text-black mono">${exp.toFixed(2)}</td>
+        <td class="py-1.5 px-2 text-right mono ${p.delta > 0.5 ? 'text-emerald-700' : p.delta < -1 ? 'text-rose-700' : 'text-black'}">
+          ${p.delta > 0 ? '+' : ''}${p.delta.toFixed(2)}
+        </td>
+        <td class="py-1.5 px-2 text-[9px] text-muted uppercase tracking-widest">${escapeHtml(p.outcome)}</td>
+      </tr>
+    `;
+    })
+    .join('');
+
+  return `
+    <details class="bg-black/[0.04] rounded-md border border-black/10 mt-2" open>
+      <summary class="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+        🔧 ADMIN DEBUG · raw math behind the grade
+      </summary>
+      <div class="p-4 space-y-4 text-[11px]">
+        <div class="font-mono text-[11px] bg-white border border-black/10 rounded p-3 leading-relaxed text-black">
+          <div><strong>Per-pick delta:</strong> rating − round_expected (Tim's chart)</div>
+          <div><strong>Career rating:</strong> normalized w_av per-season ((w_av / years_since_draft) × 0.667), capped at 10</div>
+          <div><strong>Single-season rating:</strong> position-specific season production score + experience bonus, capped at 10</div>
+          <div><strong>Round expected:</strong> R1 7.5 · R2 6.0 · R3 5.0 · R4 4.0 · R5 3.0 · R6 2.0 · R7 1.0</div>
+          <div><strong>Avg Δ for ${escapeHtml(b.team)}:</strong> ${ratedAvg.toFixed(3)} (over ${picks.length} graded picks). Letter grade is rank-relative across the league.</div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse mono text-[11px] bg-white border border-black/10">
+            <thead>
+              <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.15em] text-muted">
+                <th class="py-2 px-2">Year/Rd</th>
+                <th class="py-2 px-2">Player</th>
+                <th class="py-2 px-2 text-center">Pos</th>
+                <th class="py-2 px-2 text-right">Rating</th>
+                <th class="py-2 px-2 text-right">Expected</th>
+                <th class="py-2 px-2 text-right">Delta</th>
+                <th class="py-2 px-2">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </details>
   `;
 }
 
@@ -1100,9 +1206,14 @@ function renderExpertYearRow(y: ExpertProfile['byYear'][number]): string {
   `;
 }
 
-export function expertProfile(p: ExpertProfile, clerkKey?: string): string {
+export function expertProfile(
+  p: ExpertProfile,
+  clerkKey?: string,
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
+  const _admin = adminFlags(extras);
   const content = `
-    ${header('experts')}
+    ${header('experts', _admin)}
     <div class="max-w-5xl mx-auto py-12 px-4 text-black">
       <a href="/analyzer/experts" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-8 inline-block transition-colors">← Back to Expert Audit</a>
 
@@ -1157,9 +1268,14 @@ export function expertProfile(p: ExpertProfile, clerkKey?: string): string {
   return analyzerLayout(content, `${p.name} — Expert Audit`, clerkKey);
 }
 
-export function expertProfileNotFound(slug: string, clerkKey?: string): string {
+export function expertProfileNotFound(
+  slug: string,
+  clerkKey?: string,
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
+  const _admin = adminFlags(extras);
   const content = `
-    ${header('experts')}
+    ${header('experts', _admin)}
     <div class="max-w-3xl mx-auto py-20 px-4 text-center">
       <h2 class="text-3xl font-bold tracking-tighter text-black mb-3">No data on "${escapeHtml(slug)}"</h2>
       <p class="text-muted serif italic">We don't have ranked players from this expert in the audit window yet.</p>
@@ -1219,7 +1335,14 @@ function sortableHeader(label: string, field: PlayersGridOptions['sort'], opts: 
   `;
 }
 
-export function playersGrid(rows: ScoredPick[], total: number, opts: PlayersGridOptions, clerkKey?: string): string {
+export function playersGrid(
+  rows: ScoredPick[],
+  total: number,
+  opts: PlayersGridOptions,
+  clerkKey?: string,
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
+  const snapshot = adminFlags(extras);
   const controls = renderViewControls({
     mode: opts.mode,
     selectedSeason: opts.selectedSeason,
@@ -1336,7 +1459,7 @@ export function playersGrid(rows: ScoredPick[], total: number, opts: PlayersGrid
   `;
 
   const content = `
-    ${header('dashboard')}
+    ${header('dashboard', adminFlags(snapshot))}
     <div class="max-w-6xl mx-auto py-6 px-4 text-black">
       <a href="/analyzer?${buildPlayersQs(opts, {})}"
          class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
