@@ -51,7 +51,8 @@ export class ExpertAuditService {
       resultIndex.set(k, r.pickNumber);
     }
 
-    const rows: ExpertOracleRow[] = [];
+    const ranked: ExpertOracleRow[] = [];
+    const empty: ExpertOracleRow[] = [];
     for (const expert of allExperts) {
       const myRankings = allRankings.filter((rk) => rk.expertId === expert.id);
       const matched: {predicted: number; actual: number; year: number}[] = [];
@@ -72,11 +73,19 @@ export class ExpertAuditService {
       }
 
       if (matched.length === 0) {
+        empty.push({
+          expertSlug: expert.slug,
+          expertName: expert.name,
+          org: expert.organization,
+          rmse: 0,
+          sampleSize: 0,
+          yearsCovered: [],
+        });
         continue;
       }
 
       const rmse = LLLRatingEngine.calculateRMSE(matched);
-      rows.push({
+      ranked.push({
         expertSlug: expert.slug,
         expertName: expert.name,
         org: expert.organization,
@@ -86,7 +95,9 @@ export class ExpertAuditService {
       });
     }
 
-    return rows.sort((a, b) => a.rmse - b.rmse);
+    ranked.sort((a, b) => a.rmse - b.rmse);
+    empty.sort((a, b) => a.expertName.localeCompare(b.expertName));
+    return [...ranked, ...empty];
   }
 
   /**
@@ -112,7 +123,8 @@ export class ExpertAuditService {
       ratingByName.set(LLLRatingEngine.normalizeName(r.playerName), r);
     }
 
-    const rows: ExpertScoutRow[] = [];
+    const ranked: ExpertScoutRow[] = [];
+    const empty: ExpertScoutRow[] = [];
     for (const expert of allExperts) {
       const mine = allRankings.filter((rk) => rk.expertId === expert.id);
       const pairs: {expectedRating: number; actualRating: number; year: number}[] = [];
@@ -141,11 +153,20 @@ export class ExpertAuditService {
       }
 
       if (pairs.length === 0) {
+        empty.push({
+          expertSlug: expert.slug,
+          expertName: expert.name,
+          org: expert.organization,
+          talentDelta: 0,
+          sampleSize: 0,
+          yearsCovered: [],
+          letter: '—',
+        });
         continue;
       }
 
       const talentDelta = LLLRatingEngine.calculateTalentDelta(pairs);
-      rows.push({
+      ranked.push({
         expertSlug: expert.slug,
         expertName: expert.name,
         org: expert.organization,
@@ -156,7 +177,9 @@ export class ExpertAuditService {
       });
     }
 
-    return rows.sort((a, b) => a.talentDelta - b.talentDelta);
+    ranked.sort((a, b) => a.talentDelta - b.talentDelta);
+    empty.sort((a, b) => a.expertName.localeCompare(b.expertName));
+    return [...ranked, ...empty];
   }
 }
 

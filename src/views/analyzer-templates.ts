@@ -530,40 +530,62 @@ export function expertLeaderboard(
   extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
   const _admin = adminFlags(extras);
+  let oracleSeenWithData = 0;
   const oracleRows = oracle
-    .map(
-      (e, i) => `
-    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors group cursor-pointer"
-        onclick="window.location.href='/analyzer/expert/${encodeURIComponent(e.expertSlug)}'">
-      <td class="py-4 px-4 font-bold text-lg text-black">#${i + 1}</td>
+    .map((e) => {
+      const hasData = e.sampleSize > 0;
+      if (hasData) {
+        oracleSeenWithData++;
+      }
+      const rankCell = hasData ? `#${oracleSeenWithData}` : '—';
+      const interactive = hasData
+        ? `cursor-pointer onclick="window.location.href='/analyzer/expert/${encodeURIComponent(e.expertSlug)}'"`
+        : '';
+      const nameCell = hasData
+        ? `<a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</a>`
+        : `<span class="font-bold text-black/50">${escapeHtml(e.expertName)}</span>`;
+      return `
+    <tr class="border-b border-black/5 ${hasData ? 'hover:bg-black/[0.02]' : 'bg-black/[0.02]'} transition-colors group" ${interactive}>
+      <td class="py-4 px-4 font-bold text-lg ${hasData ? 'text-black' : 'text-black/40'}">${rankCell}</td>
       <td class="py-4">
-        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</a>
+        ${nameCell}
         <div class="text-[10px] text-muted uppercase tracking-widest font-bold">${escapeHtml(e.org || 'Independent')}</div>
       </td>
-      <td class="py-4 text-center font-mono font-bold text-accent text-lg">${e.rmse.toFixed(1)}</td>
-      <td class="py-4 text-center text-muted font-bold">${e.sampleSize}</td>
-      <td class="py-4 text-center text-[11px] text-muted">${e.yearsCovered.join(', ')}</td>
+      <td class="py-4 text-center font-mono font-bold ${hasData ? 'text-accent' : 'text-black/30'} text-lg">${hasData ? e.rmse.toFixed(1) : '—'}</td>
+      <td class="py-4 text-center ${hasData ? 'text-muted' : 'text-black/30'} font-bold">${hasData ? e.sampleSize : 'No data yet'}</td>
+      <td class="py-4 text-center text-[11px] ${hasData ? 'text-muted' : 'text-black/30 italic'}">${hasData ? e.yearsCovered.join(', ') : 'awaiting ingestion'}</td>
     </tr>
-  `,
-    )
+  `;
+    })
     .join('');
 
+  let scoutSeenWithData = 0;
   const scoutRows = scout
-    .map(
-      (e, i) => `
-    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors group cursor-pointer"
-        onclick="window.location.href='/analyzer/expert/${encodeURIComponent(e.expertSlug)}'">
-      <td class="py-4 px-4 font-bold text-lg text-black">#${i + 1}</td>
+    .map((e) => {
+      const hasData = e.sampleSize > 0;
+      if (hasData) {
+        scoutSeenWithData++;
+      }
+      const rankCell = hasData ? `#${scoutSeenWithData}` : '—';
+      const interactive = hasData
+        ? `cursor-pointer onclick="window.location.href='/analyzer/expert/${encodeURIComponent(e.expertSlug)}'"`
+        : '';
+      const nameCell = hasData
+        ? `<a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</a>`
+        : `<span class="font-bold text-black/50">${escapeHtml(e.expertName)}</span>`;
+      return `
+    <tr class="border-b border-black/5 ${hasData ? 'hover:bg-black/[0.02]' : 'bg-black/[0.02]'} transition-colors group" ${interactive}>
+      <td class="py-4 px-4 font-bold text-lg ${hasData ? 'text-black' : 'text-black/40'}">${rankCell}</td>
       <td class="py-4">
-        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</a>
+        ${nameCell}
         <div class="text-[10px] text-muted uppercase tracking-widest font-bold">${escapeHtml(e.org || 'Independent')}</div>
       </td>
-      <td class="py-4 text-center font-mono font-bold text-accent text-lg">${e.talentDelta.toFixed(2)}</td>
-      <td class="py-4 text-center text-muted font-bold">${e.sampleSize}</td>
-      <td class="py-4 text-center font-bold serif italic text-xl">${e.letter}</td>
+      <td class="py-4 text-center font-mono font-bold ${hasData ? 'text-accent' : 'text-black/30'} text-lg">${hasData ? e.talentDelta.toFixed(2) : '—'}</td>
+      <td class="py-4 text-center ${hasData ? 'text-muted' : 'text-black/30'} font-bold">${hasData ? e.sampleSize : 'No data yet'}</td>
+      <td class="py-4 text-center font-bold serif italic text-xl ${hasData ? '' : 'text-black/30'}">${escapeHtml(e.letter)}</td>
     </tr>
-  `,
-    )
+  `;
+    })
     .join('');
 
   const content = `
