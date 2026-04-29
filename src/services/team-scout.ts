@@ -9,28 +9,33 @@ export class TeamScoutService {
    */
   static async getTeamSuccessLeaderboard() {
     const db = getDB();
-    
+
     // 1. Get all picks since 2020 for a relevant "Rolling" window
-    const picks = await db.select({
-      teamName: officialDraftResults.teamName,
-      round: officialDraftResults.round,
-      contractOutcome: officialDraftResults.contractOutcome,
-      playerName: officialDraftResults.playerName
-    })
-    .from(officialDraftResults)
-    .where(sql`year >= 2019`);
+    const picks = await db
+      .select({
+        teamName: officialDraftResults.teamName,
+        round: officialDraftResults.round,
+        contractOutcome: officialDraftResults.contractOutcome,
+        playerName: officialDraftResults.playerName,
+      })
+      .from(officialDraftResults)
+      .where(sql`year >= 2019`);
 
     // 2. Get all career ratings
-    const ratings = await db.select().from(playerPerformanceRatings).where(eq(playerPerformanceRatings.isCareerRating, true));
-    const ratingMap = new Map(ratings.map(r => [r.playerName, r.rating]));
+    const ratings = await db
+      .select()
+      .from(playerPerformanceRatings)
+      .where(eq(playerPerformanceRatings.isCareerRating, true));
+    const ratingMap = new Map(ratings.map((r) => [r.playerName, r.rating]));
 
     // 3. Aggregate by Team
-    const teamStats: Record<string, { totalPicks: number, hits: number, totalValue: number, retentionCount: number }> = {};
+    const teamStats: Record<string, {totalPicks: number; hits: number; totalValue: number; retentionCount: number}> =
+      {};
 
     for (const p of picks) {
       const team = p.teamName || 'Unknown';
-      if (!teamStats[team]) teamStats[team] = { totalPicks: 0, hits: 0, totalValue: 0, retentionCount: 0 };
-      
+      if (!teamStats[team]) {teamStats[team] = {totalPicks: 0, hits: 0, totalValue: 0, retentionCount: 0};}
+
       const stats = teamStats[team];
       stats.totalPicks++;
 
@@ -41,11 +46,14 @@ export class TeamScoutService {
 
       // Value check: LLL Grade
       const careerRating = ratingMap.get(p.playerName || '') || 5; // Default to mid if unknown
-      const performanceScore = LLLRatingEngine.calculateFinalPerformanceScore([careerRating], p.contractOutcome || undefined);
+      const performanceScore = LLLRatingEngine.calculateFinalPerformanceScore(
+        [careerRating],
+        p.contractOutcome || undefined,
+      );
       const gradeDelta = LLLRatingEngine.calculateFinalGrade(performanceScore, p.round || 4);
-      
+
       stats.totalValue += gradeDelta;
-      if (gradeDelta > 0.5) stats.hits++;
+      if (gradeDelta > 0.5) {stats.hits++;}
     }
 
     // 4. Format for UI
@@ -55,26 +63,30 @@ export class TeamScoutService {
         const avgValue = Number((s.totalValue / s.totalPicks).toFixed(2));
         // Map to A-F scale based on avgValue
         let grade = 'F';
-        if (avgValue >= 1.5) grade = 'A+';
-        else if (avgValue >= 1.2) grade = 'A';
-        else if (avgValue >= 0.9) grade = 'A-';
-        else if (avgValue >= 0.6) grade = 'B+';
-        else if (avgValue >= 0.3) grade = 'B';
-        else if (avgValue >= 0.0) grade = 'B-';
-        else if (avgValue >= -0.3) grade = 'C+';
-        else if (avgValue >= -0.6) grade = 'C';
-        else if (avgValue >= -0.9) grade = 'C-';
-        else if (avgValue >= -1.2) grade = 'D+';
-        else if (avgValue >= -1.5) grade = 'D';
+        if (avgValue >= 1.5) {grade = 'A+';}
+        else if (avgValue >= 1.2) {grade = 'A';}
+        else if (avgValue >= 0.9) {grade = 'A-';}
+        else if (avgValue >= 0.6) {grade = 'B+';}
+        else if (avgValue >= 0.3) {grade = 'B';}
+        else if (avgValue >= 0.0) {grade = 'B-';}
+        else if (avgValue >= -0.3) {grade = 'C+';}
+        else if (avgValue >= -0.6) {grade = 'C';}
+        else if (avgValue >= -0.9) {grade = 'C-';}
+        else if (avgValue >= -1.2) {grade = 'D+';}
+        else if (avgValue >= -1.5) {grade = 'D';}
+
+        // Normalized value: Map -2.0 to 2.0 range to 0-100 for the UI bar
+        // (x - min) / (max - min) * 100
+        const normalizedValue = Math.min(100, Math.max(0, ((avgValue + 2) / 4) * 100));
 
         return {
           team: name,
           retention: retention,
-          value: Math.max(0, Math.round((avgValue + 1) * 40)), // Normalized for bar
+          value: Math.round(normalizedValue),
           grade: grade,
-          avgDelta: avgValue
+          avgDelta: avgValue,
         };
-        })
+      })
 
       .sort((a, b) => b.avgDelta - a.avgDelta);
   }
