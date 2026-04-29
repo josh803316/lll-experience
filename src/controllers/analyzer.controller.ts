@@ -10,15 +10,16 @@ import {
   searchResultsFragment,
   successLeaderboard,
 } from '../views/analyzer-templates.js';
-import type {ExpertAccuracy, TeamSuccess} from '../views/analyzer-templates.js';
+import type {ExpertAccuracy} from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
 import {ExpertAuditService} from '../services/expert-audit.js';
+import {TeamScoutService} from '../services/team-scout.js';
 
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
 export const analyzerController = new Elysia({prefix: '/analyzer'})
   .onBeforeHandle((ctx) => {
-    return authGuard(ctx);
+    return authGuard(ctx) as any;
   })
 
   // --- HTML ROUTES (Web Frontend) ---
@@ -32,20 +33,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/experts', async (ctx) => {
-    const data = (await ExpertAuditService.getOracleLeaderboard(2023)) as ExpertAccuracy[];
+    const data = (await ExpertAuditService.getOracleLeaderboard()) as ExpertAccuracy[];
     ctx.set.headers['Content-Type'] = 'text/html';
     return expertLeaderboard(data, CLERK_KEY);
   })
 
-  .get('/teams', (ctx) => {
-    const data: TeamSuccess[] = [
-      {team: 'Detroit Lions', retention: 92, value: 85, grade: 'A'},
-      {team: 'Houston Texans', retention: 88, value: 94, grade: 'A+'},
-      {team: 'Baltimore Ravens', retention: 84, value: 89, grade: 'A'},
-      {team: 'Kansas City Chiefs', retention: 81, value: 85, grade: 'A-'},
-      {team: 'Philadelphia Eagles', retention: 79, value: 82, grade: 'B+'},
-      {team: 'Carolina Panthers', retention: 42, value: 15, grade: 'D'},
-    ];
+  .get('/teams', async (ctx) => {
+    const data = await TeamScoutService.getTeamSuccessLeaderboard();
     ctx.set.headers['Content-Type'] = 'text/html';
     return teamLeaderboard(data, CLERK_KEY);
   })
@@ -64,24 +58,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   /** Expert Accuracy Rankings */
-  .get('/api/experts/leaderboard', () => {
-    // This will eventually query the expertAccuracyScores table
-    return [
-      {id: 1, name: 'Daniel Jeremiah', org: 'NFL Network', accuracy: 94.2, grade: 'A+'},
-      {id: 2, name: 'Dane Brugler', org: 'The Athletic', accuracy: 91.8, grade: 'A'},
-      {id: 3, name: 'Mel Kiper Jr.', org: 'ESPN', accuracy: 78.4, grade: 'B-'},
-    ];
+  .get('/api/experts/leaderboard', async () => {
+    return (await ExpertAuditService.getOracleLeaderboard()) as ExpertAccuracy[];
   })
 
   /** Team Draft Success (The 3-Year Lookback) */
-  .get('/api/teams/success', ({query}) => {
-    // const window = Number(query.window) || 3;
-    // Mock data for the "Foundational" build
-    return [
-      {team: 'DET', retention: 88, value: 92, grade: 'A'},
-      {team: 'BAL', retention: 84, value: 89, grade: 'A-'},
-      {team: 'KC', retention: 81, value: 85, grade: 'B+'},
-    ];
+  .get('/api/teams/success', async () => {
+    return await TeamScoutService.getTeamSuccessLeaderboard();
   })
 
   /** Intel Timeline (News updates during combine, pre-season, etc) */
@@ -121,7 +104,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/fragment/top-experts-mini', async () => {
-    const data = (await ExpertAuditService.getOracleLeaderboard(2023)) as ExpertAccuracy[];
+    const data = (await ExpertAuditService.getOracleLeaderboard()) as ExpertAccuracy[];
     return topExpertsMini(data);
   })
 
@@ -130,13 +113,8 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     return searchResultsFragment(results);
   })
 
-  .get('/fragment/success-leaderboard', () => {
-    const data: TeamSuccess[] = [
-      {team: 'Detroit Lions', retention: 92, value: 85, grade: 'A'},
-      {team: 'Houston Texans', retention: 88, value: 94, grade: 'A+'},
-      {team: 'Baltimore Ravens', retention: 84, value: 89, grade: 'A'},
-      {team: 'Kansas City Chiefs', retention: 81, value: 85, grade: 'A-'},
-      {team: 'Philadelphia Eagles', retention: 79, value: 82, grade: 'B+'},
-    ];
-    return successLeaderboard(data);
+  .get('/fragment/success-leaderboard', async () => {
+    const data = await TeamScoutService.getTeamSuccessLeaderboard();
+    // Only show top 5 on dashboard
+    return successLeaderboard(data.slice(0, 5));
   });

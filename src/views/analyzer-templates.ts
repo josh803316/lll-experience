@@ -225,52 +225,60 @@ export function expertLeaderboard(experts: ExpertAccuracy[], clerkKey?: string):
 }
 
 export function teamLeaderboard(teams: TeamSuccess[], clerkKey?: string): string {
-  const cards = teams
-    .map(
-      (t) => `
-    <div class="card-paper p-8 rounded-lg border-t-8 ${t.grade.startsWith('A') ? 'border-accent' : 'border-black'} shadow-lg transition-transform hover:-translate-y-1">
-      <div class="flex justify-between items-baseline mb-6">
-        <h3 class="text-4xl font-bold tracking-tighter text-black">${t.team}</h3>
-        <span class="text-3xl font-bold text-accent italic font-serif">${t.grade}</span>
-      </div>
-      <div class="space-y-6 text-black">
+  const cards = teams.map((t, i) => `
+    <div class="card-paper p-6 rounded-lg border-t-4 ${t.grade.startsWith('A') ? 'border-accent' : 'border-black/20'} shadow-sm hover:shadow-md transition-all group">
+      <div class="flex justify-between items-start mb-4">
         <div>
-          <div class="flex justify-between text-[10px] font-bold uppercase tracking-widest mb-2 text-muted">
-            <span>Core Retention</span>
+          <div class="text-[8px] font-bold text-muted uppercase tracking-[0.2em] mb-1">Rank #${i + 1}</div>
+          <h3 class="text-xl font-bold tracking-tighter text-black group-hover:text-accent transition-colors">${t.team}</h3>
+        </div>
+        <span class="text-xl font-bold text-black serif italic">${t.grade}</span>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
+            <span>Retention</span>
             <span class="text-black font-bold">${t.retention}%</span>
           </div>
-          <div class="h-2 bg-black/5 rounded-full overflow-hidden">
+          <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
             <div class="h-full bg-black" style="width: ${t.retention}%"></div>
           </div>
         </div>
         <div>
-          <div class="flex justify-between text-[10px] font-bold uppercase tracking-widest mb-2 text-muted">
-            <span>Value Premium</span>
+          <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
+            <span>Value Added</span>
             <span class="text-accent font-bold">+${t.value}%</span>
           </div>
-          <div class="h-2 bg-black/5 rounded-full overflow-hidden">
+          <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
             <div class="h-full bg-accent" style="width: ${t.value}%"></div>
           </div>
         </div>
       </div>
-      <button class="w-full mt-8 py-3 border-2 border-black text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-black hover:text-white transition-all text-black">Deep Analysis</button>
     </div>
-  `,
-    )
-    .join('');
+  `).join('');
 
   const content = `
-    <div class="max-w-5xl mx-auto py-12 px-4 text-black">
-      <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-6 inline-block transition-colors text-black">← Back to Dashboard</a>
-      <h2 class="text-6xl font-bold tracking-tighter mb-2 text-black">SUCCESS INDEX</h2>
-      <p class="text-muted italic mb-10 border-b border-black/10 pb-4 serif text-lg">10-Year Rolling Analysis: Retention & Performance vs Expected Draft Value</p>
+    <div class="max-w-6xl mx-auto py-12 px-4 text-black">
+      <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
+        <div>
+          <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-4 inline-block transition-colors">← Back to Dashboard</a>
+          <h2 class="text-6xl font-bold tracking-tighter text-black">FRANCHISE INDEX</h2>
+          <p class="text-muted italic serif text-xl max-w-xl leading-relaxed">
+            A comprehensive look at all 32 teams. Ranked by LLL's proprietary blend of core retention and value premium vs. draft slot.
+          </p>
+        </div>
+        <div class="bg-black text-white px-6 py-4 rounded-lg shadow-xl shrink-0">
+           <div class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mb-1">Total Analysis</div>
+           <div class="text-3xl font-bold tracking-tighter">847 <span class="text-sm opacity-60 uppercase tracking-widest font-normal">Picks</span></div>
+        </div>
+      </div>
       
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-black">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
         ${cards}
       </div>
     </div>
   `;
-  return analyzerLayout(content, 'Team Success Index — LLL', clerkKey);
+  return analyzerLayout(content, 'Franchise Index — LLL Draft Analyzer', clerkKey);
 }
 
 export function topExpertsMini(experts: ExpertAccuracy[]): string {
