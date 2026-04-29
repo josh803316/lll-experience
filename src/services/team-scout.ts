@@ -54,12 +54,18 @@ export class TeamScoutService {
         const retention = Math.round((s.retentionCount / s.totalPicks) * 100) || 40; // Floor for visual
         const avgValue = Number((s.totalValue / s.totalPicks).toFixed(2));
         // Map to A-F scale based on avgValue
-        let grade = 'C';
-        if (avgValue > 1.0) grade = 'A+';
-        else if (avgValue > 0.5) grade = 'A';
-        else if (avgValue > 0) grade = 'B';
-        else if (avgValue > -0.5) grade = 'C';
-        else grade = 'D';
+        let grade = 'F';
+        if (avgValue >= 1.5) grade = 'A+';
+        else if (avgValue >= 1.2) grade = 'A';
+        else if (avgValue >= 0.9) grade = 'A-';
+        else if (avgValue >= 0.6) grade = 'B+';
+        else if (avgValue >= 0.3) grade = 'B';
+        else if (avgValue >= 0.0) grade = 'B-';
+        else if (avgValue >= -0.3) grade = 'C+';
+        else if (avgValue >= -0.6) grade = 'C';
+        else if (avgValue >= -0.9) grade = 'C-';
+        else if (avgValue >= -1.2) grade = 'D+';
+        else if (avgValue >= -1.5) grade = 'D';
 
         return {
           team: name,
