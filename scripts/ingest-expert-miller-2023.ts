@@ -18,30 +18,32 @@ const client = postgres(DIRECT_URL, {max: 1});
 const db = drizzle(client);
 
 const MILLER_2023_MOCK = [
-  { pick: 1, player: 'Bryce Young', team: 'CAR' },
-  { pick: 2, player: 'Will Anderson Jr.', team: 'HOU' },
-  { pick: 3, player: 'Tyree Wilson', team: 'ARI' },
-  { pick: 4, player: 'C.J. Stroud', team: 'IND' },
-  { pick: 5, player: 'Jalen Carter', team: 'SEA' },
-  { pick: 6, player: 'Devon Witherspoon', team: 'DET' },
-  { pick: 7, player: 'Anthony Richardson', team: 'LV' },
-  { pick: 8, player: 'Bijan Robinson', team: 'ATL' },
-  { pick: 9, player: 'Paris Johnson Jr.', team: 'CHI' },
-  { pick: 10, player: 'Nolan Smith', team: 'PHI' },
-  { pick: 11, player: 'Peter Skoronski', team: 'TEN' },
-  { pick: 13, player: 'Broderick Jones', team: 'NYJ' },
-  { pick: 14, player: 'Joey Porter Jr.', team: 'NE' },
-  { pick: 17, player: 'Christian Gonzalez', team: 'PIT' },
-  { pick: 20, player: 'Jaxon Smith-Njigba', team: 'SEA' },
-  { pick: 23, player: 'Will Levis', team: 'MIN' },
-  { pick: 25, player: 'Jalin Hyatt', team: 'NYG' },
-  { pick: 26, player: 'Michael Mayer', team: 'DAL' },
-  { pick: 27, player: 'Quentin Johnston', team: 'BUF' }
+  {pick: 1, player: 'Bryce Young', team: 'CAR'},
+  {pick: 2, player: 'Will Anderson Jr.', team: 'HOU'},
+  {pick: 3, player: 'Tyree Wilson', team: 'ARI'},
+  {pick: 4, player: 'C.J. Stroud', team: 'IND'},
+  {pick: 5, player: 'Jalen Carter', team: 'SEA'},
+  {pick: 6, player: 'Devon Witherspoon', team: 'DET'},
+  {pick: 7, player: 'Anthony Richardson', team: 'LV'},
+  {pick: 8, player: 'Bijan Robinson', team: 'ATL'},
+  {pick: 9, player: 'Paris Johnson Jr.', team: 'CHI'},
+  {pick: 10, player: 'Nolan Smith', team: 'PHI'},
+  {pick: 11, player: 'Peter Skoronski', team: 'TEN'},
+  {pick: 13, player: 'Broderick Jones', team: 'NYJ'},
+  {pick: 14, player: 'Joey Porter Jr.', team: 'NE'},
+  {pick: 17, player: 'Christian Gonzalez', team: 'PIT'},
+  {pick: 20, player: 'Jaxon Smith-Njigba', team: 'SEA'},
+  {pick: 23, player: 'Will Levis', team: 'MIN'},
+  {pick: 25, player: 'Jalin Hyatt', team: 'NYG'},
+  {pick: 26, player: 'Michael Mayer', team: 'DAL'},
+  {pick: 27, player: 'Quentin Johnston', team: 'BUF'},
 ];
 
 async function ingest() {
   const expert = (await db.select().from(experts).where(eq(experts.slug, 'matt-miller')).limit(1))[0];
-  if (!expert) throw new Error('Expert Matt Miller not found.');
+  if (!expert) {
+    throw new Error('Expert Matt Miller not found.');
+  }
 
   console.log(`Ingesting ${MILLER_2023_MOCK.length} rankings for Matt Miller (2023)...`);
 
@@ -51,12 +53,14 @@ async function ingest() {
       year: 2023,
       playerName: p.player,
       rank: p.pick,
-      grade: 'A', 
-      commentary: `Mocked at #${p.pick} to ${p.team} in Miller's final 2023 mock.`
+      grade: 'A',
+      commentary: `Mocked at #${p.pick} to ${p.team} in Miller's final 2023 mock.`,
     });
   }
 
   console.log('Ingestion complete.');
 }
 
-ingest().catch(console.error).finally(() => client.end());
+ingest()
+  .catch(console.error)
+  .finally(() => client.end());

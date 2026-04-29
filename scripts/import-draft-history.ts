@@ -19,25 +19,30 @@ const db = drizzle(client);
 
 async function importHistoricalData(payload: {
   officialPicks?: any[];
-  expertGrades?: { expertSlug: string, year: number, picks: any[] }[];
+  expertGrades?: {expertSlug: string; year: number; picks: any[]}[];
 }) {
   const app = (await db.select().from(apps).where(eq(apps.slug, 'analyzer')).limit(1))[0];
-  if (!app) throw new Error('Analyzer app not found. Seed the app first.');
+  if (!app) {
+    throw new Error('Analyzer app not found. Seed the app first.');
+  }
 
   // 1. Import Official Draft Results
   if (payload.officialPicks) {
     console.log(`Importing ${payload.officialPicks.length} official picks...`);
     for (const p of payload.officialPicks) {
-      await db.insert(officialDraftResults).values({
-        appId: app.id,
-        year: p.year,
-        round: p.round,
-        pickNumber: p.pick,
-        playerName: p.player,
-        teamName: p.team,
-        position: p.pos,
-        college: p.college
-      }).onConflictDoNothing();
+      await db
+        .insert(officialDraftResults)
+        .values({
+          appId: app.id,
+          year: p.year,
+          round: p.round,
+          pickNumber: p.pick,
+          playerName: p.player,
+          teamName: p.team,
+          position: p.pos,
+          college: p.college,
+        })
+        .onConflictDoNothing();
     }
   }
 
@@ -58,7 +63,7 @@ async function importHistoricalData(payload: {
           playerName: p.player,
           rank: p.rank,
           grade: p.grade,
-          commentary: p.commentary
+          commentary: p.commentary,
         });
       }
     }
@@ -70,25 +75,23 @@ async function importHistoricalData(payload: {
 // Example usage structure for 10-year data:
 const EXAMPLE_PAYLOAD = {
   officialPicks: [
-    { year: 2023, round: 1, pick: 1, player: 'Bryce Young', team: 'CAR', pos: 'QB', college: 'Alabama' },
+    {year: 2023, round: 1, pick: 1, player: 'Bryce Young', team: 'CAR', pos: 'QB', college: 'Alabama'},
     // ... add more here
   ],
   expertGrades: [
     {
       expertSlug: 'dj',
       year: 2023,
-      picks: [
-        { player: 'Bryce Young', rank: 1, grade: 'A+', commentary: 'Elite processor.' }
-      ]
-    }
-  ]
+      picks: [{player: 'Bryce Young', rank: 1, grade: 'A+', commentary: 'Elite processor.'}],
+    },
+  ],
 };
 
 // We will export this so we can call it from a data-loading process
-export { importHistoricalData };
+export {importHistoricalData};
 
 if (process.argv[1].includes('import-draft-history.ts')) {
-   // Run example or actual data here
-   console.log("To use this script, populate it with data from PFR or Mock Draft Database.");
-   client.end();
+  // Run example or actual data here
+  console.log('To use this script, populate it with data from PFR or Mock Draft Database.');
+  client.end();
 }
