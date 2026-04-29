@@ -79,6 +79,89 @@ function extractPlayerLinks(snippet: string): string[] {
   return out;
 }
 
+// ── Scrape: per-year Pro Bowl page ────────────────────────────────────────
+//
+//  Pro Bowl game played AT THE END of season N is named "{N+1}_Pro_Bowl"
+//  through 2022, then renamed "{N+1}_Pro_Bowl_Games" from 2023 on. We
+//  fetch the URL for the game year, then attribute selections back to the
+//  preceding season (so 2024_Pro_Bowl_Games → 2023 NFL season honors).
+
+type ProBowlSelection = {name: string; season: number};
+
+async function scrapeProBowlSeason(season: number): Promise<ProBowlSelection[]> {
+  const gameYear = season + 1;
+  const urls = [
+    `https://en.wikipedia.org/wiki/${gameYear}_Pro_Bowl_Games`,
+    `https://en.wikipedia.org/wiki/${gameYear}_Pro_Bowl`,
+  ];
+  let html: string | null = null;
+  for (const u of urls) {
+    try {
+      html = await fetchWiki(u);
+      break;
+    } catch (_) {
+      // try next
+    }
+  }
+  if (!html) {
+    return [];
+  }
+
+  // Pro Bowl pages have rosters across one or two top-level sections:
+  //   New format (2023+): single "Rosters" section with AFC/NFC subsections
+  //   Older format:       separate "AFC_rosters" + "NFC_rosters" sections
+  //
+  // Concatenate the relevant slices and walk every wikitable inside.
+  const fullHtml: string = html;
+  const sliceFromAnchor = (anchor: string): string => {
+    const start = fullHtml.indexOf(`id="${anchor}"`);
+    if (start < 0) {
+      return '';
+    }
+    const tail = fullHtml.slice(start);
+    // Cut off at the next major H2 (Game stats, Box score, Aftermath, etc).
+    const stops = [
+      'id="Game_format"',
+      'id="Game_summary"',
+      'id="Summary"',
+      'id="Box_score"',
+      'id="Number_of_selections',
+      'id="Results"',
+      'id="Aftermath"',
+      'id="Broadcasting"',
+      'id="References"',
+    ];
+    const stopIdx = Math.min(
+      ...stops.map((s) => {
+        const i = tail.indexOf(s);
+        return i < 0 ? Infinity : i;
+      }),
+    );
+    return stopIdx === Infinity ? tail : tail.slice(0, stopIdx);
+  };
+  const slice = sliceFromAnchor('Rosters') + sliceFromAnchor('AFC_rosters') + sliceFromAnchor('NFC_rosters');
+  if (!slice) {
+    return [];
+  }
+
+  const tableRe = /<table[^>]*class="wikitable[^"]*"[^>]*>([\s\S]*?)<\/table>/g;
+  const seen = new Set<string>();
+  const out: ProBowlSelection[] = [];
+  let tm;
+  while ((tm = tableRe.exec(slice)) !== null) {
+    const names = extractPlayerLinks(tm[1]);
+    for (const n of names) {
+      const key = LLLRatingEngine.normalizeName(n);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push({name: n, season});
+    }
+  }
+  return out;
+}
+
 // ── Scrape: per-year All-Pro page ─────────────────────────────────────────
 
 type AllProSelection = {name: string; team: 1 | 2; year: number};
@@ -88,7 +171,7 @@ async function scrapeAllProYear(year: number): Promise<AllProSelection[]> {
   const html = await fetchWiki(url);
   // The page has multiple wikitables (Offense, Defense, Special teams, kick
   // returners, etc). Walk all of them.
-  const tableRe = /<table class="wikitable[^"]*">([\s\S]*?)<\/table>/g;
+  const tableRe = /<table[^>]*class="wikitable[^"]*"[^>]*>([\s\S]*?)<\/table>/g;
   const out: AllProSelection[] = [];
   let tm;
   while ((tm = tableRe.exec(html)) !== null) {
@@ -126,7 +209,7 @@ type AwardWin = {year: number; name: string; award: 'MVP' | 'OPOY' | 'DPOY' | 'O
 async function scrapeAwardPage(url: string, award: AwardWin['award']): Promise<AwardWin[]> {
   const html = await fetchWiki(url);
   // Walk every wikitable; the first match is usually a Legend on these pages.
-  const tableRe = /<table class="wikitable[^"]*">([\s\S]*?)<\/table>/g;
+  const tableRe = /<table[^>]*class="wikitable[^"]*"[^>]*>([\s\S]*?)<\/table>/g;
   const out: AwardWin[] = [];
   let tm;
   while ((tm = tableRe.exec(html)) !== null) {
@@ -174,6 +257,19 @@ async function run() {
     }
   }
 
+  // 1b. Pro Bowl per season
+  const proBowlSelections: ProBowlSelection[] = [];
+  for (let y = START_YEAR; y <= END_YEAR; y++) {
+    try {
+      const sel = await scrapeProBowlSeason(y);
+      console.log(`  ${y} Pro Bowl: ${sel.length} selections`);
+      proBowlSelections.push(...sel);
+      await new Promise((r) => setTimeout(r, 200));
+    } catch (e) {
+      console.warn(`  ${y} Pro Bowl: ${(e as Error).message}`);
+    }
+  }
+
   // 2. Individual awards
   const awardUrls: Record<AwardWin['award'], string> = {
     MVP: 'https://en.wikipedia.org/wiki/Associated_Press_NFL_Most_Valuable_Player_Award',
@@ -212,6 +308,9 @@ async function run() {
     cur[key] = true;
     flagsByKey.set(k, cur);
   };
+  for (const s of proBowlSelections) {
+    setFlag(s.name, s.season, 'proBowl');
+  }
   for (const s of allProSelections) {
     setFlag(s.name, s.year, s.team === 1 ? 'allPro1' : 'allPro2');
   }
