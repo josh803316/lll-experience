@@ -261,17 +261,25 @@ export class TeamScoutService {
   }
 
   /**
-   * Top hits & busts across the league within the fair window.
+   * Top hits & busts across the league. Optionally narrowed to a specific
+   * draft year; otherwise spans the full fair window.
    */
-  static async getTopMovers(window: number = DEFAULT_WINDOW, endYear: number = LATEST_FAIR_DRAFT_YEAR) {
+  static async getTopMovers(
+    window: number = DEFAULT_WINDOW,
+    endYear: number = LATEST_FAIR_DRAFT_YEAR,
+    options: {draftYear?: number; limit?: number} = {},
+  ) {
     const db = getDB();
-    const startYear = endYear - window + 1;
     const evalYear = new Date().getFullYear();
+    const limit = options.limit ?? 10;
+
+    const startYear = options.draftYear ?? endYear - window + 1;
+    const stopYear = options.draftYear ?? endYear;
 
     const picks = await db
       .select()
       .from(officialDraftResults)
-      .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)));
+      .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, stopYear)));
 
     const ratings = await db
       .select({
@@ -321,7 +329,11 @@ export class TeamScoutService {
     }
 
     scored.sort((a, b) => b.delta - a.delta);
-    return {topHits: scored.slice(0, 5), topBusts: scored.slice(-5).reverse(), totalScored: scored.length};
+    return {
+      topHits: scored.slice(0, limit),
+      topBusts: scored.slice(-limit).reverse(),
+      totalScored: scored.length,
+    };
   }
 
   /**

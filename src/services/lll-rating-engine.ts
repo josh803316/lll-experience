@@ -247,49 +247,82 @@ export class LLLRatingEngine {
 /**
  * NFL franchise canonical-name mapping for nflverse abbreviations.
  * Merges relocated franchises (OAK→LVR, SDG→LAC, STL→LAR).
+ * `espn` is the lowercase logo slug used on ESPN's CDN.
  */
-export const TEAM_CANONICAL: Record<string, {abbr: string; city: string; name: string}> = {
-  ARI: {abbr: 'ARI', city: 'Arizona', name: 'Cardinals'},
-  ATL: {abbr: 'ATL', city: 'Atlanta', name: 'Falcons'},
-  BAL: {abbr: 'BAL', city: 'Baltimore', name: 'Ravens'},
-  BUF: {abbr: 'BUF', city: 'Buffalo', name: 'Bills'},
-  CAR: {abbr: 'CAR', city: 'Carolina', name: 'Panthers'},
-  CHI: {abbr: 'CHI', city: 'Chicago', name: 'Bears'},
-  CIN: {abbr: 'CIN', city: 'Cincinnati', name: 'Bengals'},
-  CLE: {abbr: 'CLE', city: 'Cleveland', name: 'Browns'},
-  DAL: {abbr: 'DAL', city: 'Dallas', name: 'Cowboys'},
-  DEN: {abbr: 'DEN', city: 'Denver', name: 'Broncos'},
-  DET: {abbr: 'DET', city: 'Detroit', name: 'Lions'},
-  GNB: {abbr: 'GB', city: 'Green Bay', name: 'Packers'},
-  HOU: {abbr: 'HOU', city: 'Houston', name: 'Texans'},
-  IND: {abbr: 'IND', city: 'Indianapolis', name: 'Colts'},
-  JAX: {abbr: 'JAX', city: 'Jacksonville', name: 'Jaguars'},
-  KAN: {abbr: 'KC', city: 'Kansas City', name: 'Chiefs'},
-  LAC: {abbr: 'LAC', city: 'Los Angeles', name: 'Chargers'},
-  SDG: {abbr: 'LAC', city: 'Los Angeles', name: 'Chargers'}, // legacy SD
-  LAR: {abbr: 'LAR', city: 'Los Angeles', name: 'Rams'},
-  STL: {abbr: 'LAR', city: 'Los Angeles', name: 'Rams'}, // legacy STL
-  LVR: {abbr: 'LV', city: 'Las Vegas', name: 'Raiders'},
-  OAK: {abbr: 'LV', city: 'Las Vegas', name: 'Raiders'}, // legacy OAK
-  MIA: {abbr: 'MIA', city: 'Miami', name: 'Dolphins'},
-  MIN: {abbr: 'MIN', city: 'Minnesota', name: 'Vikings'},
-  NWE: {abbr: 'NE', city: 'New England', name: 'Patriots'},
-  NOR: {abbr: 'NO', city: 'New Orleans', name: 'Saints'},
-  NYG: {abbr: 'NYG', city: 'New York', name: 'Giants'},
-  NYJ: {abbr: 'NYJ', city: 'New York', name: 'Jets'},
-  PHI: {abbr: 'PHI', city: 'Philadelphia', name: 'Eagles'},
-  PIT: {abbr: 'PIT', city: 'Pittsburgh', name: 'Steelers'},
-  SFO: {abbr: 'SF', city: 'San Francisco', name: '49ers'},
-  SEA: {abbr: 'SEA', city: 'Seattle', name: 'Seahawks'},
-  TAM: {abbr: 'TB', city: 'Tampa Bay', name: 'Buccaneers'},
-  TEN: {abbr: 'TEN', city: 'Tennessee', name: 'Titans'},
-  WAS: {abbr: 'WAS', city: 'Washington', name: 'Commanders'},
+export interface TeamCanonical {
+  abbr: string;
+  city: string;
+  name: string;
+  espn: string;
+}
+
+export const TEAM_CANONICAL: Record<string, TeamCanonical> = {
+  ARI: {abbr: 'ARI', city: 'Arizona', name: 'Cardinals', espn: 'ari'},
+  ATL: {abbr: 'ATL', city: 'Atlanta', name: 'Falcons', espn: 'atl'},
+  BAL: {abbr: 'BAL', city: 'Baltimore', name: 'Ravens', espn: 'bal'},
+  BUF: {abbr: 'BUF', city: 'Buffalo', name: 'Bills', espn: 'buf'},
+  CAR: {abbr: 'CAR', city: 'Carolina', name: 'Panthers', espn: 'car'},
+  CHI: {abbr: 'CHI', city: 'Chicago', name: 'Bears', espn: 'chi'},
+  CIN: {abbr: 'CIN', city: 'Cincinnati', name: 'Bengals', espn: 'cin'},
+  CLE: {abbr: 'CLE', city: 'Cleveland', name: 'Browns', espn: 'cle'},
+  DAL: {abbr: 'DAL', city: 'Dallas', name: 'Cowboys', espn: 'dal'},
+  DEN: {abbr: 'DEN', city: 'Denver', name: 'Broncos', espn: 'den'},
+  DET: {abbr: 'DET', city: 'Detroit', name: 'Lions', espn: 'det'},
+  GNB: {abbr: 'GB', city: 'Green Bay', name: 'Packers', espn: 'gb'},
+  HOU: {abbr: 'HOU', city: 'Houston', name: 'Texans', espn: 'hou'},
+  IND: {abbr: 'IND', city: 'Indianapolis', name: 'Colts', espn: 'ind'},
+  JAX: {abbr: 'JAX', city: 'Jacksonville', name: 'Jaguars', espn: 'jax'},
+  KAN: {abbr: 'KC', city: 'Kansas City', name: 'Chiefs', espn: 'kc'},
+  LAC: {abbr: 'LAC', city: 'Los Angeles', name: 'Chargers', espn: 'lac'},
+  SDG: {abbr: 'LAC', city: 'Los Angeles', name: 'Chargers', espn: 'lac'}, // legacy SD
+  LAR: {abbr: 'LAR', city: 'Los Angeles', name: 'Rams', espn: 'lar'},
+  STL: {abbr: 'LAR', city: 'Los Angeles', name: 'Rams', espn: 'lar'}, // legacy STL
+  LVR: {abbr: 'LV', city: 'Las Vegas', name: 'Raiders', espn: 'lv'},
+  OAK: {abbr: 'LV', city: 'Las Vegas', name: 'Raiders', espn: 'lv'}, // legacy OAK
+  MIA: {abbr: 'MIA', city: 'Miami', name: 'Dolphins', espn: 'mia'},
+  MIN: {abbr: 'MIN', city: 'Minnesota', name: 'Vikings', espn: 'min'},
+  NWE: {abbr: 'NE', city: 'New England', name: 'Patriots', espn: 'ne'},
+  NOR: {abbr: 'NO', city: 'New Orleans', name: 'Saints', espn: 'no'},
+  NYG: {abbr: 'NYG', city: 'New York', name: 'Giants', espn: 'nyg'},
+  NYJ: {abbr: 'NYJ', city: 'New York', name: 'Jets', espn: 'nyj'},
+  PHI: {abbr: 'PHI', city: 'Philadelphia', name: 'Eagles', espn: 'phi'},
+  PIT: {abbr: 'PIT', city: 'Pittsburgh', name: 'Steelers', espn: 'pit'},
+  SFO: {abbr: 'SF', city: 'San Francisco', name: '49ers', espn: 'sf'},
+  SEA: {abbr: 'SEA', city: 'Seattle', name: 'Seahawks', espn: 'sea'},
+  TAM: {abbr: 'TB', city: 'Tampa Bay', name: 'Buccaneers', espn: 'tb'},
+  TEN: {abbr: 'TEN', city: 'Tennessee', name: 'Titans', espn: 'ten'},
+  WAS: {abbr: 'WAS', city: 'Washington', name: 'Commanders', espn: 'wsh'},
 };
 
-export function canonicalTeam(raw: string | null | undefined): {abbr: string; city: string; name: string} | null {
+export function canonicalTeam(raw: string | null | undefined): TeamCanonical | null {
   if (!raw) {
     return null;
   }
   const key = raw.trim().toUpperCase();
   return TEAM_CANONICAL[key] || null;
+}
+
+/**
+ * Look up by either source (GNB, SFO) or display (GB, SF) abbreviation —
+ * client-side links and route params pass display abbrs back to us.
+ */
+export function teamByAnyAbbr(abbr: string | null | undefined): TeamCanonical | null {
+  if (!abbr) {
+    return null;
+  }
+  const upper = abbr.trim().toUpperCase();
+  if (TEAM_CANONICAL[upper]) {
+    return TEAM_CANONICAL[upper];
+  }
+  for (const v of Object.values(TEAM_CANONICAL)) {
+    if (v.abbr === upper) {
+      return v;
+    }
+  }
+  return null;
+}
+
+export function teamLogoUrl(abbr: string | null | undefined): string | null {
+  const team = teamByAnyAbbr(abbr);
+  return team ? `https://a.espncdn.com/i/teamlogos/nfl/500/${team.espn}.png` : null;
 }

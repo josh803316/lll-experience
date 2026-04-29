@@ -3,6 +3,9 @@ import {authGuard} from '../guards/auth-guard.js';
 import {
   analyzerDashboard,
   expertLeaderboard,
+  expertProfile,
+  expertProfileNotFound,
+  renderMovers,
   teamLeaderboard,
   playerProfile,
   searchResultsFragment,
@@ -12,7 +15,7 @@ import {
   type DashboardSnapshot,
 } from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
-import {ExpertAuditService} from '../services/expert-audit.js';
+import {ExpertAuditService, getExpertProfile} from '../services/expert-audit.js';
 import {TeamScoutService, TEAM_WINDOW_DEFAULT, TEAM_WINDOW_END_DEFAULT} from '../services/team-scout.js';
 import {getDB} from '../db/index.js';
 import {experts, officialDraftResults} from '../db/schema.js';
@@ -31,7 +34,7 @@ async function buildDashboardSnapshot(): Promise<DashboardSnapshot> {
   const [expertRow] = await db.select({c: sql<number>`COUNT(*)::int`}).from(experts);
 
   const [movers, oracle, scout] = await Promise.all([
-    TeamScoutService.getTopMovers(),
+    TeamScoutService.getTopMovers(undefined, undefined, {limit: 10}),
     ExpertAuditService.getOracleLeaderboard(),
     ExpertAuditService.getScoutLeaderboard(),
   ]);
@@ -86,6 +89,12 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     return playerProfile(data, CLERK_KEY);
   })
 
+  .get('/expert/:slug', async (ctx) => {
+    const data = await getExpertProfile(ctx.params.slug);
+    ctx.set.headers['Content-Type'] = 'text/html';
+    return data ? expertProfile(data, CLERK_KEY) : expertProfileNotFound(ctx.params.slug, CLERK_KEY);
+  })
+
   // --- JSON API ---
   .get('/api/player/:name', async ({params}) => {
     return await DraftScoutService.getPlayerCareerProfile(params.name);
@@ -100,8 +109,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
     return await TeamScoutService.getTeamSuccessLeaderboard(window);
   })
-  .get('/api/movers', async () => {
-    return await TeamScoutService.getTopMovers();
+  .get('/api/movers', async ({query}) => {
+    const draftYear = query.year && query.year !== 'all' ? Number(query.year) : undefined;
+    return await TeamScoutService.getTopMovers(undefined, undefined, {draftYear, limit: 10});
+  })
+
+  .get('/api/expert/:slug', async ({params}) => {
+    return await getExpertProfile(params.slug);
   })
 
   // --- HTMX FRAGMENTS ---
@@ -121,4 +135,11 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, window);
     set.headers['Content-Type'] = 'text/html';
     return breakdown ? teamBreakdownModal(breakdown) : teamBreakdownNotFound(params.teamKey);
+  })
+
+  .get('/fragment/movers', async ({query, set}) => {
+    const draftYear = query.year && query.year !== 'all' ? Number(query.year) : undefined;
+    const movers = await TeamScoutService.getTopMovers(undefined, undefined, {draftYear, limit: 10});
+    set.headers['Content-Type'] = 'text/html';
+    return renderMovers(movers.topHits, movers.topBusts);
   });

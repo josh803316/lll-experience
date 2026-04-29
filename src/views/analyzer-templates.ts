@@ -1,6 +1,7 @@
 import {baseLayout, escapeHtml} from './templates.js';
 import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome} from '../services/team-scout.js';
-import type {ExpertOracleRow, ExpertScoutRow} from '../services/expert-audit.js';
+import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile} from '../services/expert-audit.js';
+import {teamLogoUrl} from '../services/lll-rating-engine.js';
 
 export type {TeamSuccessRow} from '../services/team-scout.js';
 // ExpertAccuracy retained as a type alias for the controllers / tests still importing it.
@@ -52,6 +53,63 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
       }
       .serif { font-family: 'Source Serif 4', Georgia, serif; }
       .mono { font-family: 'JetBrains Mono', monospace; }
+
+      /* Inline tooltip for jargon (RMSE, Delta, etc.) */
+      .lll-tip { position: relative; cursor: help; }
+      .lll-tip > .tip-marker {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px; height: 14px;
+        margin-left: 4px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 700;
+        opacity: 0.55;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .lll-tip:hover > .tip-marker { opacity: 1; }
+      .lll-tip > .tip-body {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        min-width: 220px;
+        max-width: 280px;
+        padding: 10px 12px;
+        background: #14110b;
+        color: #f3ede0;
+        border-radius: 6px;
+        box-shadow: 0 18px 40px -12px rgba(0,0,0,0.4);
+        font-size: 11px;
+        line-height: 1.45;
+        font-family: 'Source Serif 4', Georgia, serif;
+        font-style: italic;
+        text-transform: none;
+        letter-spacing: 0;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+        z-index: 250;
+      }
+      .lll-tip:hover > .tip-body,
+      .lll-tip:focus-within > .tip-body { opacity: 1; }
+
+      /* Live indicator dot (pulses) */
+      .live-dot {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 999px;
+        background: #16a34a;
+        box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55);
+        animation: live-pulse 1.6s infinite;
+      }
+      @keyframes live-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); }
+        70% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+      }
     </style>
   `;
 
@@ -65,13 +123,57 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
   );
 }
 
+/**
+ * Inline color logo for a team. Use `size` to control width in tailwind units (e.g. '6' = 1.5rem).
+ * Falls back to nothing if the team isn't recognised.
+ */
+export function teamLogo(teamKey: string | null | undefined, sizeClass = 'w-6 h-6'): string {
+  const url = teamLogoUrl(teamKey);
+  if (!url) {
+    return '';
+  }
+  return `<img src="${url}" alt="" loading="lazy" class="${sizeClass} object-contain shrink-0" />`;
+}
+
+/**
+ * Tooltip pill: hover the [?] icon to see the explanation.
+ * `label` is the visible text; `body` is the hover content.
+ */
+export function tooltip(label: string, body: string, extraClass = ''): string {
+  return `<span class="lll-tip ${extraClass}" tabindex="0">${label}<span class="tip-marker" aria-hidden="true">?</span><span role="tooltip" class="tip-body">${escapeHtml(body)}</span></span>`;
+}
+
+const TOOLTIPS = {
+  rmse: 'Root-Mean-Square Error. Take the gap between the expert\u2019s predicted draft slot and the actual slot for every player they ranked, square it, average, and square-root. Lower = closer to the truth.',
+  lllDelta:
+    'LLL Delta = how much a pick out- or under-performed the expected value for its draft round. Positive numbers beat the round, negative miss it.',
+  talentDelta:
+    'Talent Delta. Same RMSE math as Mock Accuracy, but applied to the rating their rank implied vs the player\u2019s actual career rating. Lower = they were right about the talent, even if the league disagreed on draft slot.',
+  hitRate:
+    'Hit Rate = the share of a team\u2019s picks that beat the expected value for their round (LLL Delta > 0.5). The cleanest way to see who\u2019s consistently winning the draft.',
+  outcomes:
+    'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
+} as const;
+
+export function liveBadge(): string {
+  return `
+    <span class="lll-tip inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700" tabindex="0">
+      <span class="live-dot"></span>LIVE
+      <span role="tooltip" class="tip-body">Ratings auto-sync from the nflverse Approximate Value feed. Career numbers update every time we re-run the ingestion cron.</span>
+    </span>
+  `;
+}
+
 function header(active: 'dashboard' | 'experts' | 'teams' = 'dashboard'): string {
   return `
     <header class="border-b border-black/10 py-6 px-4 bg-white/50 backdrop-blur-sm sticky top-0 z-[100]">
       <div class="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 class="text-4xl font-bold tracking-tighter text-black">DRAFT ANALYZER</h1>
-          <p class="text-[10px] text-muted font-bold uppercase tracking-widest">Intelligence &amp; Historical Tracking</p>
+          <div class="flex items-center gap-3 mt-0.5">
+            <p class="text-[10px] text-muted font-bold uppercase tracking-widest">Intelligence &amp; Historical Tracking</p>
+            ${liveBadge()}
+          </div>
         </div>
         <div class="relative w-full md:w-64 group">
           <input
@@ -144,23 +246,51 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
              </script>
           </section>
 
-          <section class="space-y-8 text-black">
-            <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b border-black/10 pb-2 text-black">
-              LEAGUE-WIDE INDEX MOVERS
-            </h3>
-            ${movers}
+          <section class="space-y-6 text-black">
+            <div class="flex flex-wrap items-end justify-between gap-3 border-b border-black/10 pb-2">
+              <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">
+                LEAGUE-WIDE INDEX MOVERS · TOP 10
+              </h3>
+              <div class="flex flex-wrap gap-1.5" id="movers-year-filter">
+                ${['all', '2023', '2022', '2021', '2020', '2019', '2018']
+                  .map(
+                    (y) => `
+                  <button
+                    onclick="fetchMovers('${y}')"
+                    data-year="${y}"
+                    class="text-[9px] font-bold uppercase tracking-widest px-2 py-1 border border-black hover:bg-black hover:text-white transition-all ${y === 'all' ? 'bg-black text-white' : ''}">
+                    ${y === 'all' ? 'ALL YEARS' : y}
+                  </button>
+                `,
+                  )
+                  .join('')}
+              </div>
+            </div>
+            <p class="text-[10px] text-muted">${tooltip('LLL Delta', TOOLTIPS.lllDelta)} = how far each pick beat or missed its round expectation. Filter by draft year above.</p>
+            <div id="movers-feed" hx-get="/analyzer/fragment/movers?year=all" hx-trigger="load">
+              ${movers}
+            </div>
+            <script>
+              function fetchMovers(year) {
+                document.querySelectorAll('#movers-year-filter button').forEach(b => {
+                  b.classList.toggle('bg-black', b.dataset.year === year);
+                  b.classList.toggle('text-white', b.dataset.year === year);
+                });
+                htmx.ajax('GET', '/analyzer/fragment/movers?year=' + year, '#movers-feed');
+              }
+            </script>
           </section>
         </div>
 
         <div class="space-y-12 text-black">
           <div class="card-paper p-8 rounded-lg shadow-lg text-black">
             <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">ORACLE · MOCK ACCURACY</h3>
-            <p class="text-[10px] text-muted mb-5">RMSE between expert big-board rank and actual draft slot. Lower is better.</p>
+            <p class="text-[10px] text-muted mb-5">${tooltip('RMSE', TOOLTIPS.rmse)} between expert big-board rank and actual draft slot. Lower is better.</p>
             ${oracle}
           </div>
 
           <div class="card-paper p-8 rounded-lg shadow-lg text-black">
-            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">SCOUT · TALENT DELTA</h3>
+            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">SCOUT · ${tooltip('TALENT DELTA', TOOLTIPS.talentDelta)}</h3>
             <p class="text-[10px] text-muted mb-5">RMSE between expert's rank-implied quality and actual LLL career rating. Lower is better.</p>
             ${scout}
           </div>
@@ -194,17 +324,20 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
   return analyzerLayout(content, 'Dashboard — LLL Draft Analyzer', clerkKey);
 }
 
-function renderMovers(hits: IndexMover[], busts: IndexMover[]): string {
+export function renderMovers(hits: IndexMover[], busts: IndexMover[]): string {
   const renderRow = (m: IndexMover, isBust = false) => `
     <a href="/analyzer/player/${encodeURIComponent(m.name)}"
-       class="flex justify-between items-center py-3 border-b border-black/5 group hover:bg-black/[0.02] transition-colors px-2 -mx-2">
-      <div>
-        <div class="font-bold text-sm text-black group-hover:text-accent transition-colors">${escapeHtml(m.name)}</div>
-        <div class="text-[10px] text-muted uppercase tracking-widest font-bold">
-          R${m.round} · ${m.year} · ${escapeHtml(m.team)}
+       class="flex justify-between items-center py-2.5 border-b border-black/5 group hover:bg-black/[0.02] transition-colors px-2 -mx-2">
+      <div class="flex items-center gap-3 min-w-0">
+        ${teamLogo(m.teamKey, 'w-7 h-7')}
+        <div class="min-w-0">
+          <div class="font-bold text-sm text-black group-hover:text-accent transition-colors truncate">${escapeHtml(m.name)}</div>
+          <div class="text-[10px] text-muted uppercase tracking-widest font-bold">
+            R${m.round} · ${m.year} · ${escapeHtml(m.team)}
+          </div>
         </div>
       </div>
-      <div class="text-right">
+      <div class="text-right shrink-0">
         <div class="font-mono font-bold text-lg ${isBust ? 'text-black/40' : 'text-accent'}">
           ${m.delta > 0 ? '+' : ''}${m.delta.toFixed(2)}
         </div>
@@ -212,15 +345,16 @@ function renderMovers(hits: IndexMover[], busts: IndexMover[]): string {
       </div>
     </a>
   `;
+  const empty = `<p class="text-[11px] italic text-muted py-6 text-center">No picks in this slice.</p>`;
   return `
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-black">
       <div>
         <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-accent mb-3">Biggest Hits</div>
-        ${hits.map((h) => renderRow(h, false)).join('')}
+        ${hits.length > 0 ? hits.map((h) => renderRow(h, false)).join('') : empty}
       </div>
       <div>
         <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-3">Biggest Busts</div>
-        ${busts.map((b) => renderRow(b, true)).join('')}
+        ${busts.length > 0 ? busts.map((b) => renderRow(b, true)).join('') : empty}
       </div>
     </div>
   `;
@@ -236,7 +370,8 @@ function renderOracleMini(rows: ExpertOracleRow[]): string {
         .slice(0, 4)
         .map(
           (e, i) => `
-        <div class="flex justify-between items-center ${i < 3 ? 'border-b border-black/5 pb-3 mb-3' : ''} group">
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}"
+           class="flex justify-between items-center ${i < 3 ? 'border-b border-black/5 pb-3 mb-3' : ''} group hover:bg-black/[0.02] -mx-2 px-2 py-1 rounded transition-colors">
           <div>
             <div class="font-bold text-sm text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</div>
             <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${escapeHtml(e.org || 'Independent')} · n=${e.sampleSize}</div>
@@ -245,7 +380,7 @@ function renderOracleMini(rows: ExpertOracleRow[]): string {
             <div class="font-mono font-bold text-black text-lg">${e.rmse.toFixed(1)}</div>
             <div class="text-[8px] text-accent font-bold uppercase tracking-tighter">RMSE</div>
           </div>
-        </div>
+        </a>
       `,
         )
         .join('')}
@@ -264,7 +399,8 @@ function renderScoutMini(rows: ExpertScoutRow[]): string {
         .slice(0, 4)
         .map(
           (e, i) => `
-        <div class="flex justify-between items-center ${i < 3 ? 'border-b border-black/5 pb-3 mb-3' : ''} group">
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}"
+           class="flex justify-between items-center ${i < 3 ? 'border-b border-black/5 pb-3 mb-3' : ''} group hover:bg-black/[0.02] -mx-2 px-2 py-1 rounded transition-colors">
           <div>
             <div class="font-bold text-sm text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</div>
             <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${escapeHtml(e.org || 'Independent')} · n=${e.sampleSize}</div>
@@ -273,7 +409,7 @@ function renderScoutMini(rows: ExpertScoutRow[]): string {
             <div class="font-mono font-bold text-black text-lg">${e.talentDelta.toFixed(2)}</div>
             <div class="text-[8px] text-accent font-bold uppercase tracking-tighter">DELTA · ${e.letter}</div>
           </div>
-        </div>
+        </a>
       `,
         )
         .join('')}
@@ -286,10 +422,11 @@ export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutR
   const oracleRows = oracle
     .map(
       (e, i) => `
-    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors group cursor-pointer"
+        onclick="window.location.href='/analyzer/expert/${encodeURIComponent(e.expertSlug)}'">
       <td class="py-4 px-4 font-bold text-lg text-black">#${i + 1}</td>
       <td class="py-4">
-        <div class="font-bold text-black">${escapeHtml(e.expertName)}</div>
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</a>
         <div class="text-[10px] text-muted uppercase tracking-widest font-bold">${escapeHtml(e.org || 'Independent')}</div>
       </td>
       <td class="py-4 text-center font-mono font-bold text-accent text-lg">${e.rmse.toFixed(1)}</td>
@@ -303,10 +440,11 @@ export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutR
   const scoutRows = scout
     .map(
       (e, i) => `
-    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors group cursor-pointer"
+        onclick="window.location.href='/analyzer/expert/${encodeURIComponent(e.expertSlug)}'">
       <td class="py-4 px-4 font-bold text-lg text-black">#${i + 1}</td>
       <td class="py-4">
-        <div class="font-bold text-black">${escapeHtml(e.expertName)}</div>
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</a>
         <div class="text-[10px] text-muted uppercase tracking-widest font-bold">${escapeHtml(e.org || 'Independent')}</div>
       </td>
       <td class="py-4 text-center font-mono font-bold text-accent text-lg">${e.talentDelta.toFixed(2)}</td>
@@ -327,9 +465,9 @@ export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutR
       </p>
 
       <section class="mb-16">
-        <div class="flex items-baseline justify-between mb-4">
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
           <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">ORACLE · Mock Draft Accuracy</h3>
-          <p class="text-[11px] text-muted italic">RMSE(predicted rank, actual draft slot) · lower = better</p>
+          <p class="text-[11px] text-muted italic">${tooltip('RMSE', TOOLTIPS.rmse)}(predicted rank, actual draft slot) · lower = better</p>
         </div>
         <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black shadow-xl">
           <table class="w-full text-left border-collapse text-black">
@@ -350,8 +488,8 @@ export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutR
       </section>
 
       <section>
-        <div class="flex items-baseline justify-between mb-4">
-          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">SCOUT · Talent Delta</h3>
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">SCOUT · ${tooltip('Talent Delta', TOOLTIPS.talentDelta)}</h3>
           <p class="text-[11px] text-muted italic">RMSE(rank-implied rating, actual career rating) · lower = better</p>
         </div>
         <div class="card-paper rounded-lg overflow-hidden border-t-8 border-accent shadow-xl">
@@ -383,17 +521,20 @@ export function teamLeaderboard(teams: TeamSuccessRow[], clerkKey?: string): str
       const accent = i < 8 ? 'border-accent' : 'border-black/20';
       return `
     <div class="card-paper p-6 rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group">
-      <div class="flex justify-between items-start mb-4">
-        <div>
-          <div class="text-[8px] font-bold text-muted uppercase tracking-[0.2em] mb-1">Rank #${i + 1}</div>
-          <h3 class="text-xl font-bold tracking-tighter text-black group-hover:text-accent transition-colors">${escapeHtml(t.team)}</h3>
+      <div class="flex justify-between items-start mb-4 gap-3">
+        <div class="flex items-start gap-3 min-w-0">
+          ${teamLogo(t.teamKey, 'w-10 h-10')}
+          <div class="min-w-0">
+            <div class="text-[8px] font-bold text-muted uppercase tracking-[0.2em] mb-1">Rank #${i + 1}</div>
+            <h3 class="text-xl font-bold tracking-tighter text-black group-hover:text-accent transition-colors truncate">${escapeHtml(t.team)}</h3>
+          </div>
         </div>
-        <span class="text-2xl font-bold text-black serif italic">${t.grade}</span>
+        <span class="text-2xl font-bold text-black serif italic shrink-0">${t.grade}</span>
       </div>
       <div class="space-y-4">
         <div>
           <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-            <span>Hit Rate</span>
+            <span>${tooltip('Hit Rate', TOOLTIPS.hitRate)}</span>
             <span class="text-black font-bold">${t.hitRate}% (${t.hits}/${t.totalPicks})</span>
           </div>
           <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
@@ -403,7 +544,7 @@ export function teamLeaderboard(teams: TeamSuccessRow[], clerkKey?: string): str
         <div>
           <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
             <span>League Position</span>
-            <span class="text-accent font-bold mono">Δ ${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</span>
+            <span class="text-accent font-bold mono">${tooltip('Δ', TOOLTIPS.lllDelta)} ${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</span>
           </div>
           <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
             <div class="h-full bg-accent" style="width: ${t.value}%"></div>
@@ -473,8 +614,13 @@ export function successLeaderboard(teams: TeamSuccessRow[]): string {
         title="Why this grade? Click for the breakdown.">
       <td class="py-4 px-4 font-bold text-black text-xl serif italic">#${i + 1}</td>
       <td class="py-4 text-black">
-        <div class="font-bold text-black text-lg tracking-tighter group-hover:text-accent transition-colors">${escapeHtml(t.team.toUpperCase())}</div>
-        <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${t.totalPicks} picks · ${t.hits} hits</div>
+        <div class="flex items-center gap-3">
+          ${teamLogo(t.teamKey, 'w-9 h-9')}
+          <div>
+            <div class="font-bold text-black text-lg tracking-tighter group-hover:text-accent transition-colors">${escapeHtml(t.team.toUpperCase())}</div>
+            <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${t.totalPicks} picks · ${t.hits} hits</div>
+          </div>
+        </div>
       </td>
       <td class="py-4 text-center text-black">
         <div class="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-sm">${t.hitRate}%</div>
@@ -496,8 +642,8 @@ export function successLeaderboard(teams: TeamSuccessRow[]): string {
           <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
             <th class="py-3 px-4 w-16">Rank</th>
             <th class="py-3">Franchise</th>
-            <th class="py-3 text-center">Hit Rate</th>
-            <th class="py-3 text-center">Avg Δ</th>
+            <th class="py-3 text-center">${tooltip('Hit Rate', TOOLTIPS.hitRate)}</th>
+            <th class="py-3 text-center">${tooltip('Avg Δ', TOOLTIPS.lllDelta)}</th>
             <th class="py-3 pr-4 text-right">LLL Grade</th>
           </tr>
         </thead>
@@ -745,14 +891,17 @@ export function teamBreakdownModal(b: TeamBreakdown): string {
                 class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-black text-white text-lg hover:bg-accent transition-colors">×</button>
         <div class="p-8 md:p-10 space-y-8 text-black">
           <header class="border-b border-black/10 pb-6">
-            <div class="flex items-baseline justify-between gap-4 mb-3">
-              <div>
-                <div class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent mb-1">
-                  Rank #${b.rank} of ${b.totalTeams} · ${b.windowStart}–${b.windowEnd}
+            <div class="flex items-center justify-between gap-4 mb-3">
+              <div class="flex items-center gap-4 min-w-0">
+                ${teamLogo(b.teamKey, 'w-16 h-16 md:w-20 md:h-20')}
+                <div class="min-w-0">
+                  <div class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent mb-1">
+                    Rank #${b.rank} of ${b.totalTeams} · ${b.windowStart}–${b.windowEnd}
+                  </div>
+                  <h3 id="team-modal-title" class="text-4xl md:text-5xl font-bold tracking-tighter text-black truncate">${escapeHtml(b.team.toUpperCase())}</h3>
                 </div>
-                <h3 id="team-modal-title" class="text-5xl font-bold tracking-tighter text-black">${escapeHtml(b.team.toUpperCase())}</h3>
               </div>
-              <div class="text-7xl font-bold serif italic text-black leading-none shrink-0">${escapeHtml(b.grade)}</div>
+              <div class="text-6xl md:text-7xl font-bold serif italic text-black leading-none shrink-0">${escapeHtml(b.grade)}</div>
             </div>
             <p class="text-sm text-muted serif italic leading-relaxed">
               ${b.totalPicks} picks evaluated · ${b.hits} hits · ${b.busts} busts.
@@ -769,7 +918,7 @@ export function teamBreakdownModal(b: TeamBreakdown): string {
           </div>
 
           <footer class="border-t border-black/10 pt-4 text-[10px] text-muted serif italic leading-relaxed">
-            Outcomes are bucketed against per-round expected value. Pending = drafted in the
+            ${tooltip('Outcomes', TOOLTIPS.outcomes)} are bucketed against per-round expected value. Pending = drafted in the
             last two cycles; not enough NFL seasons to grade yet. Click any player for the
             full profile.
           </footer>
@@ -789,4 +938,114 @@ export function teamBreakdownNotFound(teamKey: string): string {
       </div>
     </div>
   `;
+}
+
+const CALL_OUTCOME_STYLE: Record<'NAILED IT' | 'CLOSE' | 'OFF' | 'WAY OFF', string> = {
+  'NAILED IT': 'bg-emerald-600 text-white',
+  CLOSE: 'bg-amber-500 text-black',
+  OFF: 'bg-rose-500 text-white',
+  'WAY OFF': 'bg-rose-700 text-white',
+};
+
+function renderExpertCallRow(c: ExpertProfile['bestCalls'][number]): string {
+  const tdSign = c.talentDelta > 0 ? '+' : '';
+  return `
+    <a href="/analyzer/player/${encodeURIComponent(c.playerName)}"
+       class="flex items-center justify-between gap-3 py-3 border-b border-black/5 last:border-b-0 hover:bg-black/[0.03] -mx-2 px-2 rounded transition-colors group">
+      <div class="min-w-0">
+        <div class="font-bold text-sm text-black truncate group-hover:text-accent transition-colors">${escapeHtml(c.playerName)}</div>
+        <div class="text-[10px] text-muted font-bold uppercase tracking-widest">
+          ${c.year} · Predicted #${c.predictedRank}${c.actualPick !== null ? ` · Drafted #${c.actualPick}` : ' · Undrafted in window'}
+        </div>
+        <div class="text-[11px] text-muted serif italic mt-1">${escapeHtml(c.flavor)}</div>
+      </div>
+      <span class="text-[9px] font-bold uppercase tracking-[0.15em] px-2 py-1 rounded-sm shrink-0 ${CALL_OUTCOME_STYLE[c.outcome]}" title="Talent Δ ${tdSign}${c.talentDelta.toFixed(2)}">
+        ${c.outcome}
+      </span>
+    </a>
+  `;
+}
+
+function renderExpertYearRow(y: ExpertProfile['byYear'][number]): string {
+  return `
+    <div class="grid grid-cols-1 md:grid-cols-[80px,1fr,1fr] gap-3 py-3 border-b border-black/5 last:border-0 items-center">
+      <div class="text-3xl font-bold tracking-tighter text-black">${y.year}</div>
+      <div class="text-[11px] text-muted serif italic leading-tight">
+        Sample ${y.sample} · ${tooltip('RMSE', TOOLTIPS.rmse)} ${y.rmse.toFixed(1)} · ${tooltip('Talent Δ', TOOLTIPS.talentDelta)} ${y.talentDelta.toFixed(2)}
+      </div>
+      <div class="text-[10px] text-muted">
+        ${y.bestCall ? `<div><span class="font-bold text-emerald-700 uppercase tracking-widest">Best:</span> ${escapeHtml(y.bestCall.playerName)}</div>` : ''}
+        ${y.worstCall ? `<div><span class="font-bold text-rose-700 uppercase tracking-widest">Miss:</span> ${escapeHtml(y.worstCall.playerName)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+export function expertProfile(p: ExpertProfile, clerkKey?: string): string {
+  const content = `
+    ${header('experts')}
+    <div class="max-w-5xl mx-auto py-12 px-4 text-black">
+      <a href="/analyzer/experts" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-8 inline-block transition-colors">← Back to Expert Audit</a>
+
+      <header class="border-b border-black/10 pb-6 mb-10">
+        <div class="flex flex-wrap items-baseline justify-between gap-4">
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent mb-2">${escapeHtml(p.org || 'Independent')}</div>
+            <h2 class="text-6xl font-bold tracking-tighter text-black">${escapeHtml(p.name.toUpperCase())}</h2>
+          </div>
+          <div class="flex items-stretch gap-4 text-center">
+            <div class="px-5 py-3 bg-black text-white rounded-md min-w-[120px]">
+              <div class="text-[9px] uppercase tracking-[0.2em] opacity-60">${tooltip('Mock Δ', TOOLTIPS.rmse, 'text-white')}</div>
+              <div class="text-3xl font-bold tracking-tighter">${p.rmse.toFixed(1)}</div>
+              <div class="text-[8px] uppercase opacity-60 tracking-widest">Rank ${p.oracleRank ?? '—'}/${p.oracleTotal}</div>
+            </div>
+            <div class="px-5 py-3 bg-accent text-white rounded-md min-w-[120px]">
+              <div class="text-[9px] uppercase tracking-[0.2em] opacity-80">${tooltip('Talent Δ', TOOLTIPS.talentDelta, 'text-white')}</div>
+              <div class="text-3xl font-bold tracking-tighter">${p.talentDelta.toFixed(2)}</div>
+              <div class="text-[8px] uppercase opacity-80 tracking-widest">${escapeHtml(p.letter)} · Rank ${p.scoutRank ?? '—'}/${p.scoutTotal}</div>
+            </div>
+          </div>
+        </div>
+        <p class="text-sm text-muted serif italic mt-4 leading-relaxed">
+          ${p.sampleSize} ranked players audited across ${p.yearsCovered.join(', ')}.
+          Calls graded against the player's actual draft slot and normalized career rating.
+        </p>
+      </header>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-10 mb-12">
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-emerald-600 pb-2 mb-4 text-black">CALLS THEY NAILED</h3>
+          <div class="space-y-1">
+            ${p.bestCalls.map(renderExpertCallRow).join('')}
+          </div>
+        </section>
+        <section>
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-rose-600 pb-2 mb-4 text-black">CALLS THEY MISSED</h3>
+          <div class="space-y-1">
+            ${p.worstMisses.map(renderExpertCallRow).join('')}
+          </div>
+        </section>
+      </div>
+
+      <section>
+        <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-black pb-2 mb-2 text-black">YEAR-BY-YEAR</h3>
+        <div class="card-paper rounded-lg p-4">
+          ${p.byYear.map(renderExpertYearRow).join('')}
+        </div>
+      </section>
+    </div>
+  `;
+  return analyzerLayout(content, `${p.name} — Expert Audit`, clerkKey);
+}
+
+export function expertProfileNotFound(slug: string, clerkKey?: string): string {
+  const content = `
+    ${header('experts')}
+    <div class="max-w-3xl mx-auto py-20 px-4 text-center">
+      <h2 class="text-3xl font-bold tracking-tighter text-black mb-3">No data on "${escapeHtml(slug)}"</h2>
+      <p class="text-muted serif italic">We don't have ranked players from this expert in the audit window yet.</p>
+      <a href="/analyzer/experts" class="mt-6 inline-block text-[10px] font-bold uppercase tracking-widest border-b-2 border-accent">Back to Expert Audit</a>
+    </div>
+  `;
+  return analyzerLayout(content, 'Expert not found — LLL', clerkKey);
 }
