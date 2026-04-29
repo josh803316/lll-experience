@@ -7,6 +7,8 @@ import {
   playerProfile,
   searchResultsFragment,
   successLeaderboard,
+  teamBreakdownModal,
+  teamBreakdownNotFound,
   type DashboardSnapshot,
 } from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
@@ -112,4 +114,11 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
     const data = await TeamScoutService.getTeamSuccessLeaderboard(window);
     return successLeaderboard(data.slice(0, 10));
+  })
+
+  .get('/fragment/team-breakdown/:teamKey', async ({params, query, set}) => {
+    const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
+    const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, window);
+    set.headers['Content-Type'] = 'text/html';
+    return breakdown ? teamBreakdownModal(breakdown) : teamBreakdownNotFound(params.teamKey);
   });

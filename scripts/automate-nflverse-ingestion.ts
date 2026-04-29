@@ -43,7 +43,7 @@ async function runIngestion() {
     pick: headers.indexOf('pick'),
     team: headers.indexOf('team'),
     player: headers.indexOf('pfr_player_name'),
-    pos: headers.indexOf('pos'),
+    pos: headers.indexOf('position'),
     college: headers.indexOf('college'),
     w_av: headers.indexOf('w_av'), // Weighted Career Approximate Value
   };

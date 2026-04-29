@@ -1,5 +1,5 @@
 import {baseLayout, escapeHtml} from './templates.js';
-import type {TeamSuccessRow} from '../services/team-scout.js';
+import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome} from '../services/team-scout.js';
 import type {ExpertOracleRow, ExpertScoutRow} from '../services/expert-audit.js';
 
 export type {TeamSuccessRow} from '../services/team-scout.js';
@@ -176,6 +176,20 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
         </div>
       </div>
     </main>
+    <div id="team-modal-root"></div>
+    <script>
+      function closeTeamModal() {
+        const root = document.getElementById('team-modal-root');
+        if (root) root.innerHTML = '';
+        document.body.style.overflow = '';
+      }
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTeamModal(); });
+      document.addEventListener('htmx:afterSwap', (e) => {
+        if (e.detail && e.detail.target && e.detail.target.id === 'team-modal-root' && e.detail.target.innerHTML.trim() !== '') {
+          document.body.style.overflow = 'hidden';
+        }
+      });
+    </script>
   `;
   return analyzerLayout(content, 'Dashboard — LLL Draft Analyzer', clerkKey);
 }
@@ -451,10 +465,15 @@ export function successLeaderboard(teams: TeamSuccessRow[]): string {
   const rows = teams
     .map(
       (t, i) => `
-    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors group">
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors group cursor-pointer"
+        hx-get="/analyzer/fragment/team-breakdown/${encodeURIComponent(t.teamKey)}"
+        hx-target="#team-modal-root"
+        hx-swap="innerHTML"
+        hx-trigger="click"
+        title="Why this grade? Click for the breakdown.">
       <td class="py-4 px-4 font-bold text-black text-xl serif italic">#${i + 1}</td>
       <td class="py-4 text-black">
-        <div class="font-bold text-black text-lg tracking-tighter">${escapeHtml(t.team.toUpperCase())}</div>
+        <div class="font-bold text-black text-lg tracking-tighter group-hover:text-accent transition-colors">${escapeHtml(t.team.toUpperCase())}</div>
         <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${t.totalPicks} picks · ${t.hits} hits</div>
       </td>
       <td class="py-4 text-center text-black">
@@ -462,7 +481,8 @@ export function successLeaderboard(teams: TeamSuccessRow[]): string {
       </td>
       <td class="py-4 text-center font-mono font-bold text-accent text-lg">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
       <td class="py-4 pr-4 text-right text-black">
-        <div class="text-2xl font-bold text-black serif italic leading-none">${t.grade}</div>
+        <div class="text-2xl font-bold text-black serif italic leading-none group-hover:text-accent transition-colors">${t.grade}</div>
+        <div class="text-[8px] text-muted font-bold uppercase tracking-widest mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Tap →</div>
       </td>
     </tr>
   `,
@@ -616,4 +636,157 @@ export function searchResultsFragment(results: {players: any[]; experts: any[]})
 // Legacy export retained for any external callers; no longer used by the dashboard.
 export function timelineFragment(_events: unknown[]): string {
   return '';
+}
+
+const COLOR_STYLE: Record<BreakdownYear['color'], {chip: string; bar: string; label: string}> = {
+  green: {
+    chip: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    bar: 'bg-emerald-500',
+    label: 'Productive class',
+  },
+  orange: {
+    chip: 'bg-amber-100 text-amber-900 border-amber-300',
+    bar: 'bg-amber-500',
+    label: 'Mixed class',
+  },
+  red: {
+    chip: 'bg-rose-100 text-rose-900 border-rose-300',
+    bar: 'bg-rose-500',
+    label: 'Rough class',
+  },
+  gray: {
+    chip: 'bg-black/5 text-black/60 border-black/10',
+    bar: 'bg-black/20',
+    label: 'Pending — too early',
+  },
+};
+
+const OUTCOME_STYLE: Record<PickOutcome, string> = {
+  'ELITE HIT': 'bg-accent text-white',
+  HIT: 'bg-emerald-600 text-white',
+  'MET EXPECTATION': 'bg-black/70 text-white',
+  UNDERPERFORMED: 'bg-amber-500 text-black',
+  BUST: 'bg-rose-600 text-white',
+  PENDING: 'bg-black/10 text-black/60',
+};
+
+function renderBreakdownYear(y: BreakdownYear): string {
+  const style = COLOR_STYLE[y.color];
+  const summaryBits =
+    [
+      y.hits > 0 ? `${y.hits} hit${y.hits === 1 ? '' : 's'}` : null,
+      y.busts > 0 ? `${y.busts} bust${y.busts === 1 ? '' : 's'}` : null,
+      y.pendingCount > 0 ? `${y.pendingCount} too early` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || 'No notable signal';
+
+  const pickRows = y.picks
+    .map(
+      (p) => `
+      <a href="/analyzer/player/${encodeURIComponent(p.name)}"
+         class="flex items-center justify-between gap-3 py-2 border-b border-black/5 last:border-b-0 hover:bg-black/[0.03] -mx-2 px-2 rounded transition-colors group">
+        <div class="min-w-0">
+          <div class="font-bold text-sm text-black truncate group-hover:text-accent transition-colors">${escapeHtml(p.name)}</div>
+          <div class="text-[10px] text-muted font-bold uppercase tracking-widest">
+            R${p.round} · #${p.pickNumber}${p.position ? ` · ${escapeHtml(p.position)}` : ''}
+          </div>
+        </div>
+        <span class="text-[9px] font-bold uppercase tracking-[0.15em] px-2 py-1 rounded-sm shrink-0 ${OUTCOME_STYLE[p.outcome]}">
+          ${p.outcome}
+        </span>
+      </a>
+    `,
+    )
+    .join('');
+
+  return `
+    <div class="card-paper rounded-lg p-5 border-l-4 ${style.bar.replace('bg-', 'border-')}">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-baseline gap-3">
+          <h4 class="text-3xl font-bold tracking-tighter text-black">${y.year}</h4>
+          <span class="text-[9px] font-bold uppercase tracking-[0.2em] px-2 py-0.5 border ${style.chip}">${style.label}</span>
+        </div>
+        <span class="text-[10px] text-muted font-bold uppercase tracking-widest">${summaryBits}</span>
+      </div>
+      <p class="text-sm text-muted serif italic mb-3">${escapeHtml(y.headline)}</p>
+      <div class="space-y-1">
+        ${pickRows}
+      </div>
+    </div>
+  `;
+}
+
+export function teamBreakdownModal(b: TeamBreakdown): string {
+  const yearCards = b.years.map(renderBreakdownYear).join('');
+  const topPick = b.topPick
+    ? `<div class="text-[10px]">
+        <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pick</div>
+        <a href="/analyzer/player/${encodeURIComponent(b.topPick.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(b.topPick.name)}</a>
+        <span class="text-muted">· R${b.topPick.round} ${b.topPick.year} · ${b.topPick.outcome}</span>
+      </div>`
+    : '';
+  const worstPick = b.worstPick
+    ? `<div class="text-[10px]">
+        <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Worst Pick</div>
+        <a href="/analyzer/player/${encodeURIComponent(b.worstPick.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(b.worstPick.name)}</a>
+        <span class="text-muted">· R${b.worstPick.round} ${b.worstPick.year} · ${b.worstPick.outcome}</span>
+      </div>`
+    : '';
+
+  return `
+    <div class="fixed inset-0 z-[200] flex items-stretch justify-center p-4 md:p-10"
+         role="dialog" aria-modal="true" aria-labelledby="team-modal-title">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+           onclick="closeTeamModal()"></div>
+      <div class="relative theme-paper card-paper rounded-lg max-w-3xl w-full max-h-full overflow-y-auto shadow-2xl border-t-8 border-black">
+        <button onclick="closeTeamModal()"
+                aria-label="Close"
+                class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-black text-white text-lg hover:bg-accent transition-colors">×</button>
+        <div class="p-8 md:p-10 space-y-8 text-black">
+          <header class="border-b border-black/10 pb-6">
+            <div class="flex items-baseline justify-between gap-4 mb-3">
+              <div>
+                <div class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent mb-1">
+                  Rank #${b.rank} of ${b.totalTeams} · ${b.windowStart}–${b.windowEnd}
+                </div>
+                <h3 id="team-modal-title" class="text-5xl font-bold tracking-tighter text-black">${escapeHtml(b.team.toUpperCase())}</h3>
+              </div>
+              <div class="text-7xl font-bold serif italic text-black leading-none shrink-0">${escapeHtml(b.grade)}</div>
+            </div>
+            <p class="text-sm text-muted serif italic leading-relaxed">
+              ${b.totalPicks} picks evaluated · ${b.hits} hits · ${b.busts} busts.
+              Years are flagged
+              <span class="font-bold text-emerald-700">green</span> when there's a clear hit,
+              <span class="font-bold text-amber-700">orange</span> for mixed classes, and
+              <span class="font-bold text-rose-700">red</span> when a class produced busts without a hit.
+            </p>
+            ${topPick || worstPick ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">${topPick}${worstPick}</div>` : ''}
+          </header>
+
+          <div class="space-y-4">
+            ${yearCards || '<p class="italic text-muted text-center py-12 text-sm">No picks in this window.</p>'}
+          </div>
+
+          <footer class="border-t border-black/10 pt-4 text-[10px] text-muted serif italic leading-relaxed">
+            Outcomes are bucketed against per-round expected value. Pending = drafted in the
+            last two cycles; not enough NFL seasons to grade yet. Click any player for the
+            full profile.
+          </footer>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function teamBreakdownNotFound(teamKey: string): string {
+  return `
+    <div class="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeTeamModal()"></div>
+      <div class="relative theme-paper card-paper rounded-lg max-w-md w-full p-8 text-center shadow-2xl">
+        <p class="text-sm text-muted italic">No breakdown available for ${escapeHtml(teamKey)}.</p>
+        <button onclick="closeTeamModal()" class="mt-4 text-[10px] font-bold uppercase tracking-widest border-b-2 border-accent">Close</button>
+      </div>
+    </div>
+  `;
 }
