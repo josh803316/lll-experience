@@ -245,26 +245,9 @@ export function liveBadge(): string {
   `;
 }
 
-/**
- * Admin-only DEBUG toggle that flips ?debug=1 in the current URL.
- * Renders nothing if isAdmin is false.
- */
-export function adminDebugBadge(isAdmin: boolean, debug: boolean): string {
-  if (!isAdmin) {
-    return '';
-  }
-  const onclick = `(function(){const u=new URL(window.location.href);${debug ? "u.searchParams.delete('debug');" : "u.searchParams.set('debug','1');"}window.location.href=u.toString();})();return false;`;
-  return `
-    <a href="#" onclick="${onclick}"
-       class="text-[10px] font-bold uppercase tracking-[0.2em] ${debug ? 'text-accent border-accent' : 'text-muted hover:text-accent border-black/20'} transition-colors border px-2 py-0.5 rounded">
-      ${debug ? 'DEBUG · ON' : 'DEBUG'}
-    </a>
-  `;
-}
-
 function header(
   active: 'dashboard' | 'experts' | 'teams' = 'dashboard',
-  extras: {isAdmin?: boolean; debug?: boolean} = {},
+  _extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
   return `
     <header class="border-b border-black/10 py-6 px-4 bg-white/50 backdrop-blur-sm sticky top-0 z-[100]">
@@ -274,7 +257,6 @@ function header(
           <div class="flex items-center gap-3 mt-0.5 flex-wrap">
             <p class="text-[10px] text-muted font-bold uppercase tracking-widest">Intelligence &amp; Historical Tracking</p>
             ${liveBadge()}
-            ${adminDebugBadge(extras.isAdmin ?? false, extras.debug ?? false)}
           </div>
         </div>
         <div class="relative w-full md:w-64 group">
@@ -1028,7 +1010,9 @@ export function teamBreakdownModal(
   extras: {isAdmin?: boolean; debug?: boolean; debugPicks?: ScoredPick[]} = {},
 ): string {
   const debugPanel =
-    extras.debug && extras.debugPicks && extras.debugPicks.length > 0 ? renderTeamDebugPanel(b, extras.debugPicks) : '';
+    extras.isAdmin && extras.debugPicks && extras.debugPicks.length > 0
+      ? renderTeamDebugPanel(b, extras.debugPicks)
+      : '';
   const yearCards = b.years.map(renderBreakdownYear).join('');
   const topPick = b.topPick
     ? `<div class="text-[10px]">
@@ -1263,9 +1247,78 @@ export function expertProfile(
           ${p.byYear.map(renderExpertYearRow).join('')}
         </div>
       </section>
+
+      ${_admin.isAdmin ? renderExpertDebugPanel(p) : ''}
     </div>
   `;
   return analyzerLayout(content, `${p.name} — Expert Audit`, clerkKey);
+}
+
+function renderExpertDebugPanel(p: ExpertProfile): string {
+  const all = [...p.bestCalls, ...p.worstMisses].slice(0, 20);
+  // De-dupe by player
+  const seen = new Set<string>();
+  const uniq = all.filter((c) => {
+    const k = `${c.year}::${c.playerName}`;
+    if (seen.has(k)) {
+      return false;
+    }
+    seen.add(k);
+    return true;
+  });
+  uniq.sort((a, b) => Math.abs(b.talentDelta) - Math.abs(a.talentDelta));
+  const rows = uniq
+    .map(
+      (c) => `
+    <tr class="border-b border-black/5">
+      <td class="py-1.5 px-2 text-black">${c.year}</td>
+      <td class="py-1.5 px-2 text-black">${escapeHtml(c.playerName)}</td>
+      <td class="py-1.5 px-2 text-right text-black mono">#${c.predictedRank}</td>
+      <td class="py-1.5 px-2 text-right text-black mono">${c.actualPick !== null ? '#' + c.actualPick : '—'}</td>
+      <td class="py-1.5 px-2 text-right text-black mono">${c.expectedRating.toFixed(2)}</td>
+      <td class="py-1.5 px-2 text-right text-black mono">${c.actualRating.toFixed(2)}</td>
+      <td class="py-1.5 px-2 text-right mono ${Math.abs(c.talentDelta) <= 1.5 ? 'text-emerald-700' : 'text-rose-700'}">
+        ${c.talentDelta > 0 ? '+' : ''}${c.talentDelta.toFixed(2)}
+      </td>
+      <td class="py-1.5 px-2 text-[9px] text-muted uppercase tracking-widest">${escapeHtml(c.outcome)}</td>
+    </tr>
+  `,
+    )
+    .join('');
+
+  return `
+    <details class="bg-black/[0.04] rounded-md border border-black/10 mt-8" open>
+      <summary class="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+        🔧 ADMIN DEBUG · raw math behind ${escapeHtml(p.name)}'s grades
+      </summary>
+      <div class="p-4 space-y-4 text-[11px]">
+        <div class="font-mono text-[11px] bg-white border border-black/10 rounded p-3 leading-relaxed text-black">
+          <div><strong>Mock Δ (RMSE):</strong> sqrt(avg(predicted_rank − actual_pick)²) across all calls. Lower = better.</div>
+          <div><strong>Talent Δ (RMSE):</strong> sqrt(avg(rank_implied_rating − actual_career_rating)²). Lower = better.</div>
+          <div><strong>Rank → expected rating:</strong> 8.5 × exp(−rank / 120), floored at 1.</div>
+          <div><strong>Sample:</strong> ${p.sampleSize} ranked players · years ${p.yearsCovered.join(', ')}.</div>
+          <div><strong>This expert:</strong> RMSE ${p.rmse.toFixed(1)} (rank ${p.oracleRank}/${p.oracleTotal}) · Talent Δ ${p.talentDelta.toFixed(2)} (rank ${p.scoutRank}/${p.scoutTotal}, letter ${escapeHtml(p.letter)}).</div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse mono text-[11px] bg-white border border-black/10">
+            <thead>
+              <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.15em] text-muted">
+                <th class="py-2 px-2">Year</th>
+                <th class="py-2 px-2">Player</th>
+                <th class="py-2 px-2 text-right">Predicted</th>
+                <th class="py-2 px-2 text-right">Actual Pick</th>
+                <th class="py-2 px-2 text-right">Implied Rating</th>
+                <th class="py-2 px-2 text-right">Career Rating</th>
+                <th class="py-2 px-2 text-right">Talent Δ</th>
+                <th class="py-2 px-2">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+  `;
 }
 
 export function expertProfileNotFound(

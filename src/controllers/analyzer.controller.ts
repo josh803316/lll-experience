@@ -255,7 +255,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const admin = await resolveAdminContext(ctx);
     const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, opts);
     let scored: ScoredPick[] = [];
-    if (admin.debug && breakdown) {
+    if (admin.isAdmin && breakdown) {
       const all = await TeamScoutService.getAllScoredPicks(opts);
       scored = all.filter((p) => p.teamKey === breakdown.teamKey);
     }
