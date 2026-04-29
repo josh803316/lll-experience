@@ -1,5 +1,5 @@
 import {baseLayout, escapeHtml} from './templates.js';
-import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome} from '../services/team-scout.js';
+import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome, ScoredPick} from '../services/team-scout.js';
 import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile} from '../services/expert-audit.js';
 import {teamLogoUrl} from '../services/lll-rating-engine.js';
 
@@ -354,6 +354,16 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
             <p class="text-[10px] text-muted">${tooltip('LLL Delta', TOOLTIPS.lllDelta)} = how far each pick beat or missed its round expectation. ${isCareer ? 'Cumulative career view.' : `Filtered to the ${selectedSeason} NFL season only.`} Buttons below filter by draft year.</p>
             <div id="movers-feed" hx-get="/analyzer/fragment/movers?year=all&${modeQs}" hx-trigger="load">
               ${movers}
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              <a href="/analyzer/players?filter=hits&${modeQs}"
+                 class="text-[10px] font-bold uppercase tracking-[0.3em] text-black hover:text-accent border-b-2 border-accent pb-0.5 transition-colors text-center md:text-left">
+                View all hits →
+              </a>
+              <a href="/analyzer/players?filter=busts&${modeQs}"
+                 class="text-[10px] font-bold uppercase tracking-[0.3em] text-black hover:text-accent border-b-2 border-accent pb-0.5 transition-colors text-center md:text-right">
+                View all busts →
+              </a>
             </div>
             <script>
               function fetchMovers(year) {
@@ -1157,4 +1167,227 @@ export function expertProfileNotFound(slug: string, clerkKey?: string): string {
     </div>
   `;
   return analyzerLayout(content, 'Expert not found — LLL', clerkKey);
+}
+
+export interface PlayersGridOptions {
+  mode: 'career' | 'season';
+  selectedSeason: number;
+  window: number;
+  filter: 'all' | 'hits' | 'busts';
+  sort: 'delta' | 'name' | 'team' | 'round' | 'year' | 'position';
+  dir: 'asc' | 'desc';
+  page: number;
+  pageSize: number;
+}
+
+const OUTCOME_PILL: Record<string, string> = {
+  'ELITE HIT': 'bg-accent text-white',
+  HIT: 'bg-emerald-600 text-white',
+  'MET EXPECTATION': 'bg-black/70 text-white',
+  UNDERPERFORMED: 'bg-amber-500 text-black',
+  BUST: 'bg-rose-600 text-white',
+};
+
+function buildPlayersQs(opts: PlayersGridOptions, override: Partial<PlayersGridOptions>): string {
+  const merged = {...opts, ...override};
+  const params = new URLSearchParams();
+  params.set('mode', merged.mode);
+  if (merged.mode === 'season') {
+    params.set('season', String(merged.selectedSeason));
+  }
+  params.set('window', String(merged.window));
+  if (merged.filter !== 'all') {
+    params.set('filter', merged.filter);
+  }
+  params.set('sort', merged.sort);
+  params.set('dir', merged.dir);
+  if (merged.page > 1) {
+    params.set('page', String(merged.page));
+  }
+  return params.toString();
+}
+
+function sortableHeader(label: string, field: PlayersGridOptions['sort'], opts: PlayersGridOptions): string {
+  const active = opts.sort === field;
+  const nextDir = active && opts.dir === 'desc' ? 'asc' : 'desc';
+  const qs = buildPlayersQs(opts, {sort: field, dir: nextDir, page: 1});
+  const arrow = active ? (opts.dir === 'desc' ? '▼' : '▲') : '';
+  return `
+    <a href="/analyzer/players?${qs}" class="${active ? 'text-accent' : ''} hover:text-accent transition-colors">
+      ${label} <span class="text-[8px] ml-0.5">${arrow}</span>
+    </a>
+  `;
+}
+
+export function playersGrid(rows: ScoredPick[], total: number, opts: PlayersGridOptions, clerkKey?: string): string {
+  const controls = renderViewControls({
+    mode: opts.mode,
+    selectedSeason: opts.selectedSeason,
+    window: opts.window,
+  });
+  const isSeason = opts.mode === 'season';
+  const viewLabel = isSeason ? `${opts.selectedSeason} NFL season` : 'Career';
+  const filterPill = (key: 'all' | 'hits' | 'busts', label: string) => {
+    const qs = buildPlayersQs(opts, {filter: key, page: 1});
+    const active = opts.filter === key;
+    return `
+      <a href="/analyzer/players?${qs}"
+         class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] rounded-md transition-all
+                ${active ? 'bg-black text-white' : 'text-muted hover:text-black'}">
+        ${label}
+      </a>
+    `;
+  };
+
+  const tableRows = rows
+    .map(
+      (p) => `
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+      <td class="py-3 pl-4 pr-2">
+        <a href="/analyzer/player/${encodeURIComponent(p.name)}" class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(p.name)}</a>
+      </td>
+      <td class="py-3 px-2">
+        <div class="flex items-center gap-2">
+          ${teamLogo(p.teamKey, 'w-6 h-6')}
+          <span class="text-sm text-black">${escapeHtml(p.team)}</span>
+        </div>
+      </td>
+      <td class="py-3 px-2 text-center text-sm text-black">${p.position ? escapeHtml(p.position) : '—'}</td>
+      <td class="py-3 px-2 text-center text-sm text-black">R${p.round}${p.pickNumber ? ` · #${p.pickNumber}` : ''}</td>
+      <td class="py-3 px-2 text-center text-sm text-black">${p.year}</td>
+      <td class="py-3 px-2 text-center font-mono font-bold text-lg ${
+        p.delta > 0 ? 'text-accent' : p.delta < -1 ? 'text-rose-600' : 'text-black/60'
+      }">${p.delta > 0 ? '+' : ''}${p.delta.toFixed(2)}</td>
+      <td class="py-3 pl-2 pr-4 text-right">
+        <span class="inline-block text-[9px] font-bold uppercase tracking-[0.15em] px-2 py-1 rounded-sm ${OUTCOME_PILL[p.outcome] ?? 'bg-black/10 text-black/60'}">
+          ${escapeHtml(p.outcome)}
+        </span>
+      </td>
+    </tr>
+  `,
+    )
+    .join('');
+
+  const totalPages = Math.max(1, Math.ceil(total / opts.pageSize));
+  const showingFrom = total === 0 ? 0 : (opts.page - 1) * opts.pageSize + 1;
+  const showingTo = Math.min(opts.page * opts.pageSize, total);
+
+  const pageWindow = (() => {
+    const out: (number | '…')[] = [];
+    const around = 2;
+    const add = (n: number | '…') => {
+      if (out[out.length - 1] !== n) {
+        out.push(n);
+      }
+    };
+    add(1);
+    if (opts.page - around > 2) {
+      add('…');
+    }
+    for (let i = Math.max(2, opts.page - around); i <= Math.min(totalPages - 1, opts.page + around); i++) {
+      add(i);
+    }
+    if (opts.page + around < totalPages - 1) {
+      add('…');
+    }
+    if (totalPages > 1) {
+      add(totalPages);
+    }
+    return out;
+  })();
+
+  const pagination = `
+    <div class="flex flex-wrap items-center justify-between gap-3 pt-4">
+      <div class="text-[10px] text-muted font-bold uppercase tracking-widest">
+        Showing ${showingFrom.toLocaleString()}–${showingTo.toLocaleString()} of ${total.toLocaleString()}
+      </div>
+      <div class="flex items-center gap-1">
+        ${
+          opts.page > 1
+            ? `<a href="/analyzer/players?${buildPlayersQs(opts, {page: opts.page - 1})}"
+                  class="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-black hover:bg-black hover:text-white transition-all">
+                  ← Prev
+               </a>`
+            : `<span class="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-black/20 text-black/30">← Prev</span>`
+        }
+        ${pageWindow
+          .map((p) => {
+            if (p === '…') {
+              return `<span class="px-2 py-1 text-[10px] text-muted">…</span>`;
+            }
+            const qs = buildPlayersQs(opts, {page: p});
+            const active = p === opts.page;
+            return `<a href="/analyzer/players?${qs}"
+                       class="px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest border ${
+                         active ? 'bg-black text-white border-black' : 'border-black/30 hover:bg-black hover:text-white'
+                       } transition-all">${p}</a>`;
+          })
+          .join('')}
+        ${
+          opts.page < totalPages
+            ? `<a href="/analyzer/players?${buildPlayersQs(opts, {page: opts.page + 1})}"
+                  class="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-black hover:bg-black hover:text-white transition-all">
+                  Next →
+               </a>`
+            : `<span class="px-2 py-1 text-[10px] font-bold uppercase tracking-widest border border-black/20 text-black/30">Next →</span>`
+        }
+      </div>
+    </div>
+  `;
+
+  const content = `
+    ${header('dashboard')}
+    <div class="max-w-6xl mx-auto py-6 px-4 text-black">
+      <a href="/analyzer?${buildPlayersQs(opts, {})}"
+         class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
+      <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">ALL PLAYERS</h2>
+          <span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">${escapeHtml(viewLabel)}</span>
+        </div>
+        <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
+           <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Picks scored</span>
+           <span class="text-xl font-bold tracking-tighter">${total.toLocaleString()}</span>
+        </div>
+      </div>
+      <p class="text-xs md:text-sm text-muted serif italic mb-4">
+        Every drafted player scored against round expectation. Sortable, filterable, paginated.
+        Click any column header to sort.
+      </p>
+      ${controls}
+
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <div class="flex items-center bg-black/[0.05] rounded-md p-1">
+          ${filterPill('all', 'All')}
+          ${filterPill('hits', 'Hits only')}
+          ${filterPill('busts', 'Busts only')}
+        </div>
+        <span class="text-[10px] text-muted serif italic">
+          ${tooltip('Outcomes', TOOLTIPS.outcomes)}
+        </span>
+      </div>
+
+      <div class="card-paper rounded-lg overflow-hidden border-t-4 border-black shadow-lg">
+        <table class="w-full text-left border-collapse text-black">
+          <thead>
+            <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
+              <th class="py-3 pl-4 pr-2">${sortableHeader('Player', 'name', opts)}</th>
+              <th class="py-3 px-2">${sortableHeader('Team', 'team', opts)}</th>
+              <th class="py-3 px-2 text-center">${sortableHeader('Pos', 'position', opts)}</th>
+              <th class="py-3 px-2 text-center">${sortableHeader('Round', 'round', opts)}</th>
+              <th class="py-3 px-2 text-center">${sortableHeader('Drafted', 'year', opts)}</th>
+              <th class="py-3 px-2 text-center">${sortableHeader('LLL Δ', 'delta', opts)}</th>
+              <th class="py-3 pl-2 pr-4 text-right">Outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows || '<tr><td colspan="7" class="py-12 text-center italic text-muted">No picks match this filter.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+
+      ${pagination}
+    </div>
+  `;
+  return analyzerLayout(content, 'All Players — LLL Draft Analyzer', clerkKey);
 }

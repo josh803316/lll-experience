@@ -5,6 +5,7 @@ import {
   expertLeaderboard,
   expertProfile,
   expertProfileNotFound,
+  playersGrid,
   renderMovers,
   teamLeaderboard,
   playerProfile,
@@ -13,6 +14,7 @@ import {
   teamBreakdownModal,
   teamBreakdownNotFound,
   type DashboardSnapshot,
+  type PlayersGridOptions,
 } from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
 import {ExpertAuditService, getExpertProfile} from '../services/expert-audit.js';
@@ -114,6 +116,67 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const data = await getExpertProfile(ctx.params.slug);
     ctx.set.headers['Content-Type'] = 'text/html';
     return data ? expertProfile(data, CLERK_KEY) : expertProfileNotFound(ctx.params.slug, CLERK_KEY);
+  })
+
+  .get('/players', async (ctx) => {
+    const q = ctx.query as Record<string, string | undefined>;
+    const opts = parseScoutOpts(q);
+    const filter: PlayersGridOptions['filter'] = q.filter === 'hits' || q.filter === 'busts' ? q.filter : 'all';
+    const allowedSorts: PlayersGridOptions['sort'][] = ['delta', 'name', 'team', 'round', 'year', 'position'];
+    const sort: PlayersGridOptions['sort'] = allowedSorts.find((s) => s === q.sort) ?? 'delta';
+    const dir: PlayersGridOptions['dir'] = q.dir === 'asc' ? 'asc' : 'desc';
+    const page = Math.max(1, Number(q.page) || 1);
+    const pageSize = 25;
+
+    const all = await TeamScoutService.getAllScoredPicks(opts);
+    const filtered = all.filter((p) => {
+      if (filter === 'hits') {
+        return p.delta > 0.5;
+      }
+      if (filter === 'busts') {
+        return p.delta < -1.0;
+      }
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      const mul = dir === 'asc' ? 1 : -1;
+      switch (sort) {
+        case 'name':
+          return a.name.localeCompare(b.name) * mul;
+        case 'team':
+          return a.team.localeCompare(b.team) * mul;
+        case 'round':
+          return (a.round - b.round) * mul;
+        case 'year':
+          return (a.year - b.year) * mul;
+        case 'position':
+          return (a.position ?? '').localeCompare(b.position ?? '') * mul;
+        case 'delta':
+        default:
+          return (a.delta - b.delta) * mul;
+      }
+    });
+
+    const start = (page - 1) * pageSize;
+    const rows = filtered.slice(start, start + pageSize);
+
+    ctx.set.headers['Content-Type'] = 'text/html';
+    return playersGrid(
+      rows,
+      filtered.length,
+      {
+        mode: opts.mode ?? 'career',
+        selectedSeason: opts.season ?? 2024,
+        window: opts.window ?? TEAM_WINDOW_DEFAULT,
+        filter,
+        sort,
+        dir,
+        page,
+        pageSize,
+      },
+      CLERK_KEY,
+    );
   })
 
   // --- JSON API ---

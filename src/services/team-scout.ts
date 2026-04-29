@@ -65,6 +65,20 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
   };
 }
 
+export interface ScoredPick {
+  name: string;
+  team: string;
+  teamKey: string;
+  round: number;
+  pickNumber: number | null;
+  year: number;
+  position: string | null;
+  rating: number;
+  expected: number;
+  delta: number;
+  outcome: string;
+}
+
 export interface TeamSuccessRow {
   teamKey: string;
   team: string;
@@ -283,14 +297,13 @@ export class TeamScoutService {
   }
 
   /**
-   * Top hits & busts across the league. In `career` mode picks are graded
-   * against their cumulative LLL rating; in `season` mode the single-NFL-season
-   * rating is used (so 2024-only breakouts can rise to the top).
+   * Score every pick in the requested window/mode and return the full list,
+   * sorted desc by delta. Used by both `getTopMovers` (slice) and the
+   * /analyzer/players grid (paginate + sort).
    */
-  static async getTopMovers(opts: ScoutOptions & {draftYear?: number; limit?: number} = {}) {
+  static async getAllScoredPicks(opts: ScoutOptions & {draftYear?: number} = {}): Promise<ScoredPick[]> {
     const window = opts.window ?? DEFAULT_WINDOW;
     const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
-    const limit = opts.limit ?? 10;
     const useContractBonus = (opts.mode ?? 'career') === 'career';
 
     const startYear = opts.draftYear ?? endYear - window + 1;
@@ -304,17 +317,7 @@ export class TeamScoutService {
 
     const lookup = await loadRatingLookup(opts);
 
-    const scored: Array<{
-      name: string;
-      team: string;
-      teamKey: string;
-      round: number;
-      year: number;
-      rating: number;
-      expected: number;
-      delta: number;
-    }> = [];
-
+    const scored: ScoredPick[] = [];
     for (const p of picks) {
       const team = canonicalTeam(p.teamName);
       if (!team || !p.round || !p.playerName) {
@@ -324,8 +327,6 @@ export class TeamScoutService {
       if (rating === null) {
         continue;
       }
-      // In season mode, picks drafted after the requested season have no
-      // possible NFL contribution that year — exclude them.
       if (opts.mode === 'season' && opts.season && p.year > opts.season) {
         continue;
       }
@@ -335,20 +336,35 @@ export class TeamScoutService {
         useContractBonus ? p.contractOutcome || undefined : undefined,
       );
       const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+      const outcome = LLLRatingEngine.getGradeOutcomeLabel(delta);
 
       scored.push({
         name: p.playerName,
         team: `${team.city} ${team.name}`,
         teamKey: team.abbr,
         round: p.round,
+        pickNumber: p.pickNumber,
         year: p.year,
+        position: p.position,
         rating,
         expected: EXPECTED_VALUE_BY_ROUND[p.round] ?? 0,
         delta,
+        outcome,
       });
     }
 
     scored.sort((a, b) => b.delta - a.delta);
+    return scored;
+  }
+
+  /**
+   * Top hits & busts across the league. In `career` mode picks are graded
+   * against their cumulative LLL rating; in `season` mode the single-NFL-season
+   * rating is used (so 2024-only breakouts can rise to the top).
+   */
+  static async getTopMovers(opts: ScoutOptions & {draftYear?: number; limit?: number} = {}) {
+    const limit = opts.limit ?? 10;
+    const scored = await TeamScoutService.getAllScoredPicks(opts);
     return {
       topHits: scored.slice(0, limit),
       topBusts: scored.slice(-limit).reverse(),
