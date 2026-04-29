@@ -6,6 +6,65 @@ import {LLLRatingEngine, canonicalTeam, EXPECTED_VALUE_BY_ROUND} from './lll-rat
 const LATEST_FAIR_DRAFT_YEAR = 2023;
 const DEFAULT_WINDOW = 6;
 
+export type ScoutMode = 'career' | 'season';
+
+export interface ScoutOptions {
+  mode?: ScoutMode;
+  season?: number;
+  window?: number;
+  endYear?: number;
+}
+
+interface RatingLookup {
+  // Returns 0-10 rating for a player, or null when no rating exists for the requested mode/season.
+  get(playerName: string): number | null;
+}
+
+async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
+  const db = getDB();
+  const evalYear = new Date().getFullYear();
+  const map = new Map<string, number>();
+
+  if (opts.mode === 'season' && opts.season) {
+    const rows = await db
+      .select({
+        playerName: playerPerformanceRatings.playerName,
+        rating: playerPerformanceRatings.rating,
+      })
+      .from(playerPerformanceRatings)
+      .where(
+        and(
+          eq(playerPerformanceRatings.isCareerRating, false),
+          eq(playerPerformanceRatings.evaluationYear, opts.season),
+        ),
+      );
+    for (const r of rows) {
+      map.set(LLLRatingEngine.normalizeName(r.playerName), r.rating);
+    }
+  } else {
+    const rows = await db
+      .select({
+        playerName: playerPerformanceRatings.playerName,
+        draftYear: playerPerformanceRatings.draftYear,
+        metadata: playerPerformanceRatings.metadata,
+      })
+      .from(playerPerformanceRatings)
+      .where(eq(playerPerformanceRatings.isCareerRating, true));
+    for (const r of rows) {
+      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
+      const ysd = Math.max(1, evalYear - r.draftYear);
+      map.set(LLLRatingEngine.normalizeName(r.playerName), LLLRatingEngine.normalizeWavToRating(wav, ysd));
+    }
+  }
+
+  return {
+    get(playerName: string) {
+      const v = map.get(LLLRatingEngine.normalizeName(playerName));
+      return v === undefined ? null : v;
+    },
+  };
+}
+
 export interface TeamSuccessRow {
   teamKey: string;
   team: string;
@@ -54,35 +113,6 @@ export interface TeamBreakdown {
   windowStart: number;
   windowEnd: number;
   years: BreakdownYear[];
-}
-
-interface RatingRow {
-  playerName: string;
-  draftYear: number;
-  metadata: unknown;
-}
-
-function ratingsByName(rows: RatingRow[]): Map<string, RatingRow> {
-  const m = new Map<string, RatingRow>();
-  for (const r of rows) {
-    m.set(LLLRatingEngine.normalizeName(r.playerName), r);
-  }
-  return m;
-}
-
-function deltaFor(
-  pick: {round: number; playerName: string; contractOutcome: string | null},
-  rating: RatingRow | undefined,
-  evalYear: number,
-): {delta: number; rating: number} | null {
-  if (!rating) {
-    return null;
-  }
-  const wav = (rating.metadata as {wav?: number} | null)?.wav ?? 0;
-  const yearsSinceDraft = Math.max(1, evalYear - rating.draftYear);
-  const normalized = LLLRatingEngine.normalizeWavToRating(wav, yearsSinceDraft);
-  const perf = LLLRatingEngine.calculateFinalPerformanceScore([normalized], pick.contractOutcome || undefined);
-  return {delta: LLLRatingEngine.calculateFinalGrade(perf, pick.round), rating: normalized};
 }
 
 function colorForYear(picks: BreakdownPick[]): BreakdownYear['color'] {
@@ -134,14 +164,13 @@ export class TeamScoutService {
    * against per-round expected value. Letter grade is rank-relative across
    * the league; underlying avg delta is preserved for transparency.
    */
-  static async getTeamSuccessLeaderboard(
-    window: number = DEFAULT_WINDOW,
-    endYear: number = LATEST_FAIR_DRAFT_YEAR,
-  ): Promise<TeamSuccessRow[]> {
-    const db = getDB();
+  static async getTeamSuccessLeaderboard(opts: ScoutOptions = {}): Promise<TeamSuccessRow[]> {
+    const window = opts.window ?? DEFAULT_WINDOW;
+    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
     const startYear = endYear - window + 1;
-    const evalYear = new Date().getFullYear();
+    const useContractBonus = (opts.mode ?? 'career') === 'career';
 
+    const db = getDB();
     const picks = await db
       .select({
         year: officialDraftResults.year,
@@ -153,15 +182,7 @@ export class TeamScoutService {
       .from(officialDraftResults)
       .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)));
 
-    const ratings = await db
-      .select({
-        playerName: playerPerformanceRatings.playerName,
-        draftYear: playerPerformanceRatings.draftYear,
-        metadata: playerPerformanceRatings.metadata,
-      })
-      .from(playerPerformanceRatings)
-      .where(eq(playerPerformanceRatings.isCareerRating, true));
-    const ratingByName = ratingsByName(ratings);
+    const lookup = await loadRatingLookup(opts);
 
     const teamAgg: Record<
       string,
@@ -188,16 +209,17 @@ export class TeamScoutService {
         continue;
       }
 
-      const ratingRow = ratingByName.get(LLLRatingEngine.normalizeName(p.playerName));
-      const computed = deltaFor(
-        {round: p.round, playerName: p.playerName, contractOutcome: p.contractOutcome},
-        ratingRow,
-        evalYear,
-      );
-      if (!computed) {
+      const rating = lookup.get(p.playerName);
+      if (rating === null) {
         continue;
       }
-      const {delta, rating: normalizedRating} = computed;
+
+      const perf = LLLRatingEngine.calculateFinalPerformanceScore(
+        [rating],
+        useContractBonus ? p.contractOutcome || undefined : undefined,
+      );
+      const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+      const normalizedRating = rating;
 
       const key = team.abbr;
       if (!teamAgg[key]) {
@@ -261,35 +283,26 @@ export class TeamScoutService {
   }
 
   /**
-   * Top hits & busts across the league. Optionally narrowed to a specific
-   * draft year; otherwise spans the full fair window.
+   * Top hits & busts across the league. In `career` mode picks are graded
+   * against their cumulative LLL rating; in `season` mode the single-NFL-season
+   * rating is used (so 2024-only breakouts can rise to the top).
    */
-  static async getTopMovers(
-    window: number = DEFAULT_WINDOW,
-    endYear: number = LATEST_FAIR_DRAFT_YEAR,
-    options: {draftYear?: number; limit?: number} = {},
-  ) {
+  static async getTopMovers(opts: ScoutOptions & {draftYear?: number; limit?: number} = {}) {
+    const window = opts.window ?? DEFAULT_WINDOW;
+    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
+    const limit = opts.limit ?? 10;
+    const useContractBonus = (opts.mode ?? 'career') === 'career';
+
+    const startYear = opts.draftYear ?? endYear - window + 1;
+    const stopYear = opts.draftYear ?? endYear;
+
     const db = getDB();
-    const evalYear = new Date().getFullYear();
-    const limit = options.limit ?? 10;
-
-    const startYear = options.draftYear ?? endYear - window + 1;
-    const stopYear = options.draftYear ?? endYear;
-
     const picks = await db
       .select()
       .from(officialDraftResults)
       .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, stopYear)));
 
-    const ratings = await db
-      .select({
-        playerName: playerPerformanceRatings.playerName,
-        draftYear: playerPerformanceRatings.draftYear,
-        metadata: playerPerformanceRatings.metadata,
-      })
-      .from(playerPerformanceRatings)
-      .where(eq(playerPerformanceRatings.isCareerRating, true));
-    const ratingByName = ratingsByName(ratings);
+    const lookup = await loadRatingLookup(opts);
 
     const scored: Array<{
       name: string;
@@ -307,24 +320,31 @@ export class TeamScoutService {
       if (!team || !p.round || !p.playerName) {
         continue;
       }
-      const ratingRow = ratingByName.get(LLLRatingEngine.normalizeName(p.playerName));
-      const computed = deltaFor(
-        {round: p.round, playerName: p.playerName, contractOutcome: p.contractOutcome},
-        ratingRow,
-        evalYear,
-      );
-      if (!computed) {
+      const rating = lookup.get(p.playerName);
+      if (rating === null) {
         continue;
       }
+      // In season mode, picks drafted after the requested season have no
+      // possible NFL contribution that year — exclude them.
+      if (opts.mode === 'season' && opts.season && p.year > opts.season) {
+        continue;
+      }
+
+      const perf = LLLRatingEngine.calculateFinalPerformanceScore(
+        [rating],
+        useContractBonus ? p.contractOutcome || undefined : undefined,
+      );
+      const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+
       scored.push({
         name: p.playerName,
         team: `${team.city} ${team.name}`,
         teamKey: team.abbr,
         round: p.round,
         year: p.year,
-        rating: computed.rating,
+        rating,
         expected: EXPECTED_VALUE_BY_ROUND[p.round] ?? 0,
-        delta: computed.delta,
+        delta,
       });
     }
 
@@ -341,12 +361,12 @@ export class TeamScoutService {
    * Picks are tagged with qualitative outcome labels only — never exposes
    * the raw 0–10 rating or numeric delta to the client.
    */
-  static async getTeamBreakdown(
-    teamKey: string,
-    window: number = DEFAULT_WINDOW,
-    endYear: number = LATEST_FAIR_DRAFT_YEAR,
-  ): Promise<TeamBreakdown | null> {
-    const leaderboard = await TeamScoutService.getTeamSuccessLeaderboard(window, endYear);
+  static async getTeamBreakdown(teamKey: string, opts: ScoutOptions = {}): Promise<TeamBreakdown | null> {
+    const window = opts.window ?? DEFAULT_WINDOW;
+    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
+    const useContractBonus = (opts.mode ?? 'career') === 'career';
+
+    const leaderboard = await TeamScoutService.getTeamSuccessLeaderboard(opts);
     const targetKey = teamKey.toUpperCase();
     const idx = leaderboard.findIndex((t) => t.teamKey === targetKey);
     if (idx === -1) {
@@ -356,17 +376,8 @@ export class TeamScoutService {
 
     const db = getDB();
     const startYear = endYear - window + 1;
-    const evalYear = new Date().getFullYear();
 
-    const ratings = await db
-      .select({
-        playerName: playerPerformanceRatings.playerName,
-        draftYear: playerPerformanceRatings.draftYear,
-        metadata: playerPerformanceRatings.metadata,
-      })
-      .from(playerPerformanceRatings)
-      .where(eq(playerPerformanceRatings.isCareerRating, true));
-    const ratingByName = ratingsByName(ratings);
+    const lookup = await loadRatingLookup(opts);
 
     const myPicks = (
       await db
@@ -386,16 +397,20 @@ export class TeamScoutService {
         continue;
       }
 
-      const ratingRow = ratingByName.get(LLLRatingEngine.normalizeName(p.playerName));
-      const computed = deltaFor(
-        {round: p.round, playerName: p.playerName, contractOutcome: p.contractOutcome},
-        ratingRow,
-        evalYear,
-      );
+      const rating = lookup.get(p.playerName);
+      // In season mode, picks drafted after the requested season can't have played yet.
+      const futurePick = opts.mode === 'season' && opts.season !== undefined && p.year > opts.season;
 
-      const outcome: PickOutcome = computed
-        ? (LLLRatingEngine.getGradeOutcomeLabel(computed.delta) as PickOutcome)
-        : 'PENDING';
+      let outcome: PickOutcome = 'PENDING';
+      let delta: number | null = null;
+      if (rating !== null && !futurePick) {
+        const perf = LLLRatingEngine.calculateFinalPerformanceScore(
+          [rating],
+          useContractBonus ? p.contractOutcome || undefined : undefined,
+        );
+        delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+        outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
+      }
 
       const breakdown: BreakdownPick = {
         name: p.playerName,
@@ -405,12 +420,12 @@ export class TeamScoutService {
         outcome,
       };
 
-      if (computed && computed.delta > bestDelta) {
-        bestDelta = computed.delta;
+      if (delta !== null && delta > bestDelta) {
+        bestDelta = delta;
         topPick = {name: p.playerName, round: p.round, year: p.year, outcome};
       }
-      if (computed && computed.delta < worstDelta) {
-        worstDelta = computed.delta;
+      if (delta !== null && delta < worstDelta) {
+        worstDelta = delta;
         worstPick = {name: p.playerName, round: p.round, year: p.year, outcome};
       }
 

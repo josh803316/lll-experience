@@ -16,14 +16,29 @@ import {
 } from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
 import {ExpertAuditService, getExpertProfile} from '../services/expert-audit.js';
-import {TeamScoutService, TEAM_WINDOW_DEFAULT, TEAM_WINDOW_END_DEFAULT} from '../services/team-scout.js';
+import {
+  TeamScoutService,
+  TEAM_WINDOW_DEFAULT,
+  TEAM_WINDOW_END_DEFAULT,
+  type ScoutOptions,
+  type ScoutMode,
+} from '../services/team-scout.js';
 import {getDB} from '../db/index.js';
 import {experts, officialDraftResults} from '../db/schema.js';
 import {sql, gte, lte, and} from 'drizzle-orm';
 
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
-async function buildDashboardSnapshot(): Promise<DashboardSnapshot> {
+function parseScoutOpts(query: Record<string, string | undefined>): ScoutOptions {
+  const mode = (query.mode === 'season' ? 'season' : 'career') as ScoutMode;
+  const seasonRaw = query.season ? Number(query.season) : NaN;
+  const season = mode === 'season' && Number.isFinite(seasonRaw) ? seasonRaw : undefined;
+  const windowRaw = query.window ? Number(query.window) : NaN;
+  const window = Number.isFinite(windowRaw) ? windowRaw : undefined;
+  return {mode, season, window};
+}
+
+async function buildDashboardSnapshot(opts: ScoutOptions = {}): Promise<DashboardSnapshot> {
   const db = getDB();
   const startYear = TEAM_WINDOW_END_DEFAULT - TEAM_WINDOW_DEFAULT + 1;
 
@@ -34,7 +49,7 @@ async function buildDashboardSnapshot(): Promise<DashboardSnapshot> {
   const [expertRow] = await db.select({c: sql<number>`COUNT(*)::int`}).from(experts);
 
   const [movers, oracle, scout] = await Promise.all([
-    TeamScoutService.getTopMovers(undefined, undefined, {limit: 10}),
+    TeamScoutService.getTopMovers({...opts, limit: 10}),
     ExpertAuditService.getOracleLeaderboard(),
     ExpertAuditService.getScoutLeaderboard(),
   ]);
@@ -48,6 +63,8 @@ async function buildDashboardSnapshot(): Promise<DashboardSnapshot> {
     bustMovers: movers.topBusts,
     oracleTop: oracle,
     scoutTop: scout,
+    mode: opts.mode ?? 'career',
+    selectedSeason: opts.season,
   };
 }
 
@@ -59,12 +76,12 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   // --- HTML ROUTES ---
   .get('/', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';
-    const snapshot = await buildDashboardSnapshot();
+    const snapshot = await buildDashboardSnapshot(parseScoutOpts(ctx.query as Record<string, string | undefined>));
     return analyzerDashboard(snapshot, CLERK_KEY);
   })
   .get('', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';
-    const snapshot = await buildDashboardSnapshot();
+    const snapshot = await buildDashboardSnapshot(parseScoutOpts(ctx.query as Record<string, string | undefined>));
     return analyzerDashboard(snapshot, CLERK_KEY);
   })
 
@@ -78,9 +95,10 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/teams', async (ctx) => {
-    const data = await TeamScoutService.getTeamSuccessLeaderboard();
+    const opts = parseScoutOpts(ctx.query as Record<string, string | undefined>);
+    const data = await TeamScoutService.getTeamSuccessLeaderboard(opts);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return teamLeaderboard(data, CLERK_KEY);
+    return teamLeaderboard(data, CLERK_KEY, opts);
   })
 
   .get('/player/:name', async (ctx) => {
@@ -106,12 +124,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     return await ExpertAuditService.getScoutLeaderboard();
   })
   .get('/api/teams/success', async ({query}) => {
-    const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
-    return await TeamScoutService.getTeamSuccessLeaderboard(window);
+    const opts = parseScoutOpts(query as Record<string, string | undefined>);
+    return await TeamScoutService.getTeamSuccessLeaderboard(opts);
   })
   .get('/api/movers', async ({query}) => {
+    const opts = parseScoutOpts(query as Record<string, string | undefined>);
     const draftYear = query.year && query.year !== 'all' ? Number(query.year) : undefined;
-    return await TeamScoutService.getTopMovers(undefined, undefined, {draftYear, limit: 10});
+    return await TeamScoutService.getTopMovers({...opts, draftYear, limit: 10});
   })
 
   .get('/api/expert/:slug', async ({params}) => {
@@ -125,21 +144,22 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/fragment/success-leaderboard', async ({query}) => {
-    const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
-    const data = await TeamScoutService.getTeamSuccessLeaderboard(window);
-    return successLeaderboard(data.slice(0, 10));
+    const opts = parseScoutOpts(query as Record<string, string | undefined>);
+    const data = await TeamScoutService.getTeamSuccessLeaderboard(opts);
+    return successLeaderboard(data.slice(0, 10), opts);
   })
 
   .get('/fragment/team-breakdown/:teamKey', async ({params, query, set}) => {
-    const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
-    const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, window);
+    const opts = parseScoutOpts(query as Record<string, string | undefined>);
+    const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, opts);
     set.headers['Content-Type'] = 'text/html';
     return breakdown ? teamBreakdownModal(breakdown) : teamBreakdownNotFound(params.teamKey);
   })
 
   .get('/fragment/movers', async ({query, set}) => {
+    const opts = parseScoutOpts(query as Record<string, string | undefined>);
     const draftYear = query.year && query.year !== 'all' ? Number(query.year) : undefined;
-    const movers = await TeamScoutService.getTopMovers(undefined, undefined, {draftYear, limit: 10});
+    const movers = await TeamScoutService.getTopMovers({...opts, draftYear, limit: 10});
     set.headers['Content-Type'] = 'text/html';
     return renderMovers(movers.topHits, movers.topBusts);
   });

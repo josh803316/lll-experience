@@ -66,6 +66,18 @@ export class LLLRatingEngine {
   }
 
   /**
+   * Apply the cumulative-experience bonus to a single-season production rating.
+   * Per group spec: a 3rd-year solid season counts more than a rookie's because
+   * it represents proven, sustained production.
+   *
+   *   Y1: +0   Y2: +0   Y3: +0.25   Y4: +0.50   Y5: +0.75   Y6+: +1.00
+   */
+  static applyCareerBonus(seasonRating: number, yearsInNFL: number): number {
+    const bonus = Math.min(1.0, Math.max(0, (yearsInNFL - 2) * 0.25));
+    return Math.min(10, Number((seasonRating + bonus).toFixed(2)));
+  }
+
+  /**
    * Calculates a single season's score based on the 30/30/40 split.
    * (Reserved for when we ingest per-season component data.)
    */
