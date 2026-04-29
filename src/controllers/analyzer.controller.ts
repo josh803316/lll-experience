@@ -113,8 +113,9 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     return searchResultsFragment(results);
   })
 
-  .get('/fragment/success-leaderboard', async () => {
-    const data = await TeamScoutService.getTeamSuccessLeaderboard();
-    // Only show top 5 on dashboard
-    return successLeaderboard(data.slice(0, 5));
+  .get('/fragment/success-leaderboard', async ({query}) => {
+    const window = Number(query.window) || 3;
+    const data = await TeamScoutService.getTeamSuccessLeaderboard(window);
+    // Show top 10 on dashboard
+    return successLeaderboard(data.slice(0, 10));
   });

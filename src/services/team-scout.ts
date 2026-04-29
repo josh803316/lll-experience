@@ -5,21 +5,24 @@ import {LLLRatingEngine} from './lll-rating-engine.js';
 
 export class TeamScoutService {
   /**
-   * Calculates real-world LLL metrics for all 32 teams based on the last 5 years of data.
-   */
-  static async getTeamSuccessLeaderboard() {
-    const db = getDB();
+   /**
+    * Calculates real-world LLL metrics for all 32 teams based on a rolling window.
+    */
+   static async getTeamSuccessLeaderboard(window: number = 3) {
+     const db = getDB();
+     const currentYear = 2026;
+     const startYear = currentYear - window;
 
-    // 1. Get all picks since 2020 for a relevant "Rolling" window
-    const picks = await db
-      .select({
-        teamName: officialDraftResults.teamName,
-        round: officialDraftResults.round,
-        contractOutcome: officialDraftResults.contractOutcome,
-        playerName: officialDraftResults.playerName,
-      })
-      .from(officialDraftResults)
-      .where(sql`year >= 2019`);
+     // 1. Get all picks since the startYear
+     const picks = await db.select({
+       teamName: officialDraftResults.teamName,
+       round: officialDraftResults.round,
+       contractOutcome: officialDraftResults.contractOutcome,
+       playerName: officialDraftResults.playerName
+     })
+     .from(officialDraftResults)
+     .where(sql`year >= ${startYear}`);
+
 
     // 2. Get all career ratings
     const ratings = await db

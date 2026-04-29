@@ -97,13 +97,26 @@ export function analyzerDashboard(clerkKey?: string): string {
 
           <!-- Success Leaderboard -->
           <section class="space-y-8 text-black">
-             <div class="flex justify-between items-end border-b-2 border-black pb-2 text-black">
-               <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">SUCCESS INDEX · TOP 5</h3>
-               <a href="/analyzer/teams" class="text-[9px] font-bold text-muted hover:text-accent uppercase tracking-widest transition-colors">View 32 Teams →</a>
+             <div class="flex justify-between items-end border-b-2 border-black pb-2">
+               <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">SUCCESS INDEX · TOP 10</h3>
+               <div class="flex gap-2">
+                 ${[3, 5, 7, 10].map(y => `
+                   <button 
+                     onclick="fetchSuccessIndex(${y})"
+                     class="text-[9px] font-bold uppercase tracking-widest px-2 py-1 border border-black hover:bg-black hover:text-white transition-all ${y === 3 ? 'bg-black text-white' : ''}"
+                   >${y}Y</button>
+                 `).join('')}
+               </div>
              </div>
-             <div id="success-leaderboard" hx-get="/analyzer/fragment/success-leaderboard" hx-trigger="load">
-                <p class="italic py-8 text-muted text-center text-sm">Aggregating 10 years of receipts...</p>
+             <div id="success-leaderboard" hx-get="/analyzer/fragment/success-leaderboard?window=3" hx-trigger="load">
+                <p class="italic py-8 text-muted text-center text-sm">Aggregating receipts...</p>
              </div>
+             <script>
+               function fetchSuccessIndex(window) {
+                 htmx.ajax('GET', '/analyzer/fragment/success-leaderboard?window=' + window, '#success-leaderboard');
+               }
+             </script>
+
           </section>
 
           <!-- Latest Intel -->
