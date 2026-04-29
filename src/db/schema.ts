@@ -221,6 +221,17 @@ export const teamDraftAnalysis = pgTable('team_draft_analysis', {
   overallGrade: text('overall_grade'),
 });
 
+export const expertTeamGrades = pgTable('expert_team_grades', {
+  id: serial('id').primaryKey(),
+  expertId: integer('expert_id')
+    .references(() => experts.id, {onDelete: 'cascade'})
+    .notNull(),
+  year: integer('year').notNull(),
+  teamName: text('team_name').notNull(),
+  grade: text('grade').notNull(),
+  commentary: text('commentary'),
+});
+
 export const playerPerformanceRatings = pgTable('player_performance_ratings', {
   id: serial('id').primaryKey(),
   playerName: text('player_name').notNull(),
