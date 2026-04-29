@@ -28,6 +28,7 @@ export interface DashboardSnapshot {
   scoutTop: ExpertScoutRow[];
   mode: 'career' | 'season';
   selectedSeason?: number;
+  window: number;
 }
 
 export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', clerkPublishableKey?: string): string {
@@ -157,6 +158,82 @@ const TOOLTIPS = {
     'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
 } as const;
 
+/**
+ * Shared view controls — Career / Single Season toggle + season picker + window picker.
+ * Used on both the dashboard and the /teams page so a window selection on one
+ * carries to the other through URL params.
+ */
+export function renderViewControls(opts: {mode: 'career' | 'season'; selectedSeason: number; window: number}): string {
+  const isCareer = opts.mode === 'career';
+  const seasonOptions = [2024, 2023, 2022, 2021, 2020, 2019, 2018];
+  const windowOptions = [3, 5, 6, 8];
+  return `
+    <div class="flex flex-wrap items-center gap-3 mb-6">
+      <div class="flex items-center bg-black/[0.05] rounded-md p-1 text-[10px] font-bold uppercase tracking-[0.2em]">
+        <button onclick="setView({mode:'career'})"
+          class="px-3 py-1.5 rounded-md transition-all ${isCareer ? 'bg-black text-white' : 'text-muted hover:text-black'}">
+          Career
+        </button>
+        <button onclick="setView({mode:'season'})"
+          class="px-3 py-1.5 rounded-md transition-all ${!isCareer ? 'bg-black text-white' : 'text-muted hover:text-black'}">
+          Single Season
+        </button>
+      </div>
+      <select onchange="setView({season:this.value})"
+        class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] border border-black bg-white ${isCareer ? 'opacity-30 pointer-events-none' : ''}">
+        ${seasonOptions
+          .map((y) => `<option value="${y}" ${y === opts.selectedSeason ? 'selected' : ''}>${y} season</option>`)
+          .join('')}
+      </select>
+      <div class="flex items-center bg-black/[0.05] rounded-md p-1">
+        ${windowOptions
+          .map(
+            (w) => `
+          <button onclick="setView({window:${w}})"
+            class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] rounded-md transition-all ${
+              w === opts.window ? 'bg-black text-white' : 'text-muted hover:text-black'
+            }">
+            ${w}Y
+          </button>
+        `,
+          )
+          .join('')}
+      </div>
+      <span class="text-[10px] text-muted serif italic">
+        ${
+          isCareer
+            ? `Career view · last ${opts.window} draft years`
+            : `${opts.selectedSeason} NFL season · last ${opts.window} draft years`
+        }
+      </span>
+    </div>
+    <script>
+      (function () {
+        if (window.__lllSetView) return;
+        window.__lllSetView = true;
+        window.setView = function (updates) {
+          const url = new URL(window.location.href);
+          if (updates.mode === 'career') {
+            url.searchParams.set('mode', 'career');
+            url.searchParams.delete('season');
+          } else if (updates.mode === 'season') {
+            url.searchParams.set('mode', 'season');
+            if (!url.searchParams.get('season')) url.searchParams.set('season', '${opts.selectedSeason}');
+          }
+          if (updates.season) {
+            url.searchParams.set('mode', 'season');
+            url.searchParams.set('season', updates.season);
+          }
+          if (updates.window) {
+            url.searchParams.set('window', updates.window);
+          }
+          window.location.href = url.toString();
+        };
+      })();
+    </script>
+  `;
+}
+
 export function liveBadge(): string {
   return `
     <span class="lll-tip inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700" tabindex="0">
@@ -206,50 +283,15 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
 
   const isCareer = snapshot.mode === 'career';
   const selectedSeason = snapshot.selectedSeason ?? 2024;
-  const seasonOptions = [2024, 2023, 2022, 2021, 2020, 2019, 2018];
+  const selectedWindow = snapshot.window ?? 6;
 
-  const modeStrip = `
-    <div class="flex flex-wrap items-center gap-3 mb-8">
-      <div class="flex items-center bg-black/[0.05] rounded-md p-1 text-[10px] font-bold uppercase tracking-[0.2em]">
-        <button onclick="setMode('career')"
-          class="px-3 py-1.5 rounded-md transition-all ${isCareer ? 'bg-black text-white' : 'text-muted hover:text-black'}">
-          Career
-        </button>
-        <button onclick="setMode('season')"
-          class="px-3 py-1.5 rounded-md transition-all ${!isCareer ? 'bg-black text-white' : 'text-muted hover:text-black'}">
-          Single Season
-        </button>
-      </div>
-      <select id="season-picker" onchange="setSeason(this.value)"
-        class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] border border-black bg-white ${isCareer ? 'opacity-30 pointer-events-none' : ''}">
-        ${seasonOptions.map((y) => `<option value="${y}" ${y === selectedSeason ? 'selected' : ''}>${y} season</option>`).join('')}
-      </select>
-      <span class="text-[10px] text-muted serif italic">
-        ${
-          isCareer
-            ? 'Career view: cumulative production through today.'
-            : `${selectedSeason} view: only what each player did in the ${selectedSeason} NFL season.`
-        }
-      </span>
-    </div>
-    <script>
-      function setMode(mode) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('mode', mode);
-        if (mode === 'career') url.searchParams.delete('season');
-        else if (!url.searchParams.get('season')) url.searchParams.set('season', '${selectedSeason}');
-        window.location.href = url.toString();
-      }
-      function setSeason(year) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('mode', 'season');
-        url.searchParams.set('season', year);
-        window.location.href = url.toString();
-      }
-    </script>
-  `;
+  const modeStrip = renderViewControls({
+    mode: snapshot.mode,
+    selectedSeason,
+    window: selectedWindow,
+  });
 
-  const modeQs = isCareer ? 'mode=career' : `mode=season&season=${selectedSeason}`;
+  const modeQs = `${isCareer ? 'mode=career' : `mode=season&season=${selectedSeason}`}&window=${selectedWindow}`;
 
   const content = `
     ${header('dashboard')}
@@ -273,23 +315,12 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
       <div class="grid grid-cols-1 md:grid-cols-3 gap-10 text-black">
         <div class="md:col-span-2 space-y-12">
 
-          <section class="space-y-8 text-black">
+          <section class="space-y-6 text-black">
              <div class="flex justify-between items-end border-b-2 border-black pb-2">
                <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">FRANCHISE INDEX · TOP 10</h3>
-               <div class="flex gap-2">
-                 ${[3, 5, 6, 8]
-                   .map(
-                     (y) => `
-                   <button
-                     onclick="fetchSuccessIndex(${y})"
-                     class="text-[9px] font-bold uppercase tracking-widest px-2 py-1 border border-black hover:bg-black hover:text-white transition-all ${y === 6 ? 'bg-black text-white' : ''}"
-                   >${y}Y</button>
-                 `,
-                   )
-                   .join('')}
-               </div>
+               <span class="text-[10px] text-muted serif italic">Window controls above filter all sections</span>
              </div>
-             <div id="success-leaderboard" hx-get="/analyzer/fragment/success-leaderboard?window=6&${modeQs}" hx-trigger="load">
+             <div id="success-leaderboard" hx-get="/analyzer/fragment/success-leaderboard?${modeQs}" hx-trigger="load">
                 <p class="italic py-8 text-muted text-center text-sm">Aggregating receipts...</p>
              </div>
              <div class="flex justify-end pt-2">
@@ -298,11 +329,6 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
                  View all 32 teams →
                </a>
              </div>
-             <script>
-               function fetchSuccessIndex(window) {
-                 htmx.ajax('GET', '/analyzer/fragment/success-leaderboard?window=' + window + '&${modeQs}', '#success-leaderboard');
-               }
-             </script>
           </section>
 
           <section class="space-y-6 text-black">
@@ -576,11 +602,19 @@ export function expertLeaderboard(oracle: ExpertOracleRow[], scout: ExpertScoutR
 export function teamLeaderboard(
   teams: TeamSuccessRow[],
   clerkKey?: string,
-  opts: {mode?: 'career' | 'season'; season?: number} = {},
+  opts: {mode?: 'career' | 'season'; season?: number; window?: number} = {},
 ): string {
   const isSeason = opts.mode === 'season' && opts.season !== undefined;
+  const selectedSeason = opts.season ?? 2024;
+  const selectedWindow = opts.window ?? 6;
   const viewLabel = isSeason ? `${opts.season} NFL season` : 'Career';
   const totalPicks = teams.reduce((s, t) => s + t.totalPicks, 0);
+  const controls = renderViewControls({
+    mode: opts.mode ?? 'career',
+    selectedSeason,
+    window: selectedWindow,
+  });
+  const modeQs = `${isSeason ? `mode=season&season=${selectedSeason}` : 'mode=career'}&window=${selectedWindow}`;
   const cards = teams
     .map((t, i) => {
       const accent = i < 8 ? 'border-accent' : 'border-black/20';
@@ -643,25 +677,23 @@ export function teamLeaderboard(
 
   const content = `
     ${header('teams')}
-    <div class="max-w-6xl mx-auto py-12 px-4 text-black">
-      <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
-        <div>
-          <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-4 inline-block transition-colors">← Back to Dashboard</a>
-          <h2 class="text-6xl font-bold tracking-tighter text-black">FRANCHISE INDEX</h2>
-          <p class="text-muted italic serif text-xl max-w-xl leading-relaxed">
-            All 32 teams. Hit Rate (% of picks beating round expectation) and League Position
-            (avg delta vs league spread). Letter grade is rank-relative.
-          </p>
-          <div class="mt-4 inline-flex items-center gap-2 px-3 py-1.5 bg-black/[0.05] rounded-md text-[10px] font-bold uppercase tracking-[0.2em]">
-            <span class="text-muted">View:</span>
-            <span class="text-black">${escapeHtml(viewLabel)}</span>
-          </div>
+    <div class="max-w-6xl mx-auto py-6 px-4 text-black">
+      <a href="/analyzer?${modeQs}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
+      <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">FRANCHISE INDEX</h2>
+          <span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">${escapeHtml(viewLabel)}</span>
         </div>
-        <div class="bg-black text-white px-6 py-4 rounded-lg shadow-xl shrink-0">
-           <div class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mb-1">Picks scored</div>
-           <div class="text-3xl font-bold tracking-tighter">${totalPicks.toLocaleString()} <span class="text-sm opacity-60 uppercase tracking-widest font-normal">in window</span></div>
+        <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
+           <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Picks scored</span>
+           <span class="text-xl font-bold tracking-tighter">${totalPicks.toLocaleString()}</span>
         </div>
       </div>
+      <p class="text-xs md:text-sm text-muted serif italic mb-4">
+        All 32 teams. Hit Rate (% of picks beating round expectation) and League Position
+        (avg delta vs league spread). Letter grade is rank-relative.
+      </p>
+      ${controls}
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
         ${cards}
@@ -673,10 +705,13 @@ export function teamLeaderboard(
 
 export function successLeaderboard(
   teams: TeamSuccessRow[],
-  opts: {mode?: 'career' | 'season'; season?: number} = {},
+  opts: {mode?: 'career' | 'season'; season?: number; window?: number} = {},
 ): string {
+  const winQs = opts.window ? `&window=${opts.window}` : '';
   const modeQs =
-    opts.mode === 'season' && opts.season !== undefined ? `mode=season&season=${opts.season}` : 'mode=career';
+    opts.mode === 'season' && opts.season !== undefined
+      ? `mode=season&season=${opts.season}${winQs}`
+      : `mode=career${winQs}`;
   const rows = teams
     .map(
       (t, i) => `

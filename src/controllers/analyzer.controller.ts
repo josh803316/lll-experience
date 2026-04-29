@@ -40,12 +40,14 @@ function parseScoutOpts(query: Record<string, string | undefined>): ScoutOptions
 
 async function buildDashboardSnapshot(opts: ScoutOptions = {}): Promise<DashboardSnapshot> {
   const db = getDB();
-  const startYear = TEAM_WINDOW_END_DEFAULT - TEAM_WINDOW_DEFAULT + 1;
+  const window = opts.window ?? TEAM_WINDOW_DEFAULT;
+  const endYear = opts.endYear ?? TEAM_WINDOW_END_DEFAULT;
+  const startYear = endYear - window + 1;
 
   const [pickRow] = await db
     .select({c: sql<number>`COUNT(*)::int`})
     .from(officialDraftResults)
-    .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, TEAM_WINDOW_END_DEFAULT)));
+    .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)));
   const [expertRow] = await db.select({c: sql<number>`COUNT(*)::int`}).from(experts);
 
   const [movers, oracle, scout] = await Promise.all([
@@ -58,13 +60,14 @@ async function buildDashboardSnapshot(opts: ScoutOptions = {}): Promise<Dashboar
     totalPicks: pickRow?.c ?? 0,
     totalExperts: expertRow?.c ?? 0,
     windowStart: startYear,
-    windowEnd: TEAM_WINDOW_END_DEFAULT,
+    windowEnd: endYear,
     topMovers: movers.topHits,
     bustMovers: movers.topBusts,
     oracleTop: oracle,
     scoutTop: scout,
     mode: opts.mode ?? 'career',
     selectedSeason: opts.season,
+    window,
   };
 }
 
@@ -98,7 +101,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const opts = parseScoutOpts(ctx.query as Record<string, string | undefined>);
     const data = await TeamScoutService.getTeamSuccessLeaderboard(opts);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return teamLeaderboard(data, CLERK_KEY, opts);
+    return teamLeaderboard(data, CLERK_KEY, {mode: opts.mode, season: opts.season, window: opts.window});
   })
 
   .get('/player/:name', async (ctx) => {
