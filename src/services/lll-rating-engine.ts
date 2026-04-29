@@ -1,7 +1,10 @@
 /**
  * LLL Proprietary Rating Engine
- * Handles the logic for the 0-10 draft success scale and
- * proprietary multi-source value algorithms.
+ * Methodology (per group consensus):
+ *  - 0–10 player success scale
+ *  - Per-round expected value (Tim's value chart)
+ *  - Performance Score = best-4-of-6 + trajectory + contract market signal (Option B)
+ *  - Final Grade = Performance Score − Expected (by round)
  */
 
 export interface LLLRatingDefinition {
@@ -24,8 +27,9 @@ export const LLL_RATING_SCALE: Record<number, LLLRatingDefinition> = {
   0: {value: 0, label: 'Cut', description: 'Released from the team'},
 };
 
+// Tim's value chart: per-round expected LLL rating
 export const EXPECTED_VALUE_BY_ROUND: Record<number, number> = {
-  1: 7.5, // Averaging 8/7 as 7.5 for baseline, or we can use 8.0 for top tier
+  1: 7.5,
   2: 6.0,
   3: 5.0,
   4: 4.0,
@@ -46,7 +50,24 @@ export const CONTRACT_BONUSES: Record<string, number> = {
 
 export class LLLRatingEngine {
   /**
+   * Convert a cumulative w_av total to a per-season-equivalent 0–10 rating.
+   *
+   * Cumulative w_av punishes recent draft classes (2024 rookie can't out-accumulate
+   * a 2015 vet). Dividing by years-since-draft yields a "typical season AV" we can
+   * compare across classes. Per-season AV ~15 = MVP, ~8 = solid starter, ~3 = backup.
+   */
+  static normalizeWavToRating(wav: number, yearsSinceDraft: number): number {
+    if (!Number.isFinite(wav) || wav <= 0 || yearsSinceDraft < 1) {
+      return 0;
+    }
+    const perYear = wav / yearsSinceDraft;
+    // Map per-year AV 0–15 onto 0–10 (factor 0.667), cap at 10.
+    return Math.min(10, Math.max(0, Number((perYear * 0.667).toFixed(2))));
+  }
+
+  /**
    * Calculates a single season's score based on the 30/30/40 split.
+   * (Reserved for when we ingest per-season component data.)
    */
   static calculateSeasonScore(peerScore: number, prodScore: number, roleScore: number): number {
     return peerScore * 0.3 + prodScore * 0.3 + roleScore * 0.4;
@@ -56,38 +77,40 @@ export class LLLRatingEngine {
    * Option B: Best 4 of 6 Average + Trajectory + Contract
    */
   static calculateFinalPerformanceScore(yearlyScores: number[], contractType?: string): number {
-    if (yearlyScores.length === 0) {return 0;}
+    if (yearlyScores.length === 0) {
+      return 0;
+    }
 
-    // 1. Take best 4 of 6 (or fewer if career is shorter)
     const sorted = [...yearlyScores].sort((a, b) => b - a);
     const best4 = sorted.slice(0, 4);
     const avgBest4 = best4.reduce((a, b) => a + b, 0) / best4.length;
 
-    // 2. Trajectory Modifier
     const trajectoryMod = this.calculateTrajectoryModifier(yearlyScores);
-
-    // 3. Contract Bonus
     const contractBonus = contractType ? CONTRACT_BONUSES[contractType] || 0 : 0;
 
     return Number((avgBest4 + trajectoryMod + contractBonus).toFixed(2));
   }
 
   private static calculateTrajectoryModifier(scores: number[]): number {
-    if (scores.length < 2) {return 0;}
+    if (scores.length < 3) {
+      return 0;
+    }
 
-    // Final 2 years
     const final2 = scores.slice(-2);
     const others = scores.slice(0, -2);
+    if (others.length === 0) {
+      return 0;
+    }
 
-    if (others.length === 0) {return 0;}
-
-    // Ascending: Both final 2 are better than any of the previous?
-    // Simplified: are the final 2 higher than the average of previous?
     const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
     const avgFinal2 = final2.reduce((a, b) => a + b, 0) / final2.length;
 
-    if (avgFinal2 > avgOthers + 1.5) {return 0.5;} // Ascending
-    if (avgFinal2 < avgOthers - 1.5) {return -0.5;} // Declining
+    if (avgFinal2 > avgOthers + 1.5) {
+      return 0.5;
+    }
+    if (avgFinal2 < avgOthers - 1.5) {
+      return -0.5;
+    }
     return 0;
   }
 
@@ -100,13 +123,21 @@ export class LLLRatingEngine {
   }
 
   /**
-   * Map Delta to descriptive label
+   * Bucket a Final Grade delta into a descriptive label.
    */
   static getGradeOutcomeLabel(delta: number): string {
-    if (delta >= 1.5) {return 'ELITE HIT';}
-    if (delta > 0.5) {return 'HIT';}
-    if (delta >= -0.5) {return 'MET EXPECTATION';}
-    if (delta >= -1.5) {return 'UNDERPERFORMED';}
+    if (delta >= 1.5) {
+      return 'ELITE HIT';
+    }
+    if (delta > 0.5) {
+      return 'HIT';
+    }
+    if (delta >= -0.5) {
+      return 'MET EXPECTATION';
+    }
+    if (delta >= -1.5) {
+      return 'UNDERPERFORMED';
+    }
     return 'BUST';
   }
 
@@ -115,32 +146,8 @@ export class LLLRatingEngine {
   }
 
   /**
-   * Mock Accuracy: Root Mean Square Error (RMSE)
-   * Measures how close an expert's predicted slot was to the actual slot.
-   * Lower is better (0 = perfect).
-   */
-  static calculateRMSE(predictions: {predicted: number; actual: number}[]): number {
-    if (predictions.length === 0) {
-      return 0;
-    }
-    const sumOfSquares = predictions.reduce((sum, p) => {
-      return sum + Math.pow(p.predicted - p.actual, 2);
-    }, 0);
-    return Math.sqrt(sumOfSquares / predictions.length);
-  }
-
-  /**
-   * Scouting Accuracy: The "Talent Delta"
-   * Compares an expert's pre-draft grade (converted to 0-10) to the LLL Career Rating.
-   * Measures if they were "right" about the player's quality.
-   */
-  static calculateTalentDelta(expertGradeScale: number, lllCareerRating: number): number {
-    // 0 = perfect prediction, positive = expert overhyped, negative = expert undervalued
-    return expertGradeScale - lllCareerRating;
-  }
-
-  /**
-   * Maps a Letter Grade (A, B, C...) to our 0-10 scale for comparison.
+   * Map an A–F team grade onto the 0–10 LLL scale.
+   * Used when ingesting expert team grades.
    */
   static mapLetterGradeToScale(grade: string): number {
     const mapping: Record<string, number> = {
@@ -159,4 +166,130 @@ export class LLLRatingEngine {
     };
     return mapping[grade.toUpperCase()] || 5;
   }
+
+  /**
+   * Map a team's RANK among all teams onto an A+–F letter grade.
+   *
+   * Tim's expected-value chart treats Round 1 = 7.5 (Top-10-at-position).
+   * Reality: only ~30% of R1 picks reach that bar, so every team's avg
+   * delta is negative on the absolute scale. Using rank-based tiers
+   * preserves the underlying delta signal while letting the league spread
+   * across A+→F for at-a-glance comparison. Raw avgDelta is still shown
+   * alongside the letter so the absolute math is never hidden.
+   */
+  static rankToLetterGrade(rank1Indexed: number, total: number): string {
+    if (total <= 0) {
+      return 'F';
+    }
+    const tiers = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'F'];
+    const ratio = (rank1Indexed - 1) / total;
+    const idx = Math.min(tiers.length - 1, Math.floor(ratio * tiers.length));
+    return tiers[idx];
+  }
+
+  /**
+   * Mock Accuracy: RMSE of predicted vs actual rank.
+   * Lower is better (0 = perfect).
+   */
+  static calculateRMSE(predictions: {predicted: number; actual: number}[]): number {
+    if (predictions.length === 0) {
+      return 0;
+    }
+    const sumOfSquares = predictions.reduce((sum, p) => sum + Math.pow(p.predicted - p.actual, 2), 0);
+    return Math.sqrt(sumOfSquares / predictions.length);
+  }
+
+  /**
+   * Translate an expert's big-board rank into the LLL career rating they implicitly predicted.
+   * Anchored against the round expected values:
+   *   rank 1   -> ~8.0   (top of round 1)
+   *   rank 32  -> ~7.5   (round 1 ceiling expectation)
+   *   rank 64  -> ~6.0   (round 2)
+   *   rank 100 -> ~5.0   (round 3)
+   *   rank 200 -> ~2.0   (round 6)
+   * Smoothed exponential: 8.5 * exp(-rank/120), floored at 1.
+   */
+  static rankToExpectedRating(rank: number): number {
+    if (rank <= 0) {
+      return 8.5;
+    }
+    return Math.max(1, Number((8.5 * Math.exp(-rank / 120)).toFixed(2)));
+  }
+
+  /**
+   * Talent Delta: how close did the expert's implied quality come to the actual career rating?
+   * Returns RMSE (lower is better — they accurately rated talent).
+   */
+  static calculateTalentDelta(predictions: {expectedRating: number; actualRating: number}[]): number {
+    if (predictions.length === 0) {
+      return 0;
+    }
+    const sumOfSquares = predictions.reduce((sum, p) => sum + Math.pow(p.expectedRating - p.actualRating, 2), 0);
+    return Number(Math.sqrt(sumOfSquares / predictions.length).toFixed(2));
+  }
+
+  /**
+   * Normalize a player name for cross-table joining (handles "C.J." vs "CJ", trailing Jr., etc.).
+   */
+  static normalizeName(name: string | null | undefined): string {
+    if (!name) {
+      return '';
+    }
+    return name
+      .toLowerCase()
+      .replace(/\bjr\.?\b|\bsr\.?\b|\bii+\b|\biv\b/g, '')
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+}
+
+/**
+ * NFL franchise canonical-name mapping for nflverse abbreviations.
+ * Merges relocated franchises (OAK→LVR, SDG→LAC, STL→LAR).
+ */
+export const TEAM_CANONICAL: Record<string, {abbr: string; city: string; name: string}> = {
+  ARI: {abbr: 'ARI', city: 'Arizona', name: 'Cardinals'},
+  ATL: {abbr: 'ATL', city: 'Atlanta', name: 'Falcons'},
+  BAL: {abbr: 'BAL', city: 'Baltimore', name: 'Ravens'},
+  BUF: {abbr: 'BUF', city: 'Buffalo', name: 'Bills'},
+  CAR: {abbr: 'CAR', city: 'Carolina', name: 'Panthers'},
+  CHI: {abbr: 'CHI', city: 'Chicago', name: 'Bears'},
+  CIN: {abbr: 'CIN', city: 'Cincinnati', name: 'Bengals'},
+  CLE: {abbr: 'CLE', city: 'Cleveland', name: 'Browns'},
+  DAL: {abbr: 'DAL', city: 'Dallas', name: 'Cowboys'},
+  DEN: {abbr: 'DEN', city: 'Denver', name: 'Broncos'},
+  DET: {abbr: 'DET', city: 'Detroit', name: 'Lions'},
+  GNB: {abbr: 'GB', city: 'Green Bay', name: 'Packers'},
+  HOU: {abbr: 'HOU', city: 'Houston', name: 'Texans'},
+  IND: {abbr: 'IND', city: 'Indianapolis', name: 'Colts'},
+  JAX: {abbr: 'JAX', city: 'Jacksonville', name: 'Jaguars'},
+  KAN: {abbr: 'KC', city: 'Kansas City', name: 'Chiefs'},
+  LAC: {abbr: 'LAC', city: 'Los Angeles', name: 'Chargers'},
+  SDG: {abbr: 'LAC', city: 'Los Angeles', name: 'Chargers'}, // legacy SD
+  LAR: {abbr: 'LAR', city: 'Los Angeles', name: 'Rams'},
+  STL: {abbr: 'LAR', city: 'Los Angeles', name: 'Rams'}, // legacy STL
+  LVR: {abbr: 'LV', city: 'Las Vegas', name: 'Raiders'},
+  OAK: {abbr: 'LV', city: 'Las Vegas', name: 'Raiders'}, // legacy OAK
+  MIA: {abbr: 'MIA', city: 'Miami', name: 'Dolphins'},
+  MIN: {abbr: 'MIN', city: 'Minnesota', name: 'Vikings'},
+  NWE: {abbr: 'NE', city: 'New England', name: 'Patriots'},
+  NOR: {abbr: 'NO', city: 'New Orleans', name: 'Saints'},
+  NYG: {abbr: 'NYG', city: 'New York', name: 'Giants'},
+  NYJ: {abbr: 'NYJ', city: 'New York', name: 'Jets'},
+  PHI: {abbr: 'PHI', city: 'Philadelphia', name: 'Eagles'},
+  PIT: {abbr: 'PIT', city: 'Pittsburgh', name: 'Steelers'},
+  SFO: {abbr: 'SF', city: 'San Francisco', name: '49ers'},
+  SEA: {abbr: 'SEA', city: 'Seattle', name: 'Seahawks'},
+  TAM: {abbr: 'TB', city: 'Tampa Bay', name: 'Buccaneers'},
+  TEN: {abbr: 'TEN', city: 'Tennessee', name: 'Titans'},
+  WAS: {abbr: 'WAS', city: 'Washington', name: 'Commanders'},
+};
+
+export function canonicalTeam(raw: string | null | undefined): {abbr: string; city: string; name: string} | null {
+  if (!raw) {
+    return null;
+  }
+  const key = raw.trim().toUpperCase();
+  return TEAM_CANONICAL[key] || null;
 }

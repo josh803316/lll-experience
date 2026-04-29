@@ -4,38 +4,72 @@ import {
   analyzerDashboard,
   expertLeaderboard,
   teamLeaderboard,
-  topExpertsMini,
   playerProfile,
-  timelineFragment,
   searchResultsFragment,
   successLeaderboard,
+  type DashboardSnapshot,
 } from '../views/analyzer-templates.js';
-import type {ExpertAccuracy} from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
 import {ExpertAuditService} from '../services/expert-audit.js';
-import {TeamScoutService} from '../services/team-scout.js';
+import {TeamScoutService, TEAM_WINDOW_DEFAULT, TEAM_WINDOW_END_DEFAULT} from '../services/team-scout.js';
+import {getDB} from '../db/index.js';
+import {experts, officialDraftResults} from '../db/schema.js';
+import {sql, gte, lte, and} from 'drizzle-orm';
 
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
+async function buildDashboardSnapshot(): Promise<DashboardSnapshot> {
+  const db = getDB();
+  const startYear = TEAM_WINDOW_END_DEFAULT - TEAM_WINDOW_DEFAULT + 1;
+
+  const [pickRow] = await db
+    .select({c: sql<number>`COUNT(*)::int`})
+    .from(officialDraftResults)
+    .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, TEAM_WINDOW_END_DEFAULT)));
+  const [expertRow] = await db.select({c: sql<number>`COUNT(*)::int`}).from(experts);
+
+  const [movers, oracle, scout] = await Promise.all([
+    TeamScoutService.getTopMovers(),
+    ExpertAuditService.getOracleLeaderboard(),
+    ExpertAuditService.getScoutLeaderboard(),
+  ]);
+
+  return {
+    totalPicks: pickRow?.c ?? 0,
+    totalExperts: expertRow?.c ?? 0,
+    windowStart: startYear,
+    windowEnd: TEAM_WINDOW_END_DEFAULT,
+    topMovers: movers.topHits,
+    bustMovers: movers.topBusts,
+    oracleTop: oracle,
+    scoutTop: scout,
+  };
+}
+
 export const analyzerController = new Elysia({prefix: '/analyzer'})
   .onBeforeHandle((ctx) => {
-    return authGuard(ctx) as any;
+    return authGuard(ctx);
   })
 
-  // --- HTML ROUTES (Web Frontend) ---
-  .get('/', (ctx) => {
+  // --- HTML ROUTES ---
+  .get('/', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';
-    return analyzerDashboard(CLERK_KEY);
+    const snapshot = await buildDashboardSnapshot();
+    return analyzerDashboard(snapshot, CLERK_KEY);
   })
-  .get('', (ctx) => {
+  .get('', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';
-    return analyzerDashboard(CLERK_KEY);
+    const snapshot = await buildDashboardSnapshot();
+    return analyzerDashboard(snapshot, CLERK_KEY);
   })
 
   .get('/experts', async (ctx) => {
-    const data = (await ExpertAuditService.getOracleLeaderboard()) as ExpertAccuracy[];
+    const [oracle, scout] = await Promise.all([
+      ExpertAuditService.getOracleLeaderboard(),
+      ExpertAuditService.getScoutLeaderboard(),
+    ]);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return expertLeaderboard(data, CLERK_KEY);
+    return expertLeaderboard(oracle, scout, CLERK_KEY);
   })
 
   .get('/teams', async (ctx) => {
@@ -50,72 +84,32 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     return playerProfile(data, CLERK_KEY);
   })
 
-  // --- API ROUTES (JSON - For Web HTMX & Future Mobile App) ---
-
-  /** Get career profile for a player with historical data */
+  // --- JSON API ---
   .get('/api/player/:name', async ({params}) => {
     return await DraftScoutService.getPlayerCareerProfile(params.name);
   })
-
-  /** Expert Accuracy Rankings */
-  .get('/api/experts/leaderboard', async () => {
-    return (await ExpertAuditService.getOracleLeaderboard()) as ExpertAccuracy[];
+  .get('/api/experts/oracle', async () => {
+    return await ExpertAuditService.getOracleLeaderboard();
+  })
+  .get('/api/experts/scout', async () => {
+    return await ExpertAuditService.getScoutLeaderboard();
+  })
+  .get('/api/teams/success', async ({query}) => {
+    const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
+    return await TeamScoutService.getTeamSuccessLeaderboard(window);
+  })
+  .get('/api/movers', async () => {
+    return await TeamScoutService.getTopMovers();
   })
 
-  /** Team Draft Success (The 3-Year Lookback) */
-  .get('/api/teams/success', async () => {
-    return await TeamScoutService.getTeamSuccessLeaderboard();
-  })
-
-  /** Intel Timeline (News updates during combine, pre-season, etc) */
-  .get('/api/timeline', () => {
-    return [
-      {
-        id: 1,
-        type: 'combine',
-        title: 'Combine Performance Delta',
-        content: 'Player X exceeded athletic expectations; proprietary LLL value increased by 4.2%.',
-        date: new Date().toISOString(),
-      },
-    ];
-  })
-
-  // --- HTMX FRAGMENTS (For the Web Frontend only) ---
-  .get('/fragment/timeline', () => {
-    const events = [
-      {
-        id: 1,
-        type: 'Combine',
-        title: "Lions' core metrics show high retention",
-        content:
-          'Analysis of 2024-2025 draft cycles indicates Detroit leads the league in "Pick to Roster" percentage.',
-        date: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        type: 'Scouting',
-        title: 'Expert Accuracy Report: Kiper vs Jeremiah',
-        content:
-          'A look back at 3 years of historical rankings reveals a significant drift in value prediction for QBs.',
-        date: new Date().toISOString(),
-      },
-    ];
-    return timelineFragment(events);
-  })
-
-  .get('/fragment/top-experts-mini', async () => {
-    const data = (await ExpertAuditService.getOracleLeaderboard()) as ExpertAccuracy[];
-    return topExpertsMini(data);
-  })
-
+  // --- HTMX FRAGMENTS ---
   .get('/api/search', async ({query}) => {
     const results = await DraftScoutService.search(query.q || '');
     return searchResultsFragment(results);
   })
 
   .get('/fragment/success-leaderboard', async ({query}) => {
-    const window = Number(query.window) || 3;
+    const window = Number(query.window) || TEAM_WINDOW_DEFAULT;
     const data = await TeamScoutService.getTeamSuccessLeaderboard(window);
-    // Show top 10 on dashboard
     return successLeaderboard(data.slice(0, 10));
   });

@@ -41,7 +41,17 @@ export class DraftScoutService {
     const round = officialPick?.round || 1;
 
     // 4. Calculate Final LLL Score & Final Grade (Option B)
-    const yearlyScores = performance.map((p) => p.rating);
+    // Use the normalized per-season rating so 2024 rookies aren't unfairly punished
+    // vs 2015 vets. Pulls w_av from metadata when present; falls back to raw rating.
+    const evalYear = new Date().getFullYear();
+    const yearlyScores = performance.map((p) => {
+      const wav = (p.metadata as {wav?: number} | null)?.wav;
+      if (typeof wav === 'number') {
+        const yearsSince = Math.max(1, evalYear - p.draftYear);
+        return LLLRatingEngine.normalizeWavToRating(wav, yearsSince);
+      }
+      return p.rating;
+    });
     const performanceScore = LLLRatingEngine.calculateFinalPerformanceScore(
       yearlyScores,
       officialPick?.contractOutcome || undefined,
@@ -49,13 +59,21 @@ export class DraftScoutService {
     const finalGrade = LLLRatingEngine.calculateFinalGrade(performanceScore, round);
     const outcome = LLLRatingEngine.getGradeOutcomeLabel(finalGrade);
 
-    // 5. Calculate "Expert Accuracy" for this specific player
-    const expertAccuracy = rankings.map((r) => ({
-      expert: r.expertName,
-      predictedRank: r.rank,
-      actualSuccess: LLLRatingEngine.getRatingLabel(performanceScore),
-      isAccurate: Math.abs((r.rank || 0) - performanceScore * 10) < 20,
-    }));
+    // 5. Calculate "Expert Accuracy" for this specific player.
+    // Compare each expert's implied talent rating (from their big-board rank)
+    // against the player's actual normalized career rating.
+    const expertAccuracy = rankings.map((r) => {
+      const implied = r.rank ? LLLRatingEngine.rankToExpectedRating(r.rank) : null;
+      const ratingPerf = performanceScore;
+      const closeEnough = implied !== null && Math.abs(implied - ratingPerf) < 1.5;
+      return {
+        expert: r.expertName,
+        predictedRank: r.rank,
+        impliedRating: implied,
+        actualSuccess: LLLRatingEngine.getRatingLabel(performanceScore),
+        isAccurate: closeEnough,
+      };
+    });
     return {
       playerName,
       round,
@@ -76,7 +94,9 @@ export class DraftScoutService {
   static async search(query: string) {
     const db = getDB();
     const cleanQuery = query.trim();
-    if (cleanQuery.length < 2) {return {players: [], experts: []};}
+    if (cleanQuery.length < 2) {
+      return {players: [], experts: []};
+    }
 
     const players = await db
       .select({
