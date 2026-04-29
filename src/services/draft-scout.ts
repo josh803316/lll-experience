@@ -108,11 +108,20 @@ export class DraftScoutService {
         ? (careerRow.metadata as {wav: number}).wav
         : null;
 
-    // Career rating (current production calculation): normalized per-season AV.
-    const careerRating =
-      cumulativeWav !== null && yearsSinceDraft !== null
-        ? LLLRatingEngine.normalizeWavToRating(cumulativeWav, yearsSinceDraft)
-        : (careerRow?.rating ?? 0);
+    // Career rating: best-4-of-6 of per-season ratings (Option B per Tim's
+    // methodology). Falls back to the cumulative-wav baseline when we have
+    // no season rows — mostly OL who lack production stats in nflverse.
+    const careerRating = (() => {
+      if (seasonRows.length > 0) {
+        const sorted = [...seasonRows].map((r) => r.rating).sort((a, b) => b - a);
+        const top4 = sorted.slice(0, 4);
+        return Number((top4.reduce((s, r) => s + r, 0) / top4.length).toFixed(2));
+      }
+      if (cumulativeWav !== null && yearsSinceDraft !== null) {
+        return LLLRatingEngine.normalizeWavToRating(cumulativeWav, yearsSinceDraft);
+      }
+      return careerRow?.rating ?? 0;
+    })();
 
     const seasonHistory: SeasonRow[] = seasonRows.map((r) => {
       const meta = (r.metadata as Record<string, unknown> | null) ?? {};
@@ -160,12 +169,16 @@ export class DraftScoutService {
       return {rating: Number(avg.toFixed(2)), window: `${last3[0].season}–${last3[last3.length - 1].season}`};
     })();
 
+    // Active career method: best-4-of-6 of per-season ratings when available,
+    // else cumulative-wav baseline.
+    const usingBest4 = seasonRows.length > 0;
     const altRatings: AltRatingResults = {
       careerCumulative: {
         rating: careerRating,
-        formula:
-          cumulativeWav !== null && yearsSinceDraft !== null
-            ? `(${cumulativeWav} w_av / ${yearsSinceDraft} years) × 0.667 = ${careerRating.toFixed(2)}`
+        formula: usingBest4
+          ? `best-4-of-6 of per-season ratings → ${careerRating.toFixed(2)} (Tim's methodology, Option B)`
+          : cumulativeWav !== null && yearsSinceDraft !== null
+            ? `(${cumulativeWav} w_av / ${yearsSinceDraft} years) × 0.667 = ${careerRating.toFixed(2)} (no per-season data — fallback)`
             : 'no career w_av',
       },
       best4of6,

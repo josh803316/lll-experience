@@ -42,18 +42,58 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
       map.set(LLLRatingEngine.normalizeName(r.playerName), r.rating);
     }
   } else {
-    const rows = await db
-      .select({
-        playerName: playerPerformanceRatings.playerName,
-        draftYear: playerPerformanceRatings.draftYear,
-        metadata: playerPerformanceRatings.metadata,
-      })
-      .from(playerPerformanceRatings)
-      .where(eq(playerPerformanceRatings.isCareerRating, true));
-    for (const r of rows) {
+    // Career mode: per Tim's methodology, use Option B = best-4-of-6 of the
+    // per-season ratings. This rewards peak performance and isn't dragged
+    // down by injury years (Bosa, Aiyuk, Deebo all moved up correctly when
+    // we A/B'd this against the cumulative-wav shortcut).
+    //
+    // Players with no per-season ratings (mostly OL — nflverse doesn't ship
+    // their stats) fall back to the cumulative-wav baseline so they aren't
+    // unfairly excluded.
+    const [seasonRows, careerRows] = await Promise.all([
+      db
+        .select({
+          playerName: playerPerformanceRatings.playerName,
+          rating: playerPerformanceRatings.rating,
+        })
+        .from(playerPerformanceRatings)
+        .where(eq(playerPerformanceRatings.isCareerRating, false)),
+      db
+        .select({
+          playerName: playerPerformanceRatings.playerName,
+          draftYear: playerPerformanceRatings.draftYear,
+          metadata: playerPerformanceRatings.metadata,
+        })
+        .from(playerPerformanceRatings)
+        .where(eq(playerPerformanceRatings.isCareerRating, true)),
+    ]);
+
+    // Group season ratings by player.
+    const seasonsByName = new Map<string, number[]>();
+    for (const r of seasonRows) {
+      const key = LLLRatingEngine.normalizeName(r.playerName);
+      const list = seasonsByName.get(key) ?? [];
+      list.push(r.rating);
+      seasonsByName.set(key, list);
+    }
+
+    // Best-4-of-6 from per-season ratings where available.
+    for (const [key, ratings] of seasonsByName) {
+      const sorted = [...ratings].sort((a, b) => b - a);
+      const top4 = sorted.slice(0, 4);
+      const avg = top4.reduce((s, r) => s + r, 0) / top4.length;
+      map.set(key, Number(avg.toFixed(2)));
+    }
+
+    // Fallback for players with no season data: cumulative-wav baseline.
+    for (const r of careerRows) {
+      const key = LLLRatingEngine.normalizeName(r.playerName);
+      if (map.has(key)) {
+        continue;
+      }
       const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
       const ysd = Math.max(1, evalYear - r.draftYear);
-      map.set(LLLRatingEngine.normalizeName(r.playerName), LLLRatingEngine.normalizeWavToRating(wav, ysd));
+      map.set(key, LLLRatingEngine.normalizeWavToRating(wav, ysd));
     }
   }
 
