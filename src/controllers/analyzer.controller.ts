@@ -7,6 +7,7 @@ import {
   topExpertsMini,
   playerProfile,
   timelineFragment,
+  searchResultsFragment,
 } from '../views/analyzer-templates.js';
 import type {ExpertAccuracy, TeamSuccess} from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
@@ -118,4 +119,9 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   .get('/fragment/top-experts-mini', async () => {
     const data = (await ExpertAuditService.getOracleLeaderboard(2023)) as ExpertAccuracy[];
     return topExpertsMini(data);
+  })
+
+  .get('/api/search', async ({query}) => {
+    const results = await DraftScoutService.search(query.q || '');
+    return searchResultsFragment(results);
   });

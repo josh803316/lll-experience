@@ -54,12 +54,25 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
 export function analyzerDashboard(clerkKey?: string): string {
   const content = `
     <header class="border-b border-black/10 py-6 px-4">
-      <div class="max-w-5xl mx-auto flex justify-between items-end">
+      <div class="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h1 class="text-4xl font-bold tracking-tighter text-black">DRAFT ANALYZER</h1>
           <p class="text-muted italic">Year-round intelligence & historical tracking</p>
         </div>
-        <nav class="hidden md:flex gap-6 text-sm font-bold uppercase tracking-widest">
+        <div class="relative w-full md:w-64 group">
+          <input 
+            type="text" 
+            name="q" 
+            placeholder="Search players or experts..." 
+            class="w-full bg-white/50 border border-black/10 px-4 py-2 text-sm focus:outline-none focus:border-accent serif italic"
+            hx-get="/analyzer/api/search"
+            hx-trigger="keyup changed delay:300ms"
+            hx-target="#search-results"
+            hx-indicator=".search-loading"
+          />
+          <div id="search-results" class="absolute top-full left-0 right-0 z-[100] mt-1"></div>
+        </div>
+        <nav class="flex gap-6 text-sm font-bold uppercase tracking-widest">
           <a href="/analyzer" class="tab-active text-black">Dashboard</a>
           <a href="/analyzer/experts" class="text-muted hover:text-accent transition-colors">Experts</a>
           <a href="/analyzer/teams" class="text-muted hover:text-accent transition-colors">Teams</a>
@@ -381,4 +394,57 @@ export function playerProfile(profile: any, clerkKey?: string): string {
     </div>
   `;
   return analyzerLayout(content, `${profile.playerName} — LLL Profile`, clerkKey);
+}
+
+export function searchResultsFragment(results: {players: any[]; experts: any[]}): string {
+  if (results.players.length === 0 && results.experts.length === 0) {
+    return `
+      <div class="card-paper p-4 text-xs italic text-muted">
+        No results found.
+      </div>
+    `;
+  }
+
+  const players = results.players
+    .map(
+      (p) => `
+    <a href="/analyzer/player/${encodeURIComponent(p.name)}" class="block p-3 hover:bg-black/[0.02] transition-colors border-b border-black/5">
+      <div class="font-bold text-black text-sm">${p.name}</div>
+      <div class="text-[10px] text-muted uppercase">${p.year} · ${p.team}</div>
+    </a>
+  `,
+    )
+    .join('');
+
+  const experts = results.experts
+    .map(
+      (e) => `
+    <a href="/analyzer/experts" class="block p-3 hover:bg-black/[0.02] transition-colors border-b border-black/5">
+      <div class="font-bold text-black text-sm">${e.name}</div>
+      <div class="text-[10px] text-muted uppercase">${e.org}</div>
+    </a>
+  `,
+    )
+    .join('');
+
+  return `
+    <div class="card-paper shadow-2xl max-h-96 overflow-auto border-t-4 border-black">
+      ${
+        results.players.length > 0
+          ? `
+        <div class="bg-black/5 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-muted">Players</div>
+        ${players}
+      `
+          : ''
+      }
+      ${
+        results.experts.length > 0
+          ? `
+        <div class="bg-black/5 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-muted">Experts</div>
+        ${experts}
+      `
+          : ''
+      }
+    </div>
+  `;
 }

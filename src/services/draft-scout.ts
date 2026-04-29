@@ -1,6 +1,6 @@
 import {getDB} from '../db/index.js';
 import {expertRankings, playerPerformanceRatings, experts, officialDraftResults} from '../db/schema.js';
-import {eq, and, gte} from 'drizzle-orm';
+import {eq, and, gte, sql} from 'drizzle-orm';
 import {LLLRatingEngine} from './lll-rating-engine.js';
 
 export class DraftScoutService {
@@ -56,7 +56,6 @@ export class DraftScoutService {
       actualSuccess: LLLRatingEngine.getRatingLabel(performanceScore),
       isAccurate: Math.abs((r.rank || 0) - performanceScore * 10) < 20,
     }));
-
     return {
       playerName,
       round,
@@ -68,5 +67,37 @@ export class DraftScoutService {
       accuracySummary: expertAccuracy,
       contractOutcome: officialPick?.contractOutcome,
     };
+  }
+
+  /**
+   * Performs a global search across players, experts, and teams using ILIKE
+   * (Standard Postgres fuzzy search).
+   */
+  static async search(query: string) {
+    const db = getDB();
+    const cleanQuery = query.trim();
+    if (cleanQuery.length < 2) {return {players: [], experts: []};}
+
+    const players = await db
+      .select({
+        name: officialDraftResults.playerName,
+        year: officialDraftResults.year,
+        team: officialDraftResults.teamName,
+      })
+      .from(officialDraftResults)
+      .where(sql`player_name ILIKE ${'%' + cleanQuery + '%'}`)
+      .limit(10);
+
+    const expertMatches = await db
+      .select({
+        name: experts.name,
+        slug: experts.slug,
+        org: experts.organization,
+      })
+      .from(experts)
+      .where(sql`name ILIKE ${'%' + cleanQuery + '%'}`)
+      .limit(5);
+
+    return {players, experts: expertMatches};
   }
 }
