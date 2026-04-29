@@ -17,7 +17,7 @@ import {
   type DashboardSnapshot,
   type PlayersGridOptions,
 } from '../views/analyzer-templates.js';
-import {DraftScoutService} from '../services/draft-scout.js';
+import {DraftScoutService, type SeasonRow} from '../services/draft-scout.js';
 import {ExpertAuditService, getExpertProfile} from '../services/expert-audit.js';
 import {
   TeamScoutService,
@@ -255,13 +255,15 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const admin = await resolveAdminContext(ctx);
     const breakdown = await TeamScoutService.getTeamBreakdown(params.teamKey, opts);
     let scored: ScoredPick[] = [];
+    let seasonHistories: Map<string, SeasonRow[]> | undefined;
     if (admin.isAdmin && breakdown) {
       const all = await TeamScoutService.getAllScoredPicks(opts);
       scored = all.filter((p) => p.teamKey === breakdown.teamKey);
+      seasonHistories = await DraftScoutService.getSeasonHistoriesForPlayers(scored.map((p) => p.name));
     }
     set.headers['Content-Type'] = 'text/html';
     return breakdown
-      ? teamBreakdownModal(breakdown, {...admin, debugPicks: scored})
+      ? teamBreakdownModal(breakdown, {...admin, debugPicks: scored, seasonHistories})
       : teamBreakdownNotFound(params.teamKey);
   })
 

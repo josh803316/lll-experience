@@ -2,6 +2,7 @@ import {baseLayout, escapeHtml} from './templates.js';
 import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome, ScoredPick} from '../services/team-scout.js';
 import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile} from '../services/expert-audit.js';
 import {teamLogoUrl} from '../services/lll-rating-engine.js';
+import type {PlayerProfileData, SeasonRow} from '../services/draft-scout.js';
 
 export type {TeamSuccessRow} from '../services/team-scout.js';
 // ExpertAccuracy retained as a type alias for the controllers / tests still importing it.
@@ -797,35 +798,34 @@ export function topExpertsMini(experts: ExpertOracleRow[]): string {
 }
 
 export function playerProfile(
-  profile: any,
+  profile: PlayerProfileData,
   clerkKey?: string,
   extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
-  const snapshot = adminFlags(extras);
-  const performanceRows = (profile.performanceHistory || [])
-    .map(
-      (p: any) => `
-    <div class="flex justify-between items-center py-4 border-b border-black/5">
-      <div>
-        <div class="text-[10px] font-bold uppercase tracking-widest text-muted">${p.evaluationYear} EVALUATION</div>
-        <div class="font-bold text-black text-base">${escapeHtml(p.justification || '')}</div>
-      </div>
-      <div class="text-right">
-        <div class="text-3xl font-bold text-accent">${Number(p.rating).toFixed(1)}</div>
-        <div class="text-[10px] font-bold uppercase tracking-tighter text-muted">0–10 SCALE</div>
-      </div>
-    </div>
-  `,
-    )
+  const _admin = adminFlags(extras);
+  const seasonRows = profile.seasonHistory
+    .map((s) => {
+      const stats = s.stats ?? {};
+      const keyStats = formatKeyStats(stats, s.side);
+      return `
+      <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+        <td class="py-2 px-3 font-bold text-black">${s.season}</td>
+        <td class="py-2 px-3 text-center text-sm text-black">${s.games ?? '—'}</td>
+        <td class="py-2 px-3 text-sm text-black mono">${keyStats}</td>
+        <td class="py-2 px-3 text-center text-sm text-black mono">${s.prodScore?.toFixed(2) ?? '—'}</td>
+        <td class="py-2 px-3 text-right font-mono font-bold text-lg ${ratingColor(s.rating)}">${s.rating.toFixed(2)}</td>
+      </tr>
+    `;
+    })
     .join('');
 
-  const accuracyRows = (profile.accuracySummary || [])
+  const accuracyRows = profile.accuracySummary
     .map(
-      (a: any) => `
+      (a) => `
     <div class="flex justify-between items-baseline border-b border-black/5 pb-2">
       <div>
         <div class="font-bold text-sm">${escapeHtml(a.expert)}</div>
-        ${a.impliedRating ? `<div class="text-[9px] text-muted">Implied rating ${a.impliedRating}</div>` : ''}
+        ${a.impliedRating !== null ? `<div class="text-[9px] text-muted">Implied rating ${a.impliedRating}</div>` : ''}
       </div>
       <div class="text-right">
         <span class="${a.isAccurate ? 'text-accent' : 'text-muted'} font-bold font-mono text-lg">#${a.predictedRank ?? '—'}</span>
@@ -836,43 +836,76 @@ export function playerProfile(
     )
     .join('');
 
+  const altRatingsCard = renderAltRatingsCard(profile);
+  const debugPanel = _admin.isAdmin ? renderPlayerDebugPanel(profile) : '';
+  const finalSign = profile.finalGrade > 0 ? '+' : '';
+
   const content = `
-    ${header('dashboard', adminFlags(snapshot))}
-    <div class="max-w-5xl mx-auto py-12 px-4 text-black">
-      <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-8 inline-block transition-colors">← Back to Dashboard</a>
+    ${header('dashboard', _admin)}
+    <div class="max-w-5xl mx-auto py-6 px-4 text-black">
+      <a href="javascript:history.back()" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back</a>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-12 text-black">
-        <div class="md:col-span-2 space-y-12">
+      <div class="flex flex-wrap items-baseline justify-between gap-4 mb-2">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          ${profile.teamKey ? teamLogo(profile.teamKey, 'w-10 h-10') : ''}
+          <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">
+            ${escapeHtml(profile.playerName.toUpperCase())}
+          </h2>
+          ${profile.position ? `<span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">${escapeHtml(profile.position)}</span>` : ''}
+        </div>
+        <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
+           <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">LLL Grade</span>
+           <span class="text-xl font-bold tracking-tighter">${finalSign}${profile.finalGrade.toFixed(2)}</span>
+           <span class="text-[10px] font-bold uppercase tracking-widest opacity-60 ml-2">${escapeHtml(profile.outcome)}</span>
+        </div>
+      </div>
+
+      <p class="text-xs md:text-sm text-muted serif italic mb-6">
+        ${profile.team ? escapeHtml(profile.team) : 'Unknown team'}
+        ${profile.draftYear ? ` · Drafted ${profile.draftYear}` : ''}
+        ${profile.round ? ` · R${profile.round}${profile.pickNumber ? ` #${profile.pickNumber}` : ''}` : ''}
+        ${profile.contractOutcome ? ` · Contract: ${escapeHtml(profile.contractOutcome)}` : ''}
+        · Career rating ${profile.careerRating.toFixed(2)} vs round expected ${profile.expectedForRound}
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="md:col-span-2 space-y-8">
+          ${altRatingsCard}
+
           <section>
-            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-accent mb-4">
-              Round ${profile.round} · ${profile.performanceHistory?.[0]?.draftYear || 'N/A'}
-            </div>
-            <h2 class="text-7xl font-bold tracking-tighter text-black leading-none mb-6">${escapeHtml(profile.playerName.toUpperCase())}</h2>
-            <p class="text-2xl text-muted serif italic mb-2 leading-relaxed">
-               LLL Grade: <span class="text-black font-bold border-b-4 border-black pb-1">${profile.finalGrade > 0 ? '+' : ''}${Number(profile.finalGrade).toFixed(2)} (${profile.outcome})</span>
-            </p>
-            <p class="text-sm text-muted mb-10">Performance Score ${Number(profile.weightedScore).toFixed(2)} · Expected ${(profile.weightedScore - profile.finalGrade).toFixed(2)} (round-based)</p>
-
-            <div class="space-y-4">
-              <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-black pb-2 text-black">CAREER TRAJECTORY</h3>
-              ${performanceRows || '<p class="text-[12px] italic text-muted py-4">No career rating yet.</p>'}
+            <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-black pb-2 mb-3 text-black">SEASON-BY-SEASON</h3>
+            <div class="card-paper rounded-lg overflow-hidden">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
+                    <th class="py-2 px-3">Season</th>
+                    <th class="py-2 px-3 text-center">G</th>
+                    <th class="py-2 px-3">Key stats</th>
+                    <th class="py-2 px-3 text-center">${tooltip('Prod', 'Position-specific raw production score (~0-15) before scaling and the experience bonus.')}</th>
+                    <th class="py-2 px-3 text-right">Rating</th>
+                  </tr>
+                </thead>
+                <tbody>${seasonRows || '<tr><td colspan="5" class="py-8 text-center italic text-muted">No per-season data ingested for this player yet.</td></tr>'}</tbody>
+              </table>
             </div>
           </section>
+
+          ${debugPanel}
         </div>
 
-        <div class="space-y-12 text-black">
-          <div class="card-paper p-8 rounded-lg border-t-8 border-black shadow-xl">
-            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-6 text-black">EXPERT TAKES</h3>
-            <div class="space-y-6">
+        <div class="space-y-8">
+          <div class="card-paper p-6 rounded-lg border-t-8 border-black shadow-xl">
+            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">EXPERT TAKES</h3>
+            <div class="space-y-4">
               ${accuracyRows || '<p class="text-[11px] italic text-muted">No tracked experts ranked this player.</p>'}
             </div>
           </div>
 
-          <div class="card-paper p-8 rounded-lg shadow-lg text-black">
-            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">MARKET SIGNAL</h3>
-            <div class="text-2xl font-bold text-accent italic serif mb-2">${escapeHtml(profile.contractOutcome || 'ROOKIE DEAL')}</div>
-            <p class="text-xs text-muted leading-relaxed uppercase font-bold tracking-tighter">
-              2nd contract is the league's own truth signal for stat-light positions.
+          <div class="card-paper p-6 rounded-lg shadow-lg">
+            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-3 text-black">MARKET SIGNAL</h3>
+            <div class="text-xl font-bold text-accent italic serif mb-2">${escapeHtml(profile.contractOutcome || 'ROOKIE DEAL')}</div>
+            <p class="text-[11px] text-muted leading-relaxed">
+              2nd contract value is the league's own truth signal — primary for stat-light roles.
             </p>
           </div>
         </div>
@@ -880,6 +913,105 @@ export function playerProfile(
     </div>
   `;
   return analyzerLayout(content, `${profile.playerName} — LLL Profile`, clerkKey);
+}
+
+function ratingColor(r: number): string {
+  if (r >= 7) {
+    return 'text-emerald-700';
+  }
+  if (r >= 4) {
+    return 'text-black';
+  }
+  if (r >= 2) {
+    return 'text-amber-700';
+  }
+  return 'text-rose-700';
+}
+
+function formatKeyStats(stats: Record<string, number>, side?: string): string {
+  if (!stats || Object.keys(stats).length === 0) {
+    return '—';
+  }
+  const fmt = (n: number | undefined) => (n !== undefined && n !== null ? n.toString() : '0');
+  if (side === 'DEF') {
+    const sacks = stats.sacks ? `${stats.sacks} sk` : '';
+    const tfl = stats.tackles_for_loss ? `${stats.tackles_for_loss} TFL` : '';
+    const tot = (stats.tackles_solo ?? 0) + (stats.tackles_assist ?? 0);
+    const tackles = tot > 0 ? `${tot} tk` : '';
+    const ints = stats.interceptions ? `${stats.interceptions} INT` : '';
+    const ff = stats.fumbles_forced ? `${stats.fumbles_forced} FF` : '';
+    const pd = stats.pass_defended ? `${stats.pass_defended} PD` : '';
+    return [sacks, tfl, tackles, ints, ff, pd].filter(Boolean).join(' · ') || '—';
+  }
+  // Offensive — pick the dominant stat
+  if (stats.pass_yards) {
+    return `${fmt(stats.pass_yards)} pyd · ${fmt(stats.pass_tds)} pTD · ${fmt(stats.interceptions)} INT`;
+  }
+  if (stats.rush_yards || stats.receptions) {
+    const ry = stats.rush_yards ? `${stats.rush_yards} ryd` : '';
+    const rtd = stats.rush_tds ? `${stats.rush_tds} rTD` : '';
+    const rec = stats.receptions ? `${stats.receptions} rec` : '';
+    const recyd = stats.rec_yards ? `${stats.rec_yards} recyd` : '';
+    const rectd = stats.rec_tds ? `${stats.rec_tds} recTD` : '';
+    return [ry, rtd, rec, recyd, rectd].filter(Boolean).join(' · ') || '—';
+  }
+  return '—';
+}
+
+function renderAltRatingsCard(p: PlayerProfileData): string {
+  const cell = (label: string, rating: number, formula: string, isPrimary = false) => {
+    const expectedDelta = rating - p.expectedForRound;
+    const sign = expectedDelta > 0 ? '+' : '';
+    return `
+    <div class="card-paper p-4 rounded-md ${isPrimary ? 'border-t-4 border-accent' : 'border border-black/10'}">
+      <div class="text-[9px] font-bold uppercase tracking-[0.2em] text-muted mb-1">${escapeHtml(label)}</div>
+      <div class="flex items-baseline gap-2">
+        <div class="text-3xl font-bold tracking-tighter ${ratingColor(rating)}">${rating.toFixed(2)}</div>
+        <div class="text-[10px] text-muted mono">vs ${p.expectedForRound} → ${sign}${expectedDelta.toFixed(2)}</div>
+      </div>
+      <div class="text-[10px] text-muted serif italic mt-1 leading-tight">${escapeHtml(formula)}</div>
+    </div>
+  `;
+  };
+  return `
+    <section>
+      <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-black pb-2 mb-3 text-black">
+        ALTERNATIVE SCORING
+        <span class="text-[10px] text-muted serif italic font-normal ml-2">All four numbers are computed live; the Career method is what currently drives the LLL Grade above.</span>
+      </h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${cell('CAREER (current method)', p.altRatings.careerCumulative.rating, p.altRatings.careerCumulative.formula, true)}
+        ${cell(`BEST 4 OF 6${p.altRatings.best4of6.usedSeasons.length > 0 ? ' (' + p.altRatings.best4of6.usedSeasons.join(', ') + ')' : ''}`, p.altRatings.best4of6.rating, p.altRatings.best4of6.formula)}
+        ${cell(`PEAK SEASON${p.altRatings.peakSeason.year ? ' (' + p.altRatings.peakSeason.year + ')' : ''}`, p.altRatings.peakSeason.rating, 'highest single-season rating in this player\u2019s history')}
+        ${cell(`RECENT 3 (${p.altRatings.recentAvg.window})`, p.altRatings.recentAvg.rating, p.altRatings.recentAvg.window)}
+      </div>
+    </section>
+  `;
+}
+
+function renderPlayerDebugPanel(p: PlayerProfileData): string {
+  return `
+    <details class="bg-black/[0.04] rounded-md border border-black/10 mt-4" open>
+      <summary class="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+        🔧 ADMIN DEBUG · raw inputs &amp; tuning levers
+      </summary>
+      <div class="p-4 space-y-3 font-mono text-[11px] bg-white border border-black/10 m-2 rounded">
+        <div><strong>Player:</strong> ${escapeHtml(p.playerName)} · ${p.position ?? '—'} · ${p.team ?? '—'}</div>
+        <div><strong>Pick:</strong> ${p.draftYear ?? '?'} R${p.round ?? '?'}${p.pickNumber ? ' #' + p.pickNumber : ''} · contract ${escapeHtml(p.contractOutcome ?? 'none')}</div>
+        <div><strong>Career w_av (cumulative):</strong> ${p.cumulativeWav ?? 'unknown'}</div>
+        <div><strong>Years since draft:</strong> ${p.yearsSinceDraft ?? '—'}</div>
+        <div class="pt-2"><strong>Current career-rating formula:</strong> ${escapeHtml(p.altRatings.careerCumulative.formula)}</div>
+        <div><strong>Best-4-of-6:</strong> ${p.altRatings.best4of6.rating.toFixed(2)} via ${escapeHtml(p.altRatings.best4of6.formula)}</div>
+        <div><strong>Peak season:</strong> ${p.altRatings.peakSeason.rating.toFixed(2)}${p.altRatings.peakSeason.year ? ' in ' + p.altRatings.peakSeason.year : ''}</div>
+        <div><strong>Round expected (Tim's chart):</strong> ${p.expectedForRound}</div>
+        <div class="pt-2"><strong>Final grade as currently computed:</strong>
+          ${p.altRatings.careerCumulative.rating.toFixed(2)} − ${p.expectedForRound} = ${p.finalGrade.toFixed(2)} → ${escapeHtml(p.outcome)}</div>
+        <div class="pt-2 text-muted serif italic non-mono">
+          Tuning idea: switch career method to best-4-of-6 (or peak) to reward high-AV players whose injury years drag the cumulative average down.
+        </div>
+      </div>
+    </details>
+  `;
 }
 
 export function searchResultsFragment(results: {players: any[]; experts: any[]}): string {
@@ -1007,11 +1139,16 @@ function renderBreakdownYear(y: BreakdownYear): string {
 
 export function teamBreakdownModal(
   b: TeamBreakdown,
-  extras: {isAdmin?: boolean; debug?: boolean; debugPicks?: ScoredPick[]} = {},
+  extras: {
+    isAdmin?: boolean;
+    debug?: boolean;
+    debugPicks?: ScoredPick[];
+    seasonHistories?: Map<string, SeasonRow[]>;
+  } = {},
 ): string {
   const debugPanel =
     extras.isAdmin && extras.debugPicks && extras.debugPicks.length > 0
-      ? renderTeamDebugPanel(b, extras.debugPicks)
+      ? renderTeamDebugPanel(b, extras.debugPicks, extras.seasonHistories)
       : '';
   const yearCards = b.years.map(renderBreakdownYear).join('');
   const topPick = b.topPick
@@ -1079,7 +1216,11 @@ export function teamBreakdownModal(
   `;
 }
 
-function renderTeamDebugPanel(b: TeamBreakdown, picks: ScoredPick[]): string {
+function renderTeamDebugPanel(
+  b: TeamBreakdown,
+  picks: ScoredPick[],
+  seasonHistories?: Map<string, SeasonRow[]>,
+): string {
   const expectedByRound: Record<number, number> = {1: 7.5, 2: 6.0, 3: 5.0, 4: 4.0, 5: 3.0, 6: 2.0, 7: 1.0};
   const ratedAvg = picks.length > 0 ? Number((picks.reduce((s, p) => s + p.delta, 0) / picks.length).toFixed(3)) : 0;
   const sortedByDelta = [...picks].sort((a, b) => b.delta - a.delta);
@@ -1087,17 +1228,67 @@ function renderTeamDebugPanel(b: TeamBreakdown, picks: ScoredPick[]): string {
   const rows = sortedByDelta
     .map((p) => {
       const exp = expectedByRound[p.round] ?? 0;
+      const histKey = p.name
+        .toLowerCase()
+        .replace(/\bjr\.?\b|\bsr\.?\b|\bii+\b|\biv\b/g, '')
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const seasons = seasonHistories?.get(histKey) ?? [];
+      const seasonChips = seasons
+        .map((s) => {
+          const cls =
+            s.rating >= 7
+              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+              : s.rating >= 4
+                ? 'bg-black/[0.06] text-black border-black/10'
+                : s.rating >= 2
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-rose-100 text-rose-900 border-rose-300';
+          return `<span class="inline-block text-[10px] font-mono px-1.5 py-0.5 mr-1 mb-1 border rounded ${cls}" title="${escapeHtml(formatKeyStats(s.stats ?? {}, s.side))} (${s.games ?? 0}g)">
+            ${s.season}: ${s.rating.toFixed(1)}
+          </span>`;
+        })
+        .join('');
+      const peak = seasons.length > 0 ? Math.max(...seasons.map((s) => s.rating)) : null;
+      const best4Avg = (() => {
+        if (seasons.length === 0) {
+          return null;
+        }
+        const sorted = [...seasons].sort((a, b) => b.rating - a.rating).slice(0, 4);
+        return sorted.reduce((s, r) => s + r.rating, 0) / sorted.length;
+      })();
+      const altDeltaPeak = peak !== null ? peak - exp : null;
+      const altDeltaBest4 = best4Avg !== null ? best4Avg - exp : null;
+
       return `
-      <tr class="border-b border-black/5">
-        <td class="py-1.5 px-2 text-black">${escapeHtml(p.year + ' R' + p.round)}</td>
-        <td class="py-1.5 px-2 text-black">${escapeHtml(p.name)}</td>
-        <td class="py-1.5 px-2 text-center text-black">${p.position ?? '—'}</td>
-        <td class="py-1.5 px-2 text-right text-black mono">${p.rating.toFixed(2)}</td>
-        <td class="py-1.5 px-2 text-right text-black mono">${exp.toFixed(2)}</td>
-        <td class="py-1.5 px-2 text-right mono ${p.delta > 0.5 ? 'text-emerald-700' : p.delta < -1 ? 'text-rose-700' : 'text-black'}">
+      <tr class="border-b border-black/5 align-top">
+        <td class="py-2 px-2 text-black">${escapeHtml(p.year + ' R' + p.round)}</td>
+        <td class="py-2 px-2 text-black">
+          <details class="cursor-pointer">
+            <summary class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(p.name)}</summary>
+            <div class="mt-2 p-2 bg-black/[0.03] rounded text-[10px] non-mono">
+              <div class="mb-1 text-muted serif italic">Season-by-season ratings (hover for raw stats):</div>
+              <div class="flex flex-wrap">${seasonChips || '<span class="text-muted italic">No per-season data ingested.</span>'}</div>
+              ${
+                peak !== null && altDeltaPeak !== null && best4Avg !== null && altDeltaBest4 !== null
+                  ? `<div class="mt-2 text-[10px] text-muted leading-relaxed">
+                       <div><strong>Peak season:</strong> ${peak.toFixed(2)} → if used as career: Δ ${altDeltaPeak > 0 ? '+' : ''}${altDeltaPeak.toFixed(2)}</div>
+                       <div><strong>Best 4 of N avg:</strong> ${best4Avg.toFixed(2)} → Δ ${altDeltaBest4 > 0 ? '+' : ''}${altDeltaBest4.toFixed(2)}</div>
+                       <div class="mt-1"><a href="/analyzer/player/${encodeURIComponent(p.name)}" class="text-accent border-b border-accent">→ full profile</a></div>
+                     </div>`
+                  : ''
+              }
+            </div>
+          </details>
+        </td>
+        <td class="py-2 px-2 text-center text-black">${p.position ?? '—'}</td>
+        <td class="py-2 px-2 text-right text-black mono">${p.rating.toFixed(2)}</td>
+        <td class="py-2 px-2 text-right text-black mono">${exp.toFixed(2)}</td>
+        <td class="py-2 px-2 text-right mono ${p.delta > 0.5 ? 'text-emerald-700' : p.delta < -1 ? 'text-rose-700' : 'text-black'}">
           ${p.delta > 0 ? '+' : ''}${p.delta.toFixed(2)}
         </td>
-        <td class="py-1.5 px-2 text-[9px] text-muted uppercase tracking-widest">${escapeHtml(p.outcome)}</td>
+        <td class="py-2 px-2 text-[9px] text-muted uppercase tracking-widest">${escapeHtml(p.outcome)}</td>
       </tr>
     `;
     })
@@ -1106,22 +1297,22 @@ function renderTeamDebugPanel(b: TeamBreakdown, picks: ScoredPick[]): string {
   return `
     <details class="bg-black/[0.04] rounded-md border border-black/10 mt-2" open>
       <summary class="cursor-pointer px-4 py-3 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-        🔧 ADMIN DEBUG · raw math behind the grade
+        🔧 ADMIN DEBUG · raw math behind the grade · click any player to expand
       </summary>
       <div class="p-4 space-y-4 text-[11px]">
         <div class="font-mono text-[11px] bg-white border border-black/10 rounded p-3 leading-relaxed text-black">
           <div><strong>Per-pick delta:</strong> rating − round_expected (Tim's chart)</div>
-          <div><strong>Career rating:</strong> normalized w_av per-season ((w_av / years_since_draft) × 0.667), capped at 10</div>
-          <div><strong>Single-season rating:</strong> position-specific season production score + experience bonus, capped at 10</div>
+          <div><strong>Career rating (current):</strong> normalized w_av per-season ((w_av / years_since_draft) × 0.667), capped at 10</div>
+          <div><strong>Single-season rating:</strong> position-specific production score + experience bonus, capped at 10</div>
           <div><strong>Round expected:</strong> R1 7.5 · R2 6.0 · R3 5.0 · R4 4.0 · R5 3.0 · R6 2.0 · R7 1.0</div>
           <div><strong>Avg Δ for ${escapeHtml(b.team)}:</strong> ${ratedAvg.toFixed(3)} (over ${picks.length} graded picks). Letter grade is rank-relative across the league.</div>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse mono text-[11px] bg-white border border-black/10">
+          <table class="w-full text-left border-collapse text-[11px] bg-white border border-black/10">
             <thead>
               <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.15em] text-muted">
                 <th class="py-2 px-2">Year/Rd</th>
-                <th class="py-2 px-2">Player</th>
+                <th class="py-2 px-2">Player (click to expand)</th>
                 <th class="py-2 px-2 text-center">Pos</th>
                 <th class="py-2 px-2 text-right">Rating</th>
                 <th class="py-2 px-2 text-right">Expected</th>
