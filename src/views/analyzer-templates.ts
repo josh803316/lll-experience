@@ -253,22 +253,25 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
 
   const content = `
     ${header('dashboard')}
-    <main class="max-w-5xl mx-auto py-12 px-4 text-black">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-16 text-black">
-        <div class="md:col-span-2 space-y-16">
-          <section>
-            <div class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent mb-4">
-              State of the league · ${snapshot.windowStart}–${snapshot.windowEnd} window
-            </div>
-            <h2 class="text-7xl font-bold tracking-tighter text-black leading-[0.9] mb-6">
-              The <span class="italic serif font-normal">market</span> doesn't lie.
-            </h2>
-            <p class="text-2xl text-muted serif italic max-w-xl leading-relaxed mb-6">
-              ${snapshot.totalPicks.toLocaleString()} picks scored · ${snapshot.totalExperts} experts audited ·
-              best-4-of-6 + trajectory + contract market signal.
-            </p>
-            ${modeStrip}
-          </section>
+    <main class="max-w-5xl mx-auto py-6 px-4 text-black">
+      <section class="mb-8">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
+          <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">
+            The <span class="italic serif font-normal">market</span> doesn't lie.
+          </h2>
+          <span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">
+            ${snapshot.windowStart}–${snapshot.windowEnd} window
+          </span>
+        </div>
+        <p class="text-xs md:text-sm text-muted serif italic mb-4">
+          ${snapshot.totalPicks.toLocaleString()} picks scored · ${snapshot.totalExperts} experts audited ·
+          best-4-of-6 + trajectory + contract market signal.
+        </p>
+        ${modeStrip}
+      </section>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-10 text-black">
+        <div class="md:col-span-2 space-y-12">
 
           <section class="space-y-8 text-black">
              <div class="flex justify-between items-end border-b-2 border-black pb-2">
