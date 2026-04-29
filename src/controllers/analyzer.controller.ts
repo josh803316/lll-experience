@@ -8,6 +8,7 @@ import {
   playerProfile,
   timelineFragment,
   searchResultsFragment,
+  successLeaderboard,
 } from '../views/analyzer-templates.js';
 import type {ExpertAccuracy, TeamSuccess} from '../views/analyzer-templates.js';
 import {DraftScoutService} from '../services/draft-scout.js';
@@ -40,6 +41,9 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const data: TeamSuccess[] = [
       {team: 'Detroit Lions', retention: 92, value: 85, grade: 'A'},
       {team: 'Houston Texans', retention: 88, value: 94, grade: 'A+'},
+      {team: 'Baltimore Ravens', retention: 84, value: 89, grade: 'A'},
+      {team: 'Kansas City Chiefs', retention: 81, value: 85, grade: 'A-'},
+      {team: 'Philadelphia Eagles', retention: 79, value: 82, grade: 'B+'},
       {team: 'Carolina Panthers', retention: 42, value: 15, grade: 'D'},
     ];
     ctx.set.headers['Content-Type'] = 'text/html';
@@ -124,4 +128,15 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   .get('/api/search', async ({query}) => {
     const results = await DraftScoutService.search(query.q || '');
     return searchResultsFragment(results);
+  })
+
+  .get('/fragment/success-leaderboard', () => {
+    const data: TeamSuccess[] = [
+      {team: 'Detroit Lions', retention: 92, value: 85, grade: 'A'},
+      {team: 'Houston Texans', retention: 88, value: 94, grade: 'A+'},
+      {team: 'Baltimore Ravens', retention: 84, value: 89, grade: 'A'},
+      {team: 'Kansas City Chiefs', retention: 81, value: 85, grade: 'A-'},
+      {team: 'Philadelphia Eagles', retention: 79, value: 82, grade: 'B+'},
+    ];
+    return successLeaderboard(data);
   });
