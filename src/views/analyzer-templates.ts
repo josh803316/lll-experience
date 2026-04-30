@@ -1127,7 +1127,7 @@ const COLOR_STYLE: Record<BreakdownYear['color'], {chip: string; bar: string; la
 };
 
 const OUTCOME_STYLE: Record<PickOutcome, string> = {
-  'ELITE HIT': 'bg-accent text-white',
+  'ELITE HIT': 'bg-lime-400 text-black',
   HIT: 'bg-emerald-600 text-white',
   'MET EXPECTATION': 'bg-black/70 text-white',
   UNDERPERFORMED: 'bg-amber-500 text-black',
@@ -1595,7 +1595,7 @@ export interface PlayersGridOptions {
 }
 
 const OUTCOME_PILL: Record<string, string> = {
-  'ELITE HIT': 'bg-accent text-white',
+  'ELITE HIT': 'bg-lime-400 text-black',
   HIT: 'bg-emerald-600 text-white',
   'MET EXPECTATION': 'bg-black/70 text-white',
   UNDERPERFORMED: 'bg-amber-500 text-black',
