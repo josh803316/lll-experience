@@ -29,7 +29,7 @@ const client = postgres(DIRECT_URL, {prepare: false});
 const db = drizzle(client);
 
 const START_YEAR = 2015;
-const END_YEAR = 2024; // 2025 not yet finalized at time of writing
+const END_YEAR = 2025; // 2025 finalized Feb 2026
 
 // ── Wikipedia helpers ─────────────────────────────────────────────────────
 
