@@ -423,10 +423,15 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
 
           <div class="p-6 bg-accent text-white rounded-lg shadow-xl relative overflow-hidden group">
             <div class="absolute -right-4 -bottom-4 text-black/10 text-9xl font-bold italic group-hover:scale-110 transition-transform">LLL</div>
-            <h3 class="font-bold text-sm mb-2 uppercase tracking-widest relative z-10 text-white">Proprietary Metric</h3>
-            <p class="text-xs opacity-90 relative z-10 font-serif italic leading-relaxed text-white">
-              "Performance Score = best 4 of 6 normalized seasons + trajectory modifier + contract market signal,
-              graded against per-round expected value."
+            <h3 class="font-bold text-sm mb-2 uppercase tracking-widest relative z-10 text-white">How the math works</h3>
+            <div class="text-xs opacity-95 relative z-10 font-mono leading-relaxed text-white space-y-1.5">
+              <div>career = best-4 avg of season ratings</div>
+              <div>perf = career + contract bonus</div>
+              <div>Δ = perf − round_expected</div>
+            </div>
+            <p class="text-[10px] opacity-80 relative z-10 font-serif italic leading-relaxed text-white mt-3">
+              Per-season ratings get an award floor (Pro Bowl ≥ 5.5, All-Pro ≥ 6.5/8.0, MVP/DPOY ≥ 9.0) before the best-4 average.
+              Contract bonus only applies in Career view — Single-Season view grades pure production.
             </p>
           </div>
         </div>
@@ -899,7 +904,11 @@ export function playerProfile(
         ${profile.draftYear ? ` · Drafted ${profile.draftYear}` : ''}
         ${profile.round ? ` · R${profile.round}${profile.pickNumber ? ` #${profile.pickNumber}` : ''}` : ''}
         ${profile.contractOutcome ? ` · Contract: ${escapeHtml(profile.contractOutcome)}` : ''}
-        · Career rating ${profile.careerRating.toFixed(2)} vs round expected ${profile.expectedForRound}
+      </p>
+      <p class="text-[11px] mono text-muted mb-6">
+        career ${profile.careerRating.toFixed(2)}
+        ${profile.contractBonus !== 0 ? ` ${profile.contractBonus > 0 ? '+' : '−'} ${Math.abs(profile.contractBonus).toFixed(2)} contract` : ''}
+        = perf ${profile.performanceScore.toFixed(2)} − ${profile.expectedForRound} (R${profile.round ?? '?'}) = Δ ${finalSign}${profile.finalGrade.toFixed(2)}
       </p>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -1011,7 +1020,7 @@ function renderAltRatingsCard(p: PlayerProfileData): string {
     <section>
       <h3 class="text-xs font-bold uppercase tracking-[0.3em] border-b-2 border-black pb-2 mb-3 text-black">
         ALTERNATIVE SCORING
-        <span class="text-[10px] text-muted serif italic font-normal ml-2">All four numbers are computed live; the Career method is what currently drives the LLL Grade above.</span>
+        <span class="text-[10px] text-muted serif italic font-normal ml-2">All four numbers are computed live; the Career method is what currently drives the LLL Grade above. Δ shown here is rating − round_expected (contract bonus excluded — see grade above for the full math).</span>
       </h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         ${cell('CAREER (current method)', p.altRatings.careerCumulative.rating, p.altRatings.careerCumulative.formula, true)}
@@ -1297,6 +1306,10 @@ function renderTeamDebugPanel(
       const altDeltaPeak = peak !== null ? peak - exp : null;
       const altDeltaBest4 = best4Avg !== null ? best4Avg - exp : null;
 
+      const contractCell =
+        p.contractBonus !== 0
+          ? `<span title="${escapeHtml(p.contractOutcome ?? '')}">${p.contractBonus > 0 ? '+' : ''}${p.contractBonus.toFixed(2)}</span>`
+          : '<span class="text-muted">0.00</span>';
       return `
       <tr class="border-b border-black/5 align-top">
         <td class="py-2 px-2 text-black">${escapeHtml(p.year + ' R' + p.round)}</td>
@@ -1320,6 +1333,8 @@ function renderTeamDebugPanel(
         </td>
         <td class="py-2 px-2 text-center text-black">${p.position ?? '—'}</td>
         <td class="py-2 px-2 text-right text-black mono">${p.rating.toFixed(2)}</td>
+        <td class="py-2 px-2 text-right text-black mono">${contractCell}</td>
+        <td class="py-2 px-2 text-right text-black mono">${p.performanceScore.toFixed(2)}</td>
         <td class="py-2 px-2 text-right text-black mono">${exp.toFixed(2)}</td>
         <td class="py-2 px-2 text-right mono ${p.delta > 0.5 ? 'text-emerald-700' : p.delta < -1 ? 'text-rose-700' : 'text-black'}">
           ${p.delta > 0 ? '+' : ''}${p.delta.toFixed(2)}
@@ -1337,11 +1352,12 @@ function renderTeamDebugPanel(
       </summary>
       <div class="p-4 space-y-4 text-[11px]">
         <div class="font-mono text-[11px] bg-white border border-black/10 rounded p-3 leading-relaxed text-black">
-          <div><strong>Per-pick delta:</strong> rating − round_expected (Tim's chart)</div>
-          <div><strong>Career rating (current):</strong> normalized w_av per-season ((w_av / years_since_draft) × 0.667), capped at 10</div>
-          <div><strong>Single-season rating:</strong> position-specific production score + experience bonus, capped at 10</div>
+          <div><strong>Per-pick math:</strong> career_rating + contract_bonus = perf_score · perf_score − round_expected = Δ</div>
+          <div><strong>Career rating:</strong> best-4-of-6 of per-season ratings (Option B). Falls back to (w_av / years) × 0.667 when no per-season data.</div>
+          <div><strong>Contract bonus:</strong> TOP_OF_MARKET +2.0 · MARKET_OR_ABOVE +1.5 · OTHER_TEAM_PAID +1.0 · 5TH_YEAR +0.5 · WALKED 0 · CUT_END −1.0 · CUT_EARLY −2.0. Career view only — disabled in single-season view.</div>
           <div><strong>Round expected:</strong> R1 7.5 · R2 6.0 · R3 5.0 · R4 4.0 · R5 3.0 · R6 2.0 · R7 1.0</div>
-          <div><strong>Avg Δ for ${escapeHtml(b.team)}:</strong> ${ratedAvg.toFixed(3)} (over ${picks.length} graded picks). Letter grade is rank-relative across the league.</div>
+          <div><strong>Outcome buckets:</strong> Δ ≥ +1.5 ELITE HIT · &gt; +0.5 HIT · ±0.5 MET · ≥ −1.5 UNDERPERFORMED · &lt; −1.5 BUST</div>
+          <div><strong>Avg Δ for ${escapeHtml(b.team)}:</strong> ${ratedAvg.toFixed(3)} across ${picks.length} graded picks. Letter grade is rank-relative across the league.</div>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse text-[11px] bg-white border border-black/10">
@@ -1350,9 +1366,11 @@ function renderTeamDebugPanel(
                 <th class="py-2 px-2">Year/Rd</th>
                 <th class="py-2 px-2">Player (click to expand)</th>
                 <th class="py-2 px-2 text-center">Pos</th>
-                <th class="py-2 px-2 text-right">Rating</th>
+                <th class="py-2 px-2 text-right">Career</th>
+                <th class="py-2 px-2 text-right">Contract</th>
+                <th class="py-2 px-2 text-right">Perf</th>
                 <th class="py-2 px-2 text-right">Expected</th>
-                <th class="py-2 px-2 text-right">Delta</th>
+                <th class="py-2 px-2 text-right">Δ</th>
                 <th class="py-2 px-2">Outcome</th>
               </tr>
             </thead>

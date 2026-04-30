@@ -1,7 +1,13 @@
 import {getDB} from '../db/index.js';
 import {officialDraftResults, playerPerformanceRatings} from '../db/schema.js';
 import {eq, gte, lte, and} from 'drizzle-orm';
-import {LLLRatingEngine, canonicalTeam, EXPECTED_VALUE_BY_ROUND, type AwardFlags} from './lll-rating-engine.js';
+import {
+  LLLRatingEngine,
+  canonicalTeam,
+  EXPECTED_VALUE_BY_ROUND,
+  CONTRACT_BONUSES,
+  type AwardFlags,
+} from './lll-rating-engine.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
 const DEFAULT_WINDOW = 6;
@@ -124,6 +130,9 @@ export interface ScoredPick {
   year: number;
   position: string | null;
   rating: number;
+  contractOutcome: string | null;
+  contractBonus: number;
+  performanceScore: number;
   expected: number;
   delta: number;
   outcome: string;
@@ -381,6 +390,7 @@ export class TeamScoutService {
         continue;
       }
 
+      const contractBonus = useContractBonus && p.contractOutcome ? (CONTRACT_BONUSES[p.contractOutcome] ?? 0) : 0;
       const perf = LLLRatingEngine.calculateFinalPerformanceScore(
         [rating],
         useContractBonus ? p.contractOutcome || undefined : undefined,
@@ -397,6 +407,9 @@ export class TeamScoutService {
         year: p.year,
         position: p.position,
         rating,
+        contractOutcome: p.contractOutcome ?? null,
+        contractBonus,
+        performanceScore: perf,
         expected: EXPECTED_VALUE_BY_ROUND[p.round] ?? 0,
         delta,
         outcome,
