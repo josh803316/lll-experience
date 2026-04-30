@@ -55,6 +55,20 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
   <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            accent: '#c9341d',
+            paper: '#f3ede0',
+            ink: '#14110b',
+            muted: '#6b5e44',
+          },
+        },
+      },
+    };
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
   ${
     clerkPublishableKey
