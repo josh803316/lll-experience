@@ -1,7 +1,7 @@
 import {getDB} from '../db/index.js';
-import {officialDraftResults, playerPerformanceRatings} from '../db/schema.js';
-import {eq, gte, lte, and} from 'drizzle-orm';
-import {LLLRatingEngine, EXPECTED_VALUE_BY_ROUND, type AwardFlags} from './lll-rating-engine.js';
+import {officialDraftResults} from '../db/schema.js';
+import {gte, lte, and} from 'drizzle-orm';
+import {LLLRatingEngine, PlayerPerformanceRegistry} from './lll-rating-engine.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
 const DEFAULT_WINDOW = 10; // Colleges need a larger window for significant sample sizes
@@ -34,62 +34,17 @@ export class CollegeScoutService {
 
     const db = getDB();
 
-    // 1. Load all ratings first to avoid N+1
-    const [seasonRows, careerRows, picks] = await Promise.all([
-      db
-        .select({
-          playerName: playerPerformanceRatings.playerName,
-          rating: playerPerformanceRatings.rating,
-          metadata: playerPerformanceRatings.metadata,
-        })
-        .from(playerPerformanceRatings)
-        .where(eq(playerPerformanceRatings.isCareerRating, false)),
-      db
-        .select({
-          playerName: playerPerformanceRatings.playerName,
-          draftYear: playerPerformanceRatings.draftYear,
-          metadata: playerPerformanceRatings.metadata,
-        })
-        .from(playerPerformanceRatings)
-        .where(eq(playerPerformanceRatings.isCareerRating, true)),
+    // 1. Use the centralized registry (eliminates redundant DB queries and calculations)
+    const [ratingMap, picks] = await Promise.all([
+      PlayerPerformanceRegistry.getCareerRatingMap(),
       db
         .select()
         .from(officialDraftResults)
         .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
 
-    // 2. Build Rating Map (standard logic from TeamScout but we need it here)
-    const ratingMap = new Map<string, number>();
-    const seasonsByName = new Map<string, number[]>();
+    // 2. Aggregate by College
 
-    for (const r of seasonRows) {
-      const key = LLLRatingEngine.normalizeName(r.playerName);
-      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
-      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
-      const list = seasonsByName.get(key) ?? [];
-      list.push(final);
-      seasonsByName.set(key, list);
-    }
-
-    for (const [key, ratings] of seasonsByName) {
-      const sorted = [...ratings].sort((a, b) => b - a);
-      const top4 = sorted.slice(0, 4);
-      const avg = top4.reduce((s, r) => s + r, 0) / top4.length;
-      ratingMap.set(key, Number(avg.toFixed(2)));
-    }
-
-    const evalYear = new Date().getFullYear();
-    for (const r of careerRows) {
-      const key = LLLRatingEngine.normalizeName(r.playerName);
-      if (ratingMap.has(key)) {
-        continue;
-      }
-      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
-      const ysd = Math.max(1, evalYear - r.draftYear);
-      ratingMap.set(key, LLLRatingEngine.normalizeWavToRating(wav, ysd));
-    }
-
-    // 3. Aggregate by College
     const collegeAgg: Record<
       string,
       {

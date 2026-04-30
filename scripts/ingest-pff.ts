@@ -20,7 +20,7 @@ const CATEGORIES = [
   {name: 'blocking', urlPart: 'blocking', positions: ['T', 'G', 'C']},
 ];
 
-const SEASONS = [2016, 2017, 2018, 2019, 2020, 2021, 2022];
+const SEASONS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
 async function ingestCsv(csvPath: string, category: string, season: number) {
   // Simple CSV parser for PFF format

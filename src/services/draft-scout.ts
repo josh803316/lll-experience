@@ -7,6 +7,7 @@ import {
   CONTRACT_BONUSES,
   canonicalTeam,
   type AwardFlags,
+  PlayerPerformanceRegistry,
 } from './lll-rating-engine.js';
 
 export interface SeasonRow {
@@ -351,60 +352,15 @@ export class DraftScoutService {
     }
 
     const db = getDB();
-    const evalYear = new Date().getFullYear();
 
-    // Load everything needed for calculation
-    const [seasonRows, careerRows, allPicks] = await Promise.all([
-      db
-        .select({
-          playerName: playerPerformanceRatings.playerName,
-          rating: playerPerformanceRatings.rating,
-          metadata: playerPerformanceRatings.metadata,
-        })
-        .from(playerPerformanceRatings)
-        .where(eq(playerPerformanceRatings.isCareerRating, false)),
-      db
-        .select({
-          playerName: playerPerformanceRatings.playerName,
-          draftYear: playerPerformanceRatings.draftYear,
-          metadata: playerPerformanceRatings.metadata,
-        })
-        .from(playerPerformanceRatings)
-        .where(eq(playerPerformanceRatings.isCareerRating, true)),
+    // Load everything needed for calculation (registry eliminates massive O(N) recalculations here)
+    const [ratingMap, allPicks] = await Promise.all([
+      PlayerPerformanceRegistry.getCareerRatingMap(),
       db.select().from(officialDraftResults),
     ]);
 
-    // Build rating map
-    const ratingMap = new Map<string, number>();
-    const seasonsByName = new Map<string, number[]>();
-
-    for (const r of seasonRows) {
-      const key = LLLRatingEngine.normalizeName(r.playerName);
-      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
-      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
-      const list = seasonsByName.get(key) ?? [];
-      list.push(final);
-      seasonsByName.set(key, list);
-    }
-
-    for (const [key, ratings] of seasonsByName) {
-      const sorted = [...ratings].sort((a, b) => b - a);
-      const top4 = sorted.slice(0, 4);
-      const avg = top4.reduce((s, r) => s + r, 0) / top4.length;
-      ratingMap.set(key, Number(avg.toFixed(2)));
-    }
-
-    for (const r of careerRows) {
-      const key = LLLRatingEngine.normalizeName(r.playerName);
-      if (ratingMap.has(key)) {
-        continue;
-      }
-      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
-      const ysd = Math.max(1, evalYear - r.draftYear);
-      ratingMap.set(key, LLLRatingEngine.normalizeWavToRating(wav, ysd));
-    }
-
     // Aggregate by round
+
     const roundAgg: Record<number, {sum: number; count: number; eliteCount: number}> = {};
     for (const p of allPicks) {
       if (!p.round) {

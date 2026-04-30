@@ -360,3 +360,89 @@ export function teamLogoUrl(abbr: string | null | undefined): string | null {
   const team = teamByAnyAbbr(abbr);
   return team ? `https://a.espncdn.com/i/teamlogos/nfl/500/${team.espn}.png` : null;
 }
+
+import {getDB} from '../db/index.js';
+import {playerPerformanceRatings} from '../db/schema.js';
+import {eq} from 'drizzle-orm';
+
+/**
+ * High-performance registry for player success data.
+ * Eliminates redundant O(N) recalculation of career ratings across services.
+ */
+export class PlayerPerformanceRegistry {
+  private static careerMap: Map<string, number> | null = null;
+  private static loading: Promise<Map<string, number>> | null = null;
+
+  static getCareerRatingMap(): Promise<Map<string, number>> {
+    if (this.careerMap) {
+      return Promise.resolve(this.careerMap);
+    }
+    if (this.loading) {
+      return this.loading;
+    }
+
+    this.loading = (async () => {
+      const db = getDB();
+      const evalYear = new Date().getFullYear();
+
+      const [seasonRows, careerRows] = await Promise.all([
+        db
+          .select({
+            playerName: playerPerformanceRatings.playerName,
+            rating: playerPerformanceRatings.rating,
+            metadata: playerPerformanceRatings.metadata,
+          })
+          .from(playerPerformanceRatings)
+          .where(eq(playerPerformanceRatings.isCareerRating, false)),
+        db
+          .select({
+            playerName: playerPerformanceRatings.playerName,
+            draftYear: playerPerformanceRatings.draftYear,
+            metadata: playerPerformanceRatings.metadata,
+          })
+          .from(playerPerformanceRatings)
+          .where(eq(playerPerformanceRatings.isCareerRating, true)),
+      ]);
+
+      const map = new Map<string, number>();
+      const seasonsByName = new Map<string, number[]>();
+
+      for (const r of seasonRows) {
+        const key = LLLRatingEngine.normalizeName(r.playerName);
+        const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
+        const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
+        const list = seasonsByName.get(key) ?? [];
+        list.push(final);
+        seasonsByName.set(key, list);
+      }
+
+      for (const [key, ratings] of seasonsByName) {
+        const sorted = [...ratings].sort((a, b) => b - a);
+        const top4 = sorted.slice(0, 4);
+        const avg = top4.reduce((s, r) => s + r, 0) / top4.length;
+        map.set(key, Number(avg.toFixed(2)));
+      }
+
+      for (const r of careerRows) {
+        const key = LLLRatingEngine.normalizeName(r.playerName);
+        if (map.has(key)) {
+          continue;
+        }
+        const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
+        const ysd = Math.max(1, evalYear - r.draftYear);
+        map.set(key, LLLRatingEngine.normalizeWavToRating(wav, ysd));
+      }
+
+      this.careerMap = map;
+      this.loading = null;
+      return map;
+    })();
+
+    return this.loading;
+  }
+
+  static invalidate() {
+    this.careerMap = null;
+    this.loading = null;
+  }
+}

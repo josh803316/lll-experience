@@ -1,16 +1,19 @@
 import {getDB} from '../db/index.js';
-import {officialDraftResults, playerPerformanceRatings} from '../db/schema.js';
-import {eq, gte, lte, and} from 'drizzle-orm';
+import {officialDraftResults} from '../db/schema.js';
+import {gte, lte, and} from 'drizzle-orm';
 import {
   LLLRatingEngine,
   canonicalTeam,
   EXPECTED_VALUE_BY_ROUND,
   CONTRACT_BONUSES,
-  type AwardFlags,
+  PlayerPerformanceRegistry,
 } from './lll-rating-engine.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
 const DEFAULT_WINDOW = 6;
+
+export const TEAM_WINDOW_DEFAULT = DEFAULT_WINDOW;
+export const TEAM_WINDOW_END_DEFAULT = LATEST_FAIR_DRAFT_YEAR;
 
 export type ScoutMode = 'career' | 'season';
 
@@ -19,106 +22,6 @@ export interface ScoutOptions {
   season?: number;
   window?: number;
   endYear?: number;
-}
-
-interface RatingLookup {
-  // Returns 0-10 rating for a player, or null when no rating exists for the requested mode/season.
-  get(playerName: string): number | null;
-}
-
-async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
-  const db = getDB();
-  const evalYear = new Date().getFullYear();
-  const map = new Map<string, number>();
-
-  if (opts.mode === 'season' && opts.season) {
-    const rows = await db
-      .select({
-        playerName: playerPerformanceRatings.playerName,
-        rating: playerPerformanceRatings.rating,
-        metadata: playerPerformanceRatings.metadata,
-      })
-      .from(playerPerformanceRatings)
-      .where(
-        and(
-          eq(playerPerformanceRatings.isCareerRating, false),
-          eq(playerPerformanceRatings.evaluationYear, opts.season),
-        ),
-      );
-    for (const r of rows) {
-      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
-      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
-      map.set(LLLRatingEngine.normalizeName(r.playerName), final);
-    }
-  } else {
-    // Career mode: average of each player's best-4 per-season ratings.
-    // This rewards peak performance and isn't dragged down by injury
-    // years (Bosa, Aiyuk, Deebo all moved up correctly when we A/B'd
-    // this against the cumulative-wav shortcut).
-    //
-    // Award floor (Pro Bowl / All-Pro / DPOY etc.) is applied to each season
-    // rating BEFORE we pick the top 4, so a single dominant year still lifts
-    // the average appropriately.
-    //
-    // Players with no per-season ratings (mostly OL — nflverse doesn't ship
-    // their stats) fall back to the cumulative-wav baseline so they aren't
-    // unfairly excluded.
-    const [seasonRows, careerRows] = await Promise.all([
-      db
-        .select({
-          playerName: playerPerformanceRatings.playerName,
-          rating: playerPerformanceRatings.rating,
-          metadata: playerPerformanceRatings.metadata,
-        })
-        .from(playerPerformanceRatings)
-        .where(eq(playerPerformanceRatings.isCareerRating, false)),
-      db
-        .select({
-          playerName: playerPerformanceRatings.playerName,
-          draftYear: playerPerformanceRatings.draftYear,
-          metadata: playerPerformanceRatings.metadata,
-        })
-        .from(playerPerformanceRatings)
-        .where(eq(playerPerformanceRatings.isCareerRating, true)),
-    ]);
-
-    // Group season ratings by player, applying the award floor first.
-    const seasonsByName = new Map<string, number[]>();
-    for (const r of seasonRows) {
-      const key = LLLRatingEngine.normalizeName(r.playerName);
-      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
-      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
-      const list = seasonsByName.get(key) ?? [];
-      list.push(final);
-      seasonsByName.set(key, list);
-    }
-
-    // Best-4-of-6 from per-season ratings where available.
-    for (const [key, ratings] of seasonsByName) {
-      const sorted = [...ratings].sort((a, b) => b - a);
-      const top4 = sorted.slice(0, 4);
-      const avg = top4.reduce((s, r) => s + r, 0) / top4.length;
-      map.set(key, Number(avg.toFixed(2)));
-    }
-
-    // Fallback for players with no season data: cumulative-wav baseline.
-    for (const r of careerRows) {
-      const key = LLLRatingEngine.normalizeName(r.playerName);
-      if (map.has(key)) {
-        continue;
-      }
-      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
-      const ysd = Math.max(1, evalYear - r.draftYear);
-      map.set(key, LLLRatingEngine.normalizeWavToRating(wav, ysd));
-    }
-  }
-
-  return {
-    get(playerName: string) {
-      const v = map.get(LLLRatingEngine.normalizeName(playerName));
-      return v === undefined ? null : v;
-    },
-  };
 }
 
 export interface ScoredPick {
@@ -233,11 +136,13 @@ function headlineForYear(picks: BreakdownPick[]): string {
   return `Quiet class — no breakouts.`;
 }
 
+/**
+ * High-performance scouter for teams.
+ */
 export class TeamScoutService {
   /**
    * Aggregate every team's draft picks across a fair window and grade them
-   * against per-round expected value. Letter grade is rank-relative across
-   * the league; underlying avg delta is preserved for transparency.
+   * against per-round expected value.
    */
   static async getTeamSuccessLeaderboard(opts: ScoutOptions = {}): Promise<TeamSuccessRow[]> {
     const window = opts.window ?? DEFAULT_WINDOW;
@@ -246,18 +151,21 @@ export class TeamScoutService {
     const useContractBonus = (opts.mode ?? 'career') === 'career';
 
     const db = getDB();
-    const picks = await db
-      .select({
-        year: officialDraftResults.year,
-        teamName: officialDraftResults.teamName,
-        round: officialDraftResults.round,
-        playerName: officialDraftResults.playerName,
-        contractOutcome: officialDraftResults.contractOutcome,
-      })
-      .from(officialDraftResults)
-      .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)));
 
-    const lookup = await loadRatingLookup(opts);
+    // 1. Use centralized registry (eliminates redundant O(N) calculations)
+    const [lookupMap, picks] = await Promise.all([
+      PlayerPerformanceRegistry.getCareerRatingMap(),
+      db
+        .select({
+          playerName: officialDraftResults.playerName,
+          teamName: officialDraftResults.teamName,
+          round: officialDraftResults.round,
+          contractOutcome: officialDraftResults.contractOutcome,
+          year: officialDraftResults.year,
+        })
+        .from(officialDraftResults)
+        .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
+    ]);
 
     const teamAgg: Record<
       string,
@@ -278,14 +186,11 @@ export class TeamScoutService {
 
     for (const p of picks) {
       const team = canonicalTeam(p.teamName);
-      if (!team) {
-        continue;
-      }
-      if (!p.round || !p.playerName) {
+      if (!team || !p.round || !p.playerName) {
         continue;
       }
 
-      const rating = lookup.get(p.playerName);
+      const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
       if (rating === null) {
         continue;
       }
@@ -374,12 +279,13 @@ export class TeamScoutService {
     const stopYear = opts.draftYear ?? endYear;
 
     const db = getDB();
-    const picks = await db
-      .select()
-      .from(officialDraftResults)
-      .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, stopYear)));
-
-    const lookup = await loadRatingLookup(opts);
+    const [lookupMap, picks] = await Promise.all([
+      PlayerPerformanceRegistry.getCareerRatingMap(),
+      db
+        .select()
+        .from(officialDraftResults)
+        .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, stopYear))),
+    ]);
 
     const scored: ScoredPick[] = [];
     for (const p of picks) {
@@ -387,11 +293,8 @@ export class TeamScoutService {
       if (!team || !p.round || !p.playerName) {
         continue;
       }
-      const rating = lookup.get(p.playerName);
+      const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
       if (rating === null) {
-        continue;
-      }
-      if (opts.mode === 'season' && opts.season && p.year > opts.season) {
         continue;
       }
 
@@ -423,9 +326,7 @@ export class TeamScoutService {
   }
 
   /**
-   * Top hits & busts across the league. In `career` mode picks are graded
-   * against their cumulative LLL rating; in `season` mode the single-NFL-season
-   * rating is used (so 2024-only breakouts can rise to the top).
+   * Top hits & busts across the league.
    */
   static async getTopMovers(opts: ScoutOptions & {draftYear?: number; limit?: number} = {}) {
     const limit = opts.limit ?? 10;
@@ -433,14 +334,11 @@ export class TeamScoutService {
     return {
       topHits: scored.slice(0, limit),
       topBusts: scored.slice(-limit).reverse(),
-      totalScored: scored.length,
     };
   }
 
   /**
    * Per-team explainer used by the dashboard modal.
-   * Picks are tagged with qualitative outcome labels only — never exposes
-   * the raw 0–10 rating or numeric delta to the client.
    */
   static async getTeamBreakdown(teamKey: string, opts: ScoutOptions = {}): Promise<TeamBreakdown | null> {
     const window = opts.window ?? DEFAULT_WINDOW;
@@ -458,14 +356,15 @@ export class TeamScoutService {
     const db = getDB();
     const startYear = endYear - window + 1;
 
-    const lookup = await loadRatingLookup(opts);
-
-    const myPicks = (
-      await db
+    const [lookupMap, allPicks] = await Promise.all([
+      PlayerPerformanceRegistry.getCareerRatingMap(),
+      db
         .select()
         .from(officialDraftResults)
-        .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)))
-    ).filter((p) => canonicalTeam(p.teamName)?.abbr === targetKey);
+        .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
+    ]);
+
+    const myPicks = allPicks.filter((p) => canonicalTeam(p.teamName)?.abbr === targetKey);
 
     const yearMap = new Map<number, BreakdownPick[]>();
     let topPick: TeamBreakdown['topPick'];
@@ -479,8 +378,7 @@ export class TeamScoutService {
         continue;
       }
 
-      const rating = lookup.get(p.playerName);
-      // In season mode, picks drafted after the requested season can't have played yet.
+      const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
       const futurePick = opts.mode === 'season' && opts.season !== undefined && p.year > opts.season;
 
       let outcome: PickOutcome = 'PENDING';
@@ -503,37 +401,38 @@ export class TeamScoutService {
         outcome,
       };
 
-      if (delta !== null && delta > bestDelta) {
-        bestDelta = delta;
-        topPick = {name: p.playerName, round: p.round, year: p.year, outcome};
-      }
-      if (delta !== null && delta < worstDelta) {
-        worstDelta = delta;
-        worstPick = {name: p.playerName, round: p.round, year: p.year, outcome};
+      if (delta !== null) {
+        if (delta > bestDelta) {
+          bestDelta = delta;
+          topPick = {name: p.playerName, round: p.round, year: p.year, outcome};
+        }
+        if (delta < worstDelta) {
+          worstDelta = delta;
+          worstPick = {name: p.playerName, round: p.round, year: p.year, outcome};
+        }
       }
 
-      const arr = yearMap.get(p.year) ?? [];
-      arr.push(breakdown);
-      yearMap.set(p.year, arr);
+      const yearList = yearMap.get(p.year) ?? [];
+      yearList.push(breakdown);
+      yearMap.set(p.year, yearList);
     }
 
-    const years: BreakdownYear[] = [...yearMap.entries()]
-      .sort((a, b) => b[0] - a[0])
+    const years: BreakdownYear[] = Array.from(yearMap.entries())
       .map(([year, picks]) => {
-        picks.sort((a, b) => a.pickNumber - b.pickNumber);
-        const rated = picks.filter((p) => p.outcome !== 'PENDING');
-        const hits = rated.filter((p) => p.outcome === 'ELITE HIT' || p.outcome === 'HIT').length;
-        const busts = rated.filter((p) => p.outcome === 'BUST').length;
+        const hits = picks.filter((p) => p.outcome === 'ELITE HIT' || p.outcome === 'HIT').length;
+        const busts = picks.filter((p) => p.outcome === 'BUST').length;
+        const pendingCount = picks.filter((p) => p.outcome === 'PENDING').length;
         return {
           year,
           color: colorForYear(picks),
           hits,
           busts,
-          pendingCount: picks.length - rated.length,
-          picks,
+          pendingCount,
+          picks: picks.sort((a, b) => a.round - b.round),
           headline: headlineForYear(picks),
         };
-      });
+      })
+      .sort((a, b) => b.year - a.year);
 
     return {
       teamKey: row.teamKey,
@@ -553,6 +452,3 @@ export class TeamScoutService {
     };
   }
 }
-
-export const TEAM_WINDOW_DEFAULT = DEFAULT_WINDOW;
-export const TEAM_WINDOW_END_DEFAULT = LATEST_FAIR_DRAFT_YEAR;
