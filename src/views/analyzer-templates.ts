@@ -119,10 +119,31 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
     </style>
   `;
 
+  const modalLayer = `
+    <div id="team-modal-root"></div>
+    <script>
+      (function () {
+        if (window.__lllTeamModal) return;
+        window.__lllTeamModal = true;
+        window.closeTeamModal = function () {
+          const root = document.getElementById('team-modal-root');
+          if (root) root.innerHTML = '';
+          document.body.style.overflow = '';
+        };
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.closeTeamModal(); });
+        document.addEventListener('htmx:afterSwap', (e) => {
+          if (e.detail && e.detail.target && e.detail.target.id === 'team-modal-root' && e.detail.target.innerHTML.trim() !== '') {
+            document.body.style.overflow = 'hidden';
+          }
+        });
+      })();
+    </script>
+  `;
   return baseLayout(
     `<div class="theme-paper min-h-screen text-black">
       ${analyzerStyles}
       ${content}
+      ${modalLayer}
     </div>`,
     title,
     clerkPublishableKey,
@@ -411,20 +432,6 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
         </div>
       </div>
     </main>
-    <div id="team-modal-root"></div>
-    <script>
-      function closeTeamModal() {
-        const root = document.getElementById('team-modal-root');
-        if (root) root.innerHTML = '';
-        document.body.style.overflow = '';
-      }
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTeamModal(); });
-      document.addEventListener('htmx:afterSwap', (e) => {
-        if (e.detail && e.detail.target && e.detail.target.id === 'team-modal-root' && e.detail.target.innerHTML.trim() !== '') {
-          document.body.style.overflow = 'hidden';
-        }
-      });
-    </script>
   `;
   return analyzerLayout(content, 'Dashboard — LLL Draft Analyzer', clerkKey);
 }
@@ -669,7 +676,12 @@ export function teamLeaderboard(
     .map((t, i) => {
       const accent = i < 8 ? 'border-accent' : 'border-black/20';
       return `
-    <div class="card-paper p-6 rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group">
+    <div class="card-paper p-6 rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group cursor-pointer"
+         hx-get="/analyzer/fragment/team-breakdown/${encodeURIComponent(t.teamKey)}?${modeQs}"
+         hx-target="#team-modal-root"
+         hx-swap="innerHTML"
+         hx-trigger="click[!event.target.closest('a')]"
+         title="Why this grade? Click for the breakdown.">
       <div class="flex justify-between items-start mb-4 gap-3">
         <div class="flex items-start gap-3 min-w-0">
           ${teamLogo(t.teamKey, 'w-10 h-10')}
@@ -1026,8 +1038,10 @@ function renderPlayerDebugPanel(p: PlayerProfileData): string {
         <div><strong>Best-4-of-6:</strong> ${p.altRatings.best4of6.rating.toFixed(2)} via ${escapeHtml(p.altRatings.best4of6.formula)}</div>
         <div><strong>Peak season:</strong> ${p.altRatings.peakSeason.rating.toFixed(2)}${p.altRatings.peakSeason.year ? ' in ' + p.altRatings.peakSeason.year : ''}</div>
         <div><strong>Round expected (Tim's chart):</strong> ${p.expectedForRound}</div>
+        <div><strong>Contract bonus:</strong> ${p.contractBonus >= 0 ? '+' : ''}${p.contractBonus.toFixed(2)}${p.contractOutcome ? ` (${escapeHtml(p.contractOutcome)})` : ''}</div>
+        <div><strong>Performance score:</strong> ${p.altRatings.careerCumulative.rating.toFixed(2)} (career) ${p.contractBonus >= 0 ? '+' : '−'} ${Math.abs(p.contractBonus).toFixed(2)} (contract) = ${p.performanceScore.toFixed(2)}</div>
         <div class="pt-2"><strong>Final grade as currently computed:</strong>
-          ${p.altRatings.careerCumulative.rating.toFixed(2)} − ${p.expectedForRound} = ${p.finalGrade.toFixed(2)} → ${escapeHtml(p.outcome)}</div>
+          ${p.performanceScore.toFixed(2)} (perf) − ${p.expectedForRound} (R${p.round ?? '?'} expected) = ${p.finalGrade.toFixed(2)} → ${escapeHtml(p.outcome)}</div>
         <div class="pt-2 text-muted serif italic non-mono">
           Tuning idea: switch career method to best-4-of-6 (or peak) to reward high-AV players whose injury years drag the cumulative average down.
         </div>

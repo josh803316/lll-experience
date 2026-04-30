@@ -1,7 +1,7 @@
 import {getDB} from '../db/index.js';
 import {expertRankings, playerPerformanceRatings, experts, officialDraftResults} from '../db/schema.js';
 import {eq, and, sql, inArray} from 'drizzle-orm';
-import {LLLRatingEngine, EXPECTED_VALUE_BY_ROUND, canonicalTeam} from './lll-rating-engine.js';
+import {LLLRatingEngine, EXPECTED_VALUE_BY_ROUND, CONTRACT_BONUSES, canonicalTeam} from './lll-rating-engine.js';
 
 export interface SeasonRow {
   season: number;
@@ -39,6 +39,8 @@ export interface PlayerProfileData {
   expectedForRound: number;
   // Algorithmic outputs
   careerRating: number;
+  contractBonus: number;
+  performanceScore: number;
   finalGrade: number;
   outcome: string;
   altRatings: AltRatingResults;
@@ -191,6 +193,7 @@ export class DraftScoutService {
       [careerRating],
       officialPick?.contractOutcome || undefined,
     );
+    const contractBonus = officialPick?.contractOutcome ? (CONTRACT_BONUSES[officialPick.contractOutcome] ?? 0) : 0;
     const expectedForRound = round ? (EXPECTED_VALUE_BY_ROUND[round] ?? 0) : 0;
     const finalGrade = LLLRatingEngine.calculateFinalGrade(performanceScore, round ?? 1);
     const outcome = LLLRatingEngine.getGradeOutcomeLabel(finalGrade);
@@ -220,6 +223,8 @@ export class DraftScoutService {
       yearsSinceDraft,
       expectedForRound,
       careerRating,
+      contractBonus,
+      performanceScore,
       finalGrade,
       outcome,
       altRatings,
