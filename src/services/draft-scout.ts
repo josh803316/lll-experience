@@ -110,9 +110,11 @@ export class DraftScoutService {
         ? (careerRow.metadata as {wav: number}).wav
         : null;
 
-    // Career rating: best-4-of-6 of per-season ratings (Option B per Tim's
-    // methodology). Falls back to the cumulative-wav baseline when we have
-    // no season rows — mostly OL who lack production stats in nflverse.
+    // Career rating: average of a player's best-4 per-season ratings.
+    // (We pick the top 4 from every season they've played, not just the
+    // last 6 — this favors peak production over recency.) Falls back to
+    // the cumulative-wav baseline when we have no season rows — mostly
+    // OL who lack production stats in nflverse.
     const careerRating = (() => {
       if (seasonRows.length > 0) {
         const sorted = [...seasonRows].map((r) => r.rating).sort((a, b) => b - a);
@@ -171,14 +173,14 @@ export class DraftScoutService {
       return {rating: Number(avg.toFixed(2)), window: `${last3[0].season}–${last3[last3.length - 1].season}`};
     })();
 
-    // Active career method: best-4-of-6 of per-season ratings when available,
+    // Active career method: best-4 of all per-season ratings when available,
     // else cumulative-wav baseline.
     const usingBest4 = seasonRows.length > 0;
     const altRatings: AltRatingResults = {
       careerCumulative: {
         rating: careerRating,
         formula: usingBest4
-          ? `best-4-of-6 of per-season ratings → ${careerRating.toFixed(2)} (Tim's methodology, Option B)`
+          ? `best-4 of all per-season ratings → ${careerRating.toFixed(2)}`
           : cumulativeWav !== null && yearsSinceDraft !== null
             ? `(${cumulativeWav} w_av / ${yearsSinceDraft} years) × 0.667 = ${careerRating.toFixed(2)} (no per-season data — fallback)`
             : 'no career w_av',
@@ -189,11 +191,8 @@ export class DraftScoutService {
     };
 
     // Final grade + delta against round expectation (using current career method).
-    const performanceScore = LLLRatingEngine.calculateFinalPerformanceScore(
-      [careerRating],
-      officialPick?.contractOutcome || undefined,
-    );
     const contractBonus = officialPick?.contractOutcome ? (CONTRACT_BONUSES[officialPick.contractOutcome] ?? 0) : 0;
+    const performanceScore = LLLRatingEngine.applyContractBonus(careerRating, officialPick?.contractOutcome);
     const expectedForRound = round ? (EXPECTED_VALUE_BY_ROUND[round] ?? 0) : 0;
     const finalGrade = LLLRatingEngine.calculateFinalGrade(performanceScore, round ?? 1);
     const outcome = LLLRatingEngine.getGradeOutcomeLabel(finalGrade);

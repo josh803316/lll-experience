@@ -338,7 +338,7 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
         </div>
         <p class="text-xs md:text-sm text-muted serif italic mb-4">
           ${snapshot.totalPicks.toLocaleString()} picks scored · ${snapshot.totalExperts} experts audited ·
-          best-4-of-6 + trajectory + contract market signal.
+          best-4 season avg + contract market signal, graded vs round expectation.
         </p>
         ${modeStrip}
       </section>
@@ -425,7 +425,7 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
             <div class="absolute -right-4 -bottom-4 text-black/10 text-9xl font-bold italic group-hover:scale-110 transition-transform">LLL</div>
             <h3 class="font-bold text-sm mb-2 uppercase tracking-widest relative z-10 text-white">How the math works</h3>
             <div class="text-xs opacity-95 relative z-10 font-mono leading-relaxed text-white space-y-1.5">
-              <div>career = best-4 avg of season ratings</div>
+              <div>career = best-4 avg of all season ratings</div>
               <div>perf = career + contract bonus</div>
               <div>Δ = perf − round_expected</div>
             </div>
@@ -1353,7 +1353,7 @@ function renderTeamDebugPanel(
       <div class="p-4 space-y-4 text-[11px]">
         <div class="font-mono text-[11px] bg-white border border-black/10 rounded p-3 leading-relaxed text-black">
           <div><strong>Per-pick math:</strong> career_rating + contract_bonus = perf_score · perf_score − round_expected = Δ</div>
-          <div><strong>Career rating:</strong> best-4-of-6 of per-season ratings (Option B). Falls back to (w_av / years) × 0.667 when no per-season data.</div>
+          <div><strong>Career rating:</strong> best-4 of all per-season ratings (with award floors applied per season). Falls back to (w_av / years) × 0.667 when no per-season data.</div>
           <div><strong>Contract bonus:</strong> TOP_OF_MARKET +2.0 · MARKET_OR_ABOVE +1.5 · OTHER_TEAM_PAID +1.0 · 5TH_YEAR +0.5 · WALKED 0 · CUT_END −1.0 · CUT_EARLY −2.0. Career view only — disabled in single-season view.</div>
           <div><strong>Round expected:</strong> R1 7.5 · R2 6.0 · R3 5.0 · R4 4.0 · R5 3.0 · R6 2.0 · R7 1.0</div>
           <div><strong>Outcome buckets:</strong> Δ ≥ +1.5 ELITE HIT · &gt; +0.5 HIT · ±0.5 MET · ≥ −1.5 UNDERPERFORMED · &lt; −1.5 BUST</div>

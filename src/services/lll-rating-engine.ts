@@ -1,10 +1,16 @@
 /**
  * LLL Proprietary Rating Engine
  * Methodology (per group consensus):
- *  - 0–10 player success scale
- *  - Per-round expected value (Tim's value chart)
- *  - Performance Score = best-4-of-6 + trajectory + contract market signal (Option B)
- *  - Final Grade = Performance Score − Expected (by round)
+ *  - 0–10 player success scale (per-season ratings get an award floor before averaging)
+ *  - Career Rating = best-4 average of a player's per-season ratings
+ *  - Performance Score = Career Rating + Contract Bonus (career view only)
+ *  - Final Grade = Performance Score − Round Expected (Tim's value chart)
+ *
+ * Trajectory was originally part of Option B but never fired in practice
+ * (every callsite passes a single pre-aggregated rating, not yearly
+ * scores), so it has been removed in favor of an explicit single-step
+ * pipeline. If we ever want it back, it should be a deliberate change to
+ * the Career Rating step that operates on per-season scores directly.
  */
 
 export interface LLLRatingDefinition {
@@ -131,44 +137,15 @@ export class LLLRatingEngine {
   }
 
   /**
-   * Option B: Best 4 of 6 Average + Trajectory + Contract
+   * Performance Score = Career Rating + Contract Bonus.
+   * Callers pass an already-aggregated career rating (best-4 of seasons,
+   * with award floors applied upstream). The contract lookup is the only
+   * thing this function does — kept as a method so the bonus and the
+   * 0-10 ceiling stay in one place.
    */
-  static calculateFinalPerformanceScore(yearlyScores: number[], contractType?: string): number {
-    if (yearlyScores.length === 0) {
-      return 0;
-    }
-
-    const sorted = [...yearlyScores].sort((a, b) => b - a);
-    const best4 = sorted.slice(0, 4);
-    const avgBest4 = best4.reduce((a, b) => a + b, 0) / best4.length;
-
-    const trajectoryMod = this.calculateTrajectoryModifier(yearlyScores);
-    const contractBonus = contractType ? CONTRACT_BONUSES[contractType] || 0 : 0;
-
-    return Number((avgBest4 + trajectoryMod + contractBonus).toFixed(2));
-  }
-
-  private static calculateTrajectoryModifier(scores: number[]): number {
-    if (scores.length < 3) {
-      return 0;
-    }
-
-    const final2 = scores.slice(-2);
-    const others = scores.slice(0, -2);
-    if (others.length === 0) {
-      return 0;
-    }
-
-    const avgOthers = others.reduce((a, b) => a + b, 0) / others.length;
-    const avgFinal2 = final2.reduce((a, b) => a + b, 0) / final2.length;
-
-    if (avgFinal2 > avgOthers + 1.5) {
-      return 0.5;
-    }
-    if (avgFinal2 < avgOthers - 1.5) {
-      return -0.5;
-    }
-    return 0;
+  static applyContractBonus(careerRating: number, contractType?: string | null): number {
+    const bonus = contractType ? (CONTRACT_BONUSES[contractType] ?? 0) : 0;
+    return Number((careerRating + bonus).toFixed(2));
   }
 
   /**

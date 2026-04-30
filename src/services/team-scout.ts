@@ -51,10 +51,10 @@ async function loadRatingLookup(opts: ScoutOptions): Promise<RatingLookup> {
       map.set(LLLRatingEngine.normalizeName(r.playerName), final);
     }
   } else {
-    // Career mode: per Tim's methodology, use Option B = best-4-of-6 of the
-    // per-season ratings. This rewards peak performance and isn't dragged
-    // down by injury years (Bosa, Aiyuk, Deebo all moved up correctly when
-    // we A/B'd this against the cumulative-wav shortcut).
+    // Career mode: average of each player's best-4 per-season ratings.
+    // This rewards peak performance and isn't dragged down by injury
+    // years (Bosa, Aiyuk, Deebo all moved up correctly when we A/B'd
+    // this against the cumulative-wav shortcut).
     //
     // Award floor (Pro Bowl / All-Pro / DPOY etc.) is applied to each season
     // rating BEFORE we pick the top 4, so a single dominant year still lifts
@@ -287,10 +287,7 @@ export class TeamScoutService {
         continue;
       }
 
-      const perf = LLLRatingEngine.calculateFinalPerformanceScore(
-        [rating],
-        useContractBonus ? p.contractOutcome || undefined : undefined,
-      );
+      const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
       const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
       const normalizedRating = rating;
 
@@ -391,10 +388,7 @@ export class TeamScoutService {
       }
 
       const contractBonus = useContractBonus && p.contractOutcome ? (CONTRACT_BONUSES[p.contractOutcome] ?? 0) : 0;
-      const perf = LLLRatingEngine.calculateFinalPerformanceScore(
-        [rating],
-        useContractBonus ? p.contractOutcome || undefined : undefined,
-      );
+      const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
       const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
       const outcome = LLLRatingEngine.getGradeOutcomeLabel(delta);
 
@@ -483,10 +477,7 @@ export class TeamScoutService {
       let outcome: PickOutcome = 'PENDING';
       let delta: number | null = null;
       if (rating !== null && !futurePick) {
-        const perf = LLLRatingEngine.calculateFinalPerformanceScore(
-          [rating],
-          useContractBonus ? p.contractOutcome || undefined : undefined,
-        );
+        const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
         delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
       }
