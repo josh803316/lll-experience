@@ -265,3 +265,22 @@ export const draftTimelineEvents = pgTable('draft_timeline_events', {
   playerName: text('player_name'),
   teamName: text('team_name'),
 });
+
+export const pffPlayerStats = pgTable(
+  'pff_player_stats',
+  {
+    id: serial('id').primaryKey(),
+    playerName: text('player_name').notNull(),
+    pffId: integer('pff_id'),
+    season: integer('season').notNull(),
+    position: text('position'),
+    teamAbbr: text('team_abbr'),
+    category: text('category').notNull(), // 'passing', 'rushing', 'receiving', 'defense', 'blocking'
+    grade: doublePrecision('grade'), // Overall PFF grade for that category
+    stats: jsonb('stats').notNull(), // All other metrics from the CSV
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqPlayerSeasonCat: unique().on(t.playerName, t.season, t.category),
+  }),
+);
