@@ -20,7 +20,7 @@ const CATEGORIES = [
   {name: 'blocking', urlPart: 'blocking', positions: ['T', 'G', 'C']},
 ];
 
-const SEASONS = [2023, 2024, 2025]; // We can expand this
+const SEASONS = [2016, 2017, 2018, 2019, 2020, 2021, 2022];
 
 async function ingestCsv(csvPath: string, category: string, season: number) {
   // Simple CSV parser for PFF format
@@ -98,12 +98,16 @@ async function run() {
       const url = `https://premium.pff.com/nfl/positions/${season}/REG/${cat.urlPart}`;
       console.log(`Processing ${season} ${cat.name}...`);
 
-      try {
-        await page.goto(url, {waitUntil: 'networkidle'});
+      let attempt = 0;
+      const maxAttempts = 3;
+      while (attempt < maxAttempts) {
+        attempt++;
+        try {
+          await page.goto(url, {waitUntil: 'domcontentloaded', timeout: 60000});
+          await page.waitForLoadState('networkidle', {timeout: 60000}).catch(() => {});
 
-        // Wait for export button
-        const exportButton = page.locator('button:has-text("Export"), button:has-text("CSV")').first();
-        if (await exportButton.isVisible()) {
+          const exportButton = page.locator('button:has-text("Export"), button:has-text("CSV")').first();
+          await exportButton.waitFor({state: 'visible', timeout: 30000});
           const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
 
           const path = join(downloadsDir, `${season}_${cat.name}.csv`);
@@ -112,12 +116,18 @@ async function run() {
 
           await ingestCsv(path, cat.name, season);
           console.log(`Ingested ${season} ${cat.name}`);
-        } else {
-          console.warn(`Export button not found for ${url}`);
-          await page.screenshot({path: `error_${season}_${cat.name}.png`});
+          break;
+        } catch (e) {
+          console.error(
+            `Error processing ${url} (attempt ${attempt}/${maxAttempts}):`,
+            e instanceof Error ? e.message : e,
+          );
+          if (attempt >= maxAttempts) {
+            await page.screenshot({path: `error_${season}_${cat.name}.png`}).catch(() => {});
+          } else {
+            await page.waitForTimeout(5000);
+          }
         }
-      } catch (e) {
-        console.error(`Error processing ${url}:`, e);
       }
 
       // Rate limiting

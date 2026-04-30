@@ -3,6 +3,7 @@ import {authGuard} from '../guards/auth-guard.js';
 import {isAdminUserId} from '../lib/clerk-email.js';
 import {
   analyzerDashboard,
+  collegeLeaderboard,
   expertLeaderboard,
   expertProfile,
   expertProfileNotFound,
@@ -19,6 +20,7 @@ import {
 } from '../views/analyzer-templates.js';
 import {DraftScoutService, type SeasonRow} from '../services/draft-scout.js';
 import {ExpertAuditService, getExpertProfile} from '../services/expert-audit.js';
+import {CollegeScoutService} from '../services/college-scout.js';
 import {
   TeamScoutService,
   TEAM_WINDOW_DEFAULT,
@@ -133,6 +135,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const data = await TeamScoutService.getTeamSuccessLeaderboard(opts);
     ctx.set.headers['Content-Type'] = 'text/html';
     return teamLeaderboard(data, CLERK_KEY, {mode: opts.mode, season: opts.season, window: opts.window}, admin);
+  })
+
+  .get('/colleges', async (ctx) => {
+    const admin = await resolveAdminContext(ctx);
+    const data = await CollegeScoutService.getCollegeSuccessLeaderboard();
+    ctx.set.headers['Content-Type'] = 'text/html';
+    return collegeLeaderboard(data, CLERK_KEY, admin);
   })
 
   .get('/player/:name', async (ctx) => {

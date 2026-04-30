@@ -144,6 +144,7 @@ export interface TeamSuccessRow {
   totalPicks: number;
   hits: number;
   busts: number;
+  eliteCount: number;
   hitRate: number;
   avgDelta: number;
   value: number;
@@ -181,6 +182,7 @@ export interface TeamBreakdown {
   totalPicks: number;
   hits: number;
   busts: number;
+  eliteCount: number;
   topPick?: {name: string; round: number; year: number; outcome: PickOutcome};
   worstPick?: {name: string; round: number; year: number; outcome: PickOutcome};
   windowStart: number;
@@ -265,6 +267,7 @@ export class TeamScoutService {
         totalPicks: number;
         hits: number;
         busts: number;
+        eliteCount: number;
         deltaSum: number;
         bestDelta: number;
         bestPick?: TeamSuccessRow['topPick'];
@@ -299,6 +302,7 @@ export class TeamScoutService {
           totalPicks: 0,
           hits: 0,
           busts: 0,
+          eliteCount: 0,
           deltaSum: 0,
           bestDelta: -Infinity,
           worstDelta: Infinity,
@@ -312,6 +316,9 @@ export class TeamScoutService {
       }
       if (delta < -1.0) {
         agg.busts++;
+      }
+      if (rating >= 8.0) {
+        agg.eliteCount++;
       }
 
       if (delta > agg.bestDelta) {
@@ -343,6 +350,7 @@ export class TeamScoutService {
       totalPicks: i.a.totalPicks,
       hits: i.a.hits,
       busts: i.a.busts,
+      eliteCount: i.a.eliteCount,
       hitRate: i.hitRate,
       avgDelta: i.avgDelta,
       value: Math.round(((i.avgDelta - minD) / span) * 100),
@@ -464,6 +472,7 @@ export class TeamScoutService {
     let worstPick: TeamBreakdown['worstPick'];
     let bestDelta = -Infinity;
     let worstDelta = Infinity;
+    let eliteCount = 0;
 
     for (const p of myPicks) {
       if (!p.round || !p.playerName || !p.pickNumber) {
@@ -480,6 +489,10 @@ export class TeamScoutService {
         const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
         delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
+
+        if (rating >= 8.0) {
+          eliteCount++;
+        }
       }
 
       const breakdown: BreakdownPick = {
@@ -531,6 +544,7 @@ export class TeamScoutService {
       totalPicks: row.totalPicks,
       hits: row.hits,
       busts: row.busts,
+      eliteCount,
       topPick,
       worstPick,
       windowStart: startYear,

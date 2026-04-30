@@ -1,7 +1,13 @@
 import {getDB} from '../db/index.js';
 import {expertRankings, playerPerformanceRatings, experts, officialDraftResults} from '../db/schema.js';
 import {eq, and, sql, inArray} from 'drizzle-orm';
-import {LLLRatingEngine, EXPECTED_VALUE_BY_ROUND, CONTRACT_BONUSES, canonicalTeam} from './lll-rating-engine.js';
+import {
+  LLLRatingEngine,
+  EXPECTED_VALUE_BY_ROUND,
+  CONTRACT_BONUSES,
+  canonicalTeam,
+  type AwardFlags,
+} from './lll-rating-engine.js';
 
 export interface SeasonRow {
   season: number;
@@ -43,6 +49,8 @@ export interface PlayerProfileData {
   performanceScore: number;
   finalGrade: number;
   outcome: string;
+  producedLikeRound: number | null;
+  elitePlayerProbability: number | null;
   altRatings: AltRatingResults;
   // Raw histories
   seasonHistory: SeasonRow[];
@@ -193,9 +201,24 @@ export class DraftScoutService {
     // Final grade + delta against round expectation (using current career method).
     const contractBonus = officialPick?.contractOutcome ? (CONTRACT_BONUSES[officialPick.contractOutcome] ?? 0) : 0;
     const performanceScore = LLLRatingEngine.applyContractBonus(careerRating, officialPick?.contractOutcome);
+
+    // Jeff's "Produced Like" logic: find which round's average performance this player matches
+    const roundStats = await DraftScoutService.getRoundProductionStats();
+    let producedLikeRound: number | null = null;
+    let closestDiff = Infinity;
+    for (const stat of roundStats) {
+      const diff = Math.abs(stat.avgPerformance - performanceScore);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        producedLikeRound = stat.round;
+      }
+    }
+
     const expectedForRound = round ? (EXPECTED_VALUE_BY_ROUND[round] ?? 0) : 0;
     const finalGrade = LLLRatingEngine.calculateFinalGrade(performanceScore, round ?? 1);
     const outcome = LLLRatingEngine.getGradeOutcomeLabel(finalGrade);
+
+    const elitePlayerProbability = round ? (roundStats.find((s) => s.round === round)?.eliteProb ?? null) : null;
 
     const accuracySummary = rankings.map((r) => {
       const implied = r.rank ? LLLRatingEngine.rankToExpectedRating(r.rank) : null;
@@ -226,6 +249,8 @@ export class DraftScoutService {
       performanceScore,
       finalGrade,
       outcome,
+      producedLikeRound,
+      elitePlayerProbability,
       altRatings,
       seasonHistory,
       careerHistory: careerRow
@@ -316,5 +341,100 @@ export class DraftScoutService {
       .limit(5);
 
     return {players, experts: expertMatches};
+  }
+
+  private static roundStatsCache: Array<{round: number; avgPerformance: number; eliteProb: number}> | null = null;
+
+  static async getRoundProductionStats() {
+    if (this.roundStatsCache) {
+      return this.roundStatsCache;
+    }
+
+    const db = getDB();
+    const evalYear = new Date().getFullYear();
+
+    // Load everything needed for calculation
+    const [seasonRows, careerRows, allPicks] = await Promise.all([
+      db
+        .select({
+          playerName: playerPerformanceRatings.playerName,
+          rating: playerPerformanceRatings.rating,
+          metadata: playerPerformanceRatings.metadata,
+        })
+        .from(playerPerformanceRatings)
+        .where(eq(playerPerformanceRatings.isCareerRating, false)),
+      db
+        .select({
+          playerName: playerPerformanceRatings.playerName,
+          draftYear: playerPerformanceRatings.draftYear,
+          metadata: playerPerformanceRatings.metadata,
+        })
+        .from(playerPerformanceRatings)
+        .where(eq(playerPerformanceRatings.isCareerRating, true)),
+      db.select().from(officialDraftResults),
+    ]);
+
+    // Build rating map
+    const ratingMap = new Map<string, number>();
+    const seasonsByName = new Map<string, number[]>();
+
+    for (const r of seasonRows) {
+      const key = LLLRatingEngine.normalizeName(r.playerName);
+      const awards = (r.metadata as {awards?: AwardFlags} | null)?.awards;
+      const final = LLLRatingEngine.applyAwardFloor(r.rating, awards);
+      const list = seasonsByName.get(key) ?? [];
+      list.push(final);
+      seasonsByName.set(key, list);
+    }
+
+    for (const [key, ratings] of seasonsByName) {
+      const sorted = [...ratings].sort((a, b) => b - a);
+      const top4 = sorted.slice(0, 4);
+      const avg = top4.reduce((s, r) => s + r, 0) / top4.length;
+      ratingMap.set(key, Number(avg.toFixed(2)));
+    }
+
+    for (const r of careerRows) {
+      const key = LLLRatingEngine.normalizeName(r.playerName);
+      if (ratingMap.has(key)) {
+        continue;
+      }
+      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
+      const ysd = Math.max(1, evalYear - r.draftYear);
+      ratingMap.set(key, LLLRatingEngine.normalizeWavToRating(wav, ysd));
+    }
+
+    // Aggregate by round
+    const roundAgg: Record<number, {sum: number; count: number; eliteCount: number}> = {};
+    for (const p of allPicks) {
+      if (!p.round) {
+        continue;
+      }
+      const rating = ratingMap.get(LLLRatingEngine.normalizeName(p.playerName));
+      if (rating === undefined || rating === null) {
+        continue;
+      }
+
+      const perf = LLLRatingEngine.applyContractBonus(rating, p.contractOutcome);
+
+      if (!roundAgg[p.round]) {
+        roundAgg[p.round] = {sum: 0, count: 0, eliteCount: 0};
+      }
+      roundAgg[p.round].sum += perf;
+      roundAgg[p.round].count++;
+      if (rating >= 8.0) {
+        roundAgg[p.round].eliteCount++;
+      }
+    }
+
+    this.roundStatsCache = Object.entries(roundAgg)
+      .map(([round, agg]) => ({
+        round: Number(round),
+        avgPerformance: Number((agg.sum / agg.count).toFixed(2)),
+        eliteProb: Number(((agg.eliteCount / agg.count) * 100).toFixed(1)),
+      }))
+      .sort((a, b) => a.round - b.round);
+
+    return this.roundStatsCache;
   }
 }

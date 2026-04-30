@@ -1,5 +1,6 @@
 import {baseLayout, escapeHtml} from './templates.js';
 import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome, ScoredPick} from '../services/team-scout.js';
+import type {CollegeSuccessRow} from '../services/college-scout.js';
 import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile} from '../services/expert-audit.js';
 import {teamLogoUrl} from '../services/lll-rating-engine.js';
 import type {PlayerProfileData, SeasonRow} from '../services/draft-scout.js';
@@ -178,6 +179,14 @@ const TOOLTIPS = {
     'Talent Delta. Same RMSE math as Mock Accuracy, but applied to the rating their rank implied vs the player\u2019s actual career rating. Lower = they were right about the talent, even if the league disagreed on draft slot.',
   hitRate:
     'Hit Rate = the share of a team\u2019s picks that beat the expected value for their round (LLL Delta > 0.5). The cleanest way to see who\u2019s consistently winning the draft.',
+  elitePlayers:
+    'Elite Players = the number of players drafted by this team who achieved an LLL Career Rating of 8.0 or higher (Top 10 at position). Essential for winning championships.',
+  collegeHitRate:
+    'College Hit Rate = the share of players from this school whose NFL performance beat their draft slot expectation (LLL Delta > 0.5). Higher = the school consistently produces NFL-ready talent.',
+  producedLike:
+    'Jeff\u2019s Production Index. Based on this player\u2019s current LLL Career Rating, they are producing at the same level as the average NFL player drafted in this round. Comparison is against all positions league-wide.',
+  eliteProb:
+    'Elite Player Probability. The historical percentage of players drafted in this round who achieve an LLL Career Rating of 8.0 or higher (Top 10 at their position). Helps evaluate if trading down for more picks outweighs the drop in elite talent odds.',
   outcomes:
     'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
 } as const;
@@ -268,7 +277,7 @@ export function liveBadge(): string {
 }
 
 function header(
-  active: 'dashboard' | 'experts' | 'teams' = 'dashboard',
+  active: 'dashboard' | 'experts' | 'teams' | 'colleges' = 'dashboard',
   _extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
   return `
@@ -297,6 +306,7 @@ function header(
           <a href="/analyzer" class="${active === 'dashboard' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Dashboard</a>
           <a href="/analyzer/experts" class="${active === 'experts' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Experts</a>
           <a href="/analyzer/teams" class="${active === 'teams' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Teams</a>
+          <a href="/analyzer/colleges" class="${active === 'colleges' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Colleges</a>
         </nav>
       </div>
     </header>
@@ -709,6 +719,15 @@ export function teamLeaderboard(
         </div>
         <div>
           <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
+            <span>${tooltip('Elite Players', TOOLTIPS.elitePlayers)}</span>
+            <span class="text-black font-bold">${t.eliteCount}</span>
+          </div>
+          <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+            <div class="h-full bg-emerald-500" style="width: ${Math.min(100, (t.eliteCount / 5) * 100)}%"></div>
+          </div>
+        </div>
+        <div>
+          <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
             <span>League Position</span>
             <span class="text-accent font-bold mono">${tooltip('Δ', TOOLTIPS.lllDelta)} ${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</span>
           </div>
@@ -801,6 +820,7 @@ export function successLeaderboard(
       </td>
       <td class="py-4 text-center text-black">
         <div class="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-sm">${t.hitRate}%</div>
+        <div class="text-[8px] text-muted font-bold uppercase mt-1">${t.eliteCount} Elite</div>
       </td>
       <td class="py-4 text-center font-mono font-bold text-accent text-lg">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
       <td class="py-4 pr-4 text-right text-black">
@@ -830,6 +850,90 @@ export function successLeaderboard(
       </table>
     </div>
   `;
+}
+
+export function collegeLeaderboard(
+  colleges: CollegeSuccessRow[],
+  clerkKey?: string,
+  extras: {isAdmin?: boolean; debug?: boolean} = {},
+): string {
+  const _admin = adminFlags(extras);
+  const totalPicks = colleges.reduce((s, c) => s + c.totalPicks, 0);
+
+  const rows = colleges
+    .map((c, i) => {
+      const accent = i < 8 ? 'border-accent' : 'border-black/20';
+      return `
+      <div class="card-paper p-6 rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group">
+        <div class="flex justify-between items-start mb-4 gap-3">
+          <div class="min-w-0">
+            <div class="text-[8px] font-bold text-muted uppercase tracking-[0.2em] mb-1">Rank #${i + 1}</div>
+            <h3 class="text-xl font-bold tracking-tighter text-black group-hover:text-accent transition-colors truncate">${escapeHtml(c.college)}</h3>
+            <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${c.totalPicks} pros evaluated</div>
+          </div>
+          <span class="text-2xl font-bold text-black serif italic shrink-0">${c.value}</span>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
+              <span>${tooltip('Hit Rate', TOOLTIPS.collegeHitRate)}</span>
+              <span class="text-black font-bold">${c.hitRate}%</span>
+            </div>
+            <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+              <div class="h-full bg-black" style="width: ${c.hitRate}%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
+              <span>Value Added</span>
+              <span class="text-accent font-bold mono">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</span>
+            </div>
+            <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+              <div class="h-full bg-accent" style="width: ${c.value}%"></div>
+            </div>
+          </div>
+          ${
+            c.topPro
+              ? `
+            <div class="pt-3 border-t border-black/5 text-[10px]">
+              <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pro in Window</div>
+              <a href="/analyzer/player/${encodeURIComponent(c.topPro.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(c.topPro.name)}</a>
+              <span class="text-muted">· R${c.topPro.round} ${c.topPro.year} · Δ ${c.topPro.delta.toFixed(2)}</span>
+            </div>
+          `
+              : ''
+          }
+        </div>
+      </div>
+    `;
+    })
+    .join('');
+
+  const content = `
+    ${header('colleges', _admin)}
+    <div class="max-w-6xl mx-auto py-6 px-4 text-black">
+      <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
+      <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">COLLEGE SCOUT INDEX</h2>
+          <span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">Historical Value Added</span>
+        </div>
+        <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
+           <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Pros evaluated</span>
+           <span class="text-xl font-bold tracking-tighter">${totalPicks.toLocaleString()}</span>
+        </div>
+      </div>
+      <p class="text-xs md:text-sm text-muted serif italic mb-4">
+        Which schools consistently out-produce their draft slot? Ranked by avg delta per pick.
+        Only schools with 5+ drafted pros in the 10-year window are included.
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
+        ${rows}
+      </div>
+    </div>
+  `;
+  return analyzerLayout(content, 'College Scout Index — LLL Draft Analyzer', clerkKey);
 }
 
 export function topExpertsMini(experts: ExpertOracleRow[]): string {
@@ -910,6 +1014,29 @@ export function playerProfile(
         ${profile.contractBonus !== 0 ? ` ${profile.contractBonus > 0 ? '+' : '−'} ${Math.abs(profile.contractBonus).toFixed(2)} contract` : ''}
         = perf ${profile.performanceScore.toFixed(2)} − ${profile.expectedForRound} (R${profile.round ?? '?'}) = Δ ${finalSign}${profile.finalGrade.toFixed(2)}
       </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div class="bg-black/5 p-4 rounded-lg flex items-center justify-between">
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-1">${tooltip('Produced Like', TOOLTIPS.producedLike)}</div>
+            <div class="text-xl font-bold tracking-tighter">Avg Round ${profile.producedLikeRound ?? '—'} Pick</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-1">Status</div>
+            <div class="text-lg font-bold ${profile.finalGrade > 0 ? 'text-emerald-700' : 'text-rose-700'}">${escapeHtml(profile.outcome)}</div>
+          </div>
+        </div>
+        <div class="bg-black/5 p-4 rounded-lg flex items-center justify-between">
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-1">${tooltip('Elite Odds', TOOLTIPS.eliteProb)}</div>
+            <div class="text-xl font-bold tracking-tighter">${profile.elitePlayerProbability !== null ? profile.elitePlayerProbability + '%' : '—'}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted mb-1">In Round</div>
+            <div class="text-lg font-bold">Round ${profile.round ?? '—'}</div>
+          </div>
+        </div>
+      </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div class="md:col-span-2 space-y-8">
@@ -1235,7 +1362,7 @@ export function teamBreakdownModal(
               <div class="text-6xl md:text-7xl font-bold serif italic text-black leading-none shrink-0">${escapeHtml(b.grade)}</div>
             </div>
             <p class="text-sm text-muted serif italic leading-relaxed">
-              ${b.totalPicks} picks evaluated · ${b.hits} hits · ${b.busts} busts.
+              ${b.totalPicks} picks evaluated · ${b.hits} hits · ${b.eliteCount} elite · ${b.busts} busts.
               Years are flagged
               <span class="font-bold text-emerald-700">green</span> when there's a clear hit,
               <span class="font-bold text-amber-700">orange</span> for mixed classes, and
