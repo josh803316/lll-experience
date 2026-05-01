@@ -192,7 +192,13 @@ export function landingPage(clerkPublishableKey?: string): string {
       _waitForClerk(async function(clerk) {
         await clerk.load();
         if (clerk.user) {
-          window.location.href = '/apps';
+          const urlParams = new URLSearchParams(window.location.search);
+          const redirectUrl = urlParams.get('redirect_url');
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+          } else {
+            window.location.href = '/apps';
+          }
         } else {
           clerk.mountSignIn(document.getElementById('sign-in-root'));
         }
