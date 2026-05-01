@@ -191,16 +191,21 @@ export function landingPage(clerkPublishableKey?: string): string {
     window.addEventListener('load', function() {
       _waitForClerk(async function(clerk) {
         await clerk.load();
+        const urlParams = new URLSearchParams(window.location.search);
+        const rawRedirect = urlParams.get('redirect_url');
+        // Only allow same-origin relative paths to prevent open-redirect.
+        const safeRedirect = rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
+          ? rawRedirect
+          : null;
         if (clerk.user) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const redirectUrl = urlParams.get('redirect_url');
-          if (redirectUrl) {
-            window.location.href = redirectUrl;
-          } else {
-            window.location.href = '/apps';
-          }
+          window.location.href = safeRedirect || '/apps';
         } else {
-          clerk.mountSignIn(document.getElementById('sign-in-root'));
+          // forceRedirectUrl wins over Clerk's auto-handling of ?redirect_url=,
+          // so the deep link survives OAuth round trips that may strip the query string.
+          const signInOptions = safeRedirect
+            ? {forceRedirectUrl: safeRedirect, signUpForceRedirectUrl: safeRedirect}
+            : {};
+          clerk.mountSignIn(document.getElementById('sign-in-root'), signInOptions);
         }
       }, 50);
     });
