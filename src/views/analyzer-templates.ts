@@ -206,7 +206,7 @@ const TOOLTIPS = {
 export function renderViewControls(opts: {mode: 'career' | 'season'; selectedSeason: number; window: number}): string {
   const isCareer = opts.mode === 'career';
   const seasonOptions = [2024, 2023, 2022, 2021, 2020, 2019, 2018];
-  const windowOptions = [3, 5, 6, 8];
+  const windowOptions = [3, 5, 6, 8, 10];
   return `
     <div class="flex flex-wrap items-center gap-3 mb-6">
       <div class="flex items-center bg-black/[0.05] rounded-md p-1 text-[10px] font-bold uppercase tracking-[0.2em]">
