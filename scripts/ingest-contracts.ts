@@ -12,8 +12,8 @@
 import {drizzle} from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import {gunzipSync} from 'zlib';
-import {officialDraftResults} from '../src/db/schema.js';
-import {eq} from 'drizzle-orm';
+import {officialDraftResults, playerContracts} from '../src/db/schema.js';
+import {eq, sql} from 'drizzle-orm';
 import {canonicalTeam, LLLRatingEngine, TEAM_CANONICAL} from '../src/services/lll-rating-engine.js';
 
 const DIRECT_URL = process.env.DIRECT_URL;
@@ -71,8 +71,13 @@ function splitCsv(line: string): string[] {
 
 interface ContractRow {
   player: string;
+  position: string;
   team: string;
   yearSigned: number;
+  yearsLength: number | null;
+  value: number | null;
+  apy: number | null;
+  guaranteed: number | null;
   apyCapPct: number;
   draftYear: number | null;
   draftOverall: number | null;
@@ -94,8 +99,13 @@ async function run() {
   const idx = (k: string) => headers.indexOf(k);
   const i = {
     player: idx('player'),
+    position: idx('position'),
     team: idx('team'),
     yearSigned: idx('year_signed'),
+    yearsLength: idx('years'),
+    value: idx('value'),
+    apy: idx('apy'),
+    guaranteed: idx('guaranteed'),
     apyCapPct: idx('apy_cap_pct'),
     draftYear: idx('draft_year'),
     draftOverall: idx('draft_overall'),
@@ -118,10 +128,22 @@ async function run() {
     if (!Number.isFinite(yearSigned)) {
       continue;
     }
+    const numOrNull = (s: string | undefined): number | null => {
+      if (!s) {
+        return null;
+      }
+      const n = parseFloat(s);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
     const c: ContractRow = {
       player,
+      position: row[i.position]?.replace(/"/g, '').trim() ?? '',
       team: row[i.team]?.replace(/"/g, '').trim() ?? '',
       yearSigned,
+      yearsLength: parseInt(row[i.yearsLength]) || null,
+      value: numOrNull(row[i.value]),
+      apy: numOrNull(row[i.apy]),
+      guaranteed: numOrNull(row[i.guaranteed]),
       apyCapPct: parseFloat(row[i.apyCapPct]) || 0,
       draftYear: parseInt(row[i.draftYear]) || null,
       draftOverall: parseInt(row[i.draftOverall]) || null,
@@ -197,6 +219,62 @@ async function run() {
 
   console.log(`Updated ${touched} contractOutcome rows; cleared ${cleared} stale flags.`);
   console.log('Outcome distribution:', counts);
+
+  // Additive: write per-contract dollar rows to player_contracts. We write
+  // every contract on file (not just the 2nd), tagged with whether each
+  // matches the "first contract ≥3 years post-draft" rule. This gives us
+  // the raw signal to weight by $/cap% later without committing to a
+  // particular outcome bucketing.
+  console.log('\nWriting player_contracts rows from nflverse…');
+  const draftYearByName = new Map<string, number>();
+  for (const p of allDrafted) {
+    if (p.playerName) {
+      draftYearByName.set(LLLRatingEngine.normalizeName(p.playerName), p.year);
+    }
+  }
+
+  // Replace nflverse-sourced rows so re-runs converge.
+  await db.delete(playerContracts).where(eq(playerContracts.source, 'nflverse'));
+
+  let writtenContracts = 0;
+  const toWrite: (typeof playerContracts.$inferInsert)[] = [];
+  for (const [key, list] of byName) {
+    const draftedYear = draftYearByName.get(key);
+    list.sort((a, b) => a.yearSigned - b.yearSigned);
+    const second = draftedYear !== undefined ? list.find((c) => c.yearSigned > draftedYear + 2) : undefined;
+    for (const c of list) {
+      const teamAbbr = teamAbbrFromContract(c.team);
+      toWrite.push({
+        playerName: c.player,
+        teamAbbr,
+        position: c.position || null,
+        yearSigned: c.yearSigned,
+        yearsLength: c.yearsLength,
+        valueTotal: c.value,
+        apy: c.apy,
+        guaranteed: c.guaranteed,
+        apyCapPct: c.apyCapPct,
+        isSecondContract: second === c,
+        draftYear: c.draftYear,
+        draftOverall: c.draftOverall,
+        source: 'nflverse',
+      });
+    }
+  }
+
+  const CHUNK = 500;
+  for (let s = 0; s < toWrite.length; s += CHUNK) {
+    const slice = toWrite.slice(s, s + CHUNK);
+    await db.insert(playerContracts).values(slice).onConflictDoNothing();
+    writtenContracts += slice.length;
+  }
+  console.log(`Wrote ${writtenContracts} contract rows (source='nflverse').`);
+
+  const summary = await db.execute(sql`
+    SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE is_second_contract)::int AS second_n
+    FROM player_contracts WHERE source='nflverse'
+  `);
+  console.log(`Final nflverse rows in player_contracts:`, summary[0]);
 
   // Sanity-check Jeff's flagged players.
   const checks = [

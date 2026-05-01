@@ -19,8 +19,8 @@
 
 import {drizzle} from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import {officialDraftResults} from '../src/db/schema.js';
-import {eq} from 'drizzle-orm';
+import {officialDraftResults, playerContracts} from '../src/db/schema.js';
+import {eq, sql} from 'drizzle-orm';
 import {LLLRatingEngine, canonicalTeam} from '../src/services/lll-rating-engine.js';
 
 const DIRECT_URL = process.env.DIRECT_URL;
@@ -288,6 +288,65 @@ async function run() {
 
   console.log(`\nUpdated ${updated} rows, cleared ${cleared} stale flags, ${unmatched} picks unmatched on Spotrac.`);
   console.log('Outcome distribution:', counts);
+
+  // Additive: write per-contract dollar rows to player_contracts. This
+  // captures 2023+ extensions that nflverse misses. Replace spotrac-sourced
+  // rows so re-runs converge cleanly.
+  console.log('\nWriting player_contracts rows from Spotrac…');
+  await db.delete(playerContracts).where(eq(playerContracts.source, 'spotrac'));
+
+  const draftYearByName = new Map<string, number>();
+  for (const p of allDrafted) {
+    if (p.playerName) {
+      draftYearByName.set(LLLRatingEngine.normalizeName(p.playerName), p.year);
+    }
+  }
+
+  const toWrite: (typeof playerContracts.$inferInsert)[] = [];
+  for (const [key, list] of byName) {
+    const draftedYear = draftYearByName.get(key);
+    list.sort((a, b) => a.startYear - b.startYear);
+    const second = draftedYear !== undefined ? list.find((c) => c.startYear > draftedYear + 2) : undefined;
+    for (const c of list) {
+      const cap = NFL_CAP_BY_YEAR[c.startYear] ?? 250;
+      const apyCapPct = c.apy > 0 ? c.apy / 1_000_000 / cap : 0;
+      // Spotrac listings include rookie/extension/FA all on one page; skip
+      // contracts with zero value (free agent placeholders).
+      if (c.value <= 0 || c.apy <= 0) {
+        continue;
+      }
+      toWrite.push({
+        playerName: c.player,
+        teamAbbr: c.signingTeamAbbr,
+        position: c.position || null,
+        yearSigned: c.startYear,
+        yearsLength: c.years || null,
+        valueTotal: c.value,
+        apy: c.apy,
+        guaranteed: c.practicalGuarantee || c.initialGuarantee || null,
+        apyCapPct,
+        isSecondContract: second === c,
+        draftYear: null,
+        draftOverall: null,
+        source: 'spotrac',
+      });
+    }
+  }
+
+  let writtenContracts = 0;
+  const CHUNK = 500;
+  for (let s = 0; s < toWrite.length; s += CHUNK) {
+    const slice = toWrite.slice(s, s + CHUNK);
+    await db.insert(playerContracts).values(slice).onConflictDoNothing();
+    writtenContracts += slice.length;
+  }
+  console.log(`Wrote ${writtenContracts} contract rows (source='spotrac').`);
+
+  const summary = await db.execute(sql`
+    SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE is_second_contract)::int AS second_n
+    FROM player_contracts WHERE source='spotrac'
+  `);
+  console.log(`Final spotrac rows in player_contracts:`, summary[0]);
 
   // Sanity-check Jeff's flagged players.
   const checks = [

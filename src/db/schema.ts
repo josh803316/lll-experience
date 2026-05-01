@@ -284,3 +284,33 @@ export const pffPlayerStats = pgTable(
     uniqPlayerSeasonCat: unique().on(t.playerName, t.season, t.category),
   }),
 );
+
+/**
+ * Per-contract dollar data for drafted players. Populated additively
+ * alongside official_draft_results.contractOutcome (which keeps the
+ * categorical 7-bucket signal). Lets us weight by APY-as-cap-%, total
+ * value, guarantees, etc., when we choose to swap the rating method.
+ */
+export const playerContracts = pgTable(
+  'player_contracts',
+  {
+    id: serial('id').primaryKey(),
+    playerName: text('player_name').notNull(),
+    teamAbbr: text('team_abbr'), // canonical (e.g. 'SF'); null if unmapped
+    position: text('position'),
+    yearSigned: integer('year_signed').notNull(),
+    yearsLength: integer('years_length'), // contract length in years
+    valueTotal: doublePrecision('value_total'), // total $ over the deal
+    apy: doublePrecision('apy'), // annual avg $
+    guaranteed: doublePrecision('guaranteed'), // initial/practical guarantee $
+    apyCapPct: doublePrecision('apy_cap_pct'), // APY as % of league cap that year (0-1)
+    isSecondContract: boolean('is_second_contract').default(false).notNull(),
+    draftYear: integer('draft_year'),
+    draftOverall: integer('draft_overall'),
+    source: text('source').notNull(), // 'nflverse' | 'spotrac'
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqPlayerYearSource: unique().on(t.playerName, t.yearSigned, t.source),
+  }),
+);
