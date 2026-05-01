@@ -49,13 +49,12 @@ async function ingestCsv(csvPath: string, category: string, season: number) {
     }
 
     const pffId = stats.player_id ? parseInt(stats.player_id, 10) : null;
-    const position = stats.position;
-    const teamAbbr = stats.team || stats.team_name;
-    const gradeValue = stats.grades_offense
-      ? parseFloat(stats.grades_offense)
-      : stats.grades_overall
-        ? parseFloat(stats.grades_overall)
-        : null;
+    const position = stats.position || null;
+    const teamAbbr = stats.team || stats.team_name || null;
+    // Defense rows have no grades_offense — pick the headline grade per category.
+    const gradeKey = category === 'defense' ? 'grades_defense' : 'grades_offense';
+    const rawGrade = stats[gradeKey] || stats.grades_overall;
+    const gradeValue = rawGrade ? parseFloat(rawGrade) : null;
 
     await db
       .insert(pffPlayerStats)
@@ -69,7 +68,17 @@ async function ingestCsv(csvPath: string, category: string, season: number) {
         grade: gradeValue,
         stats,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [pffPlayerStats.playerName, pffPlayerStats.season, pffPlayerStats.category],
+        set: {
+          pffId,
+          position,
+          teamAbbr,
+          grade: gradeValue,
+          stats,
+          updatedAt: new Date(),
+        },
+      });
   }
 }
 
