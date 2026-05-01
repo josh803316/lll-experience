@@ -103,6 +103,13 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
       .lll-tip:hover > .tip-body,
       .lll-tip:focus-within > .tip-body { opacity: 1; }
 
+      /* Account menu (gear dropdown) */
+      .analyzer-account-menu summary { list-style: none; }
+      .analyzer-account-menu summary::-webkit-details-marker { display: none; }
+      .analyzer-account-menu summary::marker { content: ''; }
+      .analyzer-account-menu[open] > summary > .gear-icon { transform: rotate(30deg); color: var(--accent); }
+      .analyzer-account-menu .gear-icon { transition: transform 0.2s ease, color 0.2s ease; }
+
       /* Live indicator dot (pulses) */
       .live-dot {
         display: inline-block;
@@ -302,14 +309,62 @@ function header(
           />
           <div id="search-results" class="absolute top-full left-0 right-0 z-[110] mt-1 shadow-2xl text-black"></div>
         </div>
-        <nav class="flex gap-6 text-[10px] font-bold uppercase tracking-[0.2em]">
+        <nav class="flex items-center gap-6 text-[10px] font-bold uppercase tracking-[0.2em]">
           <a href="/analyzer" class="${active === 'dashboard' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Dashboard</a>
           <a href="/analyzer/experts" class="${active === 'experts' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Experts</a>
           <a href="/analyzer/teams" class="${active === 'teams' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Teams</a>
           <a href="/analyzer/colleges" class="${active === 'colleges' ? 'tab-active' : 'text-muted hover:text-accent'} transition-colors">Colleges</a>
+          ${accountMenu()}
         </nav>
       </div>
     </header>
+  `;
+}
+
+function accountMenu(): string {
+  return `
+    <details class="analyzer-account-menu relative" id="analyzer-account-menu">
+      <summary class="cursor-pointer p-1 -m-1 text-muted hover:text-accent transition-colors flex items-center" aria-label="Account menu" title="Account">
+        <svg class="gear-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </summary>
+      <div class="absolute right-0 top-full mt-2 w-56 bg-white border border-black/10 shadow-2xl py-1 z-[120]" role="menu">
+        <div id="analyzer-account-email" class="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted truncate border-b border-black/5">Account</div>
+        <a href="/apps" class="block px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-black/5 hover:text-accent transition-colors" role="menuitem">← All Apps</a>
+        <button type="button" id="analyzer-sign-out" class="block w-full text-left px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-black hover:bg-black/5 hover:text-accent transition-colors" role="menuitem">Sign out</button>
+      </div>
+    </details>
+    <script>
+      (function () {
+        if (window.__lllAccountMenu) return;
+        window.__lllAccountMenu = true;
+        const menu = document.getElementById('analyzer-account-menu');
+        if (!menu) return;
+        document.addEventListener('click', function (e) {
+          if (!menu.open) return;
+          if (!menu.contains(e.target)) menu.removeAttribute('open');
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && menu.open) menu.removeAttribute('open');
+        });
+        const signOutBtn = document.getElementById('analyzer-sign-out');
+        if (signOutBtn) {
+          signOutBtn.addEventListener('click', function () {
+            if (window.Clerk) window.Clerk.signOut().then(function () { window.location.href = '/'; });
+          });
+        }
+        if (typeof _waitForClerk === 'function') {
+          _waitForClerk(async function (clerk) {
+            await clerk.load();
+            const emailEl = document.getElementById('analyzer-account-email');
+            const email = clerk.user && clerk.user.primaryEmailAddress && clerk.user.primaryEmailAddress.emailAddress;
+            if (emailEl && email) emailEl.textContent = email;
+          }, 50);
+        }
+      })();
+    </script>
   `;
 }
 
