@@ -1168,6 +1168,14 @@ function formatKeyStats(stats: Record<string, number>, side?: string): string {
     const pd = stats.pass_defended ? `${stats.pass_defended} PD` : '';
     return [sacks, tfl, tackles, ints, ff, pd].filter(Boolean).join(' · ') || '—';
   }
+  if (side === 'OL') {
+    const pb = stats.grades_pass_block ? `${stats.grades_pass_block.toFixed(1)} PBLK` : '';
+    const rb = stats.grades_run_block ? `${stats.grades_run_block.toFixed(1)} RBLK` : '';
+    const prs = stats.pressures_allowed ? `${stats.pressures_allowed} prs` : '';
+    const sk = stats.sacks_allowed ? `${stats.sacks_allowed} sk allowed` : '';
+    const pen = stats.penalties ? `${stats.penalties} pen` : '';
+    return [pb, rb, prs, sk, pen].filter(Boolean).join(' · ') || '—';
+  }
   // Offensive — pick the dominant stat
   if (stats.pass_yards) {
     return `${fmt(stats.pass_yards)} pyd · ${fmt(stats.pass_tds)} pTD · ${fmt(stats.interceptions)} INT`;

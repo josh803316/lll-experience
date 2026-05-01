@@ -17,7 +17,7 @@ const CATEGORIES = [
   {name: 'rushing', urlPart: 'rushing', positions: ['RB', 'FB']},
   {name: 'receiving', urlPart: 'receiving', positions: ['WR', 'TE']},
   {name: 'defense', urlPart: 'defense', positions: ['ED', 'DI', 'LB', 'CB', 'S']},
-  {name: 'blocking', urlPart: 'blocking', positions: ['T', 'G', 'C']},
+  {name: 'blocking', urlPart: 'offense-blocking', positions: ['T', 'G', 'C']},
 ];
 
 const SEASONS = [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
