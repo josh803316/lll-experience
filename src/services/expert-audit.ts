@@ -24,6 +24,23 @@ export interface ExpertScoutRow {
   letter: string; // Letter grade from talentDelta thresholds
 }
 
+export interface Take {
+  expertSlug: string;
+  expertName: string;
+  org: string | null;
+  playerName: string;
+  year: number;
+  predictedRank: number;
+  consensusRank: number; // median rank across all experts who ranked this player
+  rankerCount: number;
+  consensusExpected: number; // rankToExpectedRating(consensusRank)
+  actualCareerRating: number;
+  careerDelta: number; // actual − consensusExpected
+  contrarianScore: number; // signed: + = contrarian-and-right, − = contrarian-and-wrong
+  flavor: 'unique-hit' | 'unique-fade' | 'oversold' | 'undersold';
+  headline: string; // short human-readable summary
+}
+
 export class ExpertAuditService {
   /**
    * Oracle Leaderboard — Mock Draft Accuracy.
@@ -180,6 +197,164 @@ export class ExpertAuditService {
     ranked.sort((a, b) => a.talentDelta - b.talentDelta);
     empty.sort((a, b) => a.expertName.localeCompare(b.expertName));
     return [...ranked, ...empty];
+  }
+
+  /**
+   * Best/Worst Takes — contrarian calls that aged well or poorly.
+   *
+   * For each (year, player), we compute a consensus rank (median across
+   * every expert who ranked them). A "take" only counts when the expert's
+   * own rank diverges meaningfully from consensus AND the player's actual
+   * career rating diverges meaningfully from what consensus implied.
+   *
+   * Best Take = contrarian + correct (signs of rank-deviation and career-
+   * delta agree). Worst Take = contrarian + wrong (signs disagree).
+   *
+   * Filters: rank ≤ 60, year ≤ LATEST_FAIR_DRAFT_YEAR, player has ≥ 2
+   * NFL seasons, ≥3 experts ranked the player, |deviation| ≥ 5 spots,
+   * |careerDelta| ≥ 0.8 rating points.
+   */
+  static async getBestWorstTakes(limit = 10): Promise<{best: Take[]; worst: Take[]}> {
+    const db = getDB();
+    const evalYear = new Date().getFullYear();
+
+    const [allExperts, allRankings, allRatings] = await Promise.all([
+      db.select().from(experts),
+      db.select().from(expertRankings),
+      db.select().from(playerPerformanceRatings).where(eq(playerPerformanceRatings.isCareerRating, true)),
+    ]);
+    const expertById = new Map(allExperts.map((e) => [e.id, e]));
+
+    const ratingByName = new Map<string, {rating: number}>();
+    for (const r of allRatings) {
+      const ysd = Math.max(1, evalYear - r.draftYear);
+      if (ysd < 2) {
+        continue;
+      }
+      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
+      ratingByName.set(LLLRatingEngine.normalizeName(r.playerName), {
+        rating: LLLRatingEngine.normalizeWavToRating(wav, ysd),
+      });
+    }
+
+    type RankRow = (typeof allRankings)[number];
+    const groups = new Map<string, {year: number; player: string; rows: RankRow[]}>();
+    for (const rk of allRankings) {
+      if (rk.year > LATEST_FAIR_DRAFT_YEAR) {
+        continue;
+      }
+      if (!rk.rank || rk.rank > 60) {
+        continue;
+      }
+      const norm = LLLRatingEngine.normalizeName(rk.playerName);
+      const key = `${rk.year}::${norm}`;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.rows.push(rk);
+      } else {
+        groups.set(key, {year: rk.year, player: rk.playerName, rows: [rk]});
+      }
+    }
+
+    const MIN_RANKERS = 3;
+    const MIN_DEVIATION = 5;
+    const MIN_RATING_DELTA = 0.8;
+
+    const takes: Take[] = [];
+    for (const g of groups.values()) {
+      if (g.rows.length < MIN_RANKERS) {
+        continue;
+      }
+      const careerInfo = ratingByName.get(LLLRatingEngine.normalizeName(g.player));
+      if (!careerInfo) {
+        continue;
+      }
+      const allRanks = g.rows.map((r) => r.rank ?? 0).sort((a, b) => a - b);
+      const consensusRank =
+        allRanks.length % 2 === 1
+          ? allRanks[(allRanks.length - 1) / 2]
+          : (allRanks[allRanks.length / 2 - 1] + allRanks[allRanks.length / 2]) / 2;
+      const consensusExpected = LLLRatingEngine.rankToExpectedRating(Math.round(consensusRank));
+      const careerDelta = careerInfo.rating - consensusExpected;
+      if (Math.abs(careerDelta) < MIN_RATING_DELTA) {
+        continue;
+      }
+
+      for (const rk of g.rows) {
+        const expert = expertById.get(rk.expertId);
+        if (!expert) {
+          continue;
+        }
+        const expertRank = rk.rank ?? 0;
+        if (expertRank === 0) {
+          continue;
+        }
+        const deviation = consensusRank - expertRank; // + = expert higher than consensus
+        if (Math.abs(deviation) < MIN_DEVIATION) {
+          continue;
+        }
+
+        // Sign convention: + deviation = bullish; + careerDelta = player exceeded consensus.
+        // Aligned (both + or both −) ⇒ contrarian and right ⇒ Best.
+        // Misaligned ⇒ contrarian and wrong ⇒ Worst.
+        const alignment = deviation * careerDelta;
+
+        let flavor: Take['flavor'];
+        let headline: string;
+        if (deviation > 0 && careerDelta > 0) {
+          flavor = 'unique-hit';
+          headline = `Saw ${g.player} before consensus — ranked #${expertRank} when consensus had him #${consensusRank.toFixed(0)}`;
+        } else if (deviation < 0 && careerDelta < 0) {
+          flavor = 'unique-fade';
+          headline = `Faded ${g.player} when others didn't — ranked #${expertRank} vs consensus #${consensusRank.toFixed(0)}, player flopped`;
+        } else if (deviation > 0 && careerDelta < 0) {
+          flavor = 'oversold';
+          headline = `Bought the hype on ${g.player} — ranked #${expertRank} (consensus #${consensusRank.toFixed(0)}), player busted`;
+        } else {
+          flavor = 'undersold';
+          headline = `Slept on ${g.player} — ranked #${expertRank} when consensus had him #${consensusRank.toFixed(0)}, player became elite`;
+        }
+
+        takes.push({
+          expertSlug: expert.slug,
+          expertName: expert.name,
+          org: expert.organization,
+          playerName: g.player,
+          year: g.year,
+          predictedRank: expertRank,
+          consensusRank: Number(consensusRank.toFixed(1)),
+          rankerCount: g.rows.length,
+          consensusExpected: Number(consensusExpected.toFixed(2)),
+          actualCareerRating: Number(careerInfo.rating.toFixed(2)),
+          careerDelta: Number(careerDelta.toFixed(2)),
+          contrarianScore: Number(alignment.toFixed(2)),
+          flavor,
+          headline,
+        });
+      }
+    }
+
+    const best = takes.filter((t) => t.contrarianScore > 0).sort((a, b) => b.contrarianScore - a.contrarianScore);
+    const worst = takes.filter((t) => t.contrarianScore < 0).sort((a, b) => a.contrarianScore - b.contrarianScore);
+
+    // De-dupe: at most one take per expert in each list (their best/worst).
+    const dedupe = (list: Take[]) => {
+      const seen = new Set<string>();
+      const out: Take[] = [];
+      for (const t of list) {
+        if (seen.has(t.expertSlug)) {
+          continue;
+        }
+        seen.add(t.expertSlug);
+        out.push(t);
+        if (out.length >= limit) {
+          break;
+        }
+      }
+      return out;
+    };
+
+    return {best: dedupe(best), worst: dedupe(worst)};
   }
 }
 

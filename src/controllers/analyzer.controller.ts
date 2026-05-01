@@ -121,12 +121,13 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
 
   .get('/experts', async (ctx) => {
     const admin = await resolveAdminContext(ctx);
-    const [oracle, scout] = await Promise.all([
+    const [oracle, scout, takes] = await Promise.all([
       ExpertAuditService.getOracleLeaderboard(),
       ExpertAuditService.getScoutLeaderboard(),
+      ExpertAuditService.getBestWorstTakes(10),
     ]);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return expertLeaderboard(oracle, scout, CLERK_KEY, admin);
+    return expertLeaderboard(oracle, scout, takes, CLERK_KEY, admin);
   })
 
   .get('/teams', async (ctx) => {

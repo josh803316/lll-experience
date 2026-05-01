@@ -1,7 +1,7 @@
 import {baseLayout, escapeHtml} from './templates.js';
 import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome, ScoredPick} from '../services/team-scout.js';
 import type {CollegeSuccessRow} from '../services/college-scout.js';
-import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile} from '../services/expert-audit.js';
+import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile, Take} from '../services/expert-audit.js';
 import {teamLogoUrl} from '../services/lll-rating-engine.js';
 import type {PlayerProfileData, SeasonRow} from '../services/draft-scout.js';
 
@@ -600,9 +600,39 @@ function renderScoutMini(rows: ExpertScoutRow[]): string {
   `;
 }
 
+function renderTakeCard(t: Take, isBest: boolean): string {
+  const accent = isBest ? 'border-l-4 border-emerald-500' : 'border-l-4 border-red-500';
+  const labelColor = isBest ? 'text-emerald-700' : 'text-red-700';
+  const flavorLabels: Record<Take['flavor'], string> = {
+    'unique-hit': 'Saw it first',
+    'unique-fade': 'Faded the bust',
+    oversold: 'Bought the hype',
+    undersold: 'Slept on a star',
+  };
+  const ratingDir = t.careerDelta >= 0 ? '+' : '';
+  return `
+    <article class="card-paper rounded-md ${accent} p-4 hover:shadow-lg transition-shadow">
+      <div class="flex items-baseline justify-between gap-2 mb-2">
+        <a href="/analyzer/expert/${encodeURIComponent(t.expertSlug)}"
+           class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(t.expertName)}</a>
+        <span class="text-[10px] font-bold uppercase tracking-[0.2em] ${labelColor}">${flavorLabels[t.flavor]} · ${t.year}</span>
+      </div>
+      <a href="/analyzer/player/${encodeURIComponent(t.playerName)}"
+         class="text-lg font-bold text-black hover:text-accent transition-colors">${escapeHtml(t.playerName)}</a>
+      <div class="mt-2 text-[12px] text-black/70 serif italic leading-snug">${escapeHtml(t.headline)}</div>
+      <div class="mt-3 grid grid-cols-3 gap-2 text-[10px] uppercase tracking-widest text-muted">
+        <div><div class="font-bold text-black/80 mono text-sm">#${t.predictedRank}</div>their rank</div>
+        <div><div class="font-bold text-black/80 mono text-sm">#${t.consensusRank.toFixed(0)}</div>consensus (${t.rankerCount})</div>
+        <div><div class="font-bold text-black/80 mono text-sm">${ratingDir}${t.careerDelta.toFixed(1)}</div>career Δ</div>
+      </div>
+    </article>
+  `;
+}
+
 export function expertLeaderboard(
   oracle: ExpertOracleRow[],
   scout: ExpertScoutRow[],
+  takes: {best: Take[]; worst: Take[]},
   clerkKey?: string,
   extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
@@ -673,6 +703,38 @@ export function expertLeaderboard(
       <p class="text-muted italic mb-10 border-b border-black/10 pb-4 serif text-lg">
         Two scoreboards. Same talent universe.
       </p>
+
+      ${
+        takes.best.length > 0 || takes.worst.length > 0
+          ? `
+      <section class="mb-16">
+        <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">BEST &amp; WORST TAKES</h3>
+          <p class="text-[11px] text-muted italic">Contrarian calls — when an expert diverged from consensus and was right (or very wrong)</p>
+        </div>
+        <p class="text-[11px] text-muted serif italic mb-6 leading-snug">
+          For each player, we compute the median rank across all experts who ranked them. A take counts when an expert's rank diverges
+          ≥5 spots from consensus AND the player's career outcome diverges ≥0.8 rating points from what consensus implied. Best = signs aligned (contrarian + right). Worst = signs disagreed.
+        </p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-emerald-700 mb-3">✓ Best Takes</h4>
+            <div class="space-y-3">
+              ${takes.best.map((t) => renderTakeCard(t, true)).join('') || '<div class="text-[12px] italic text-muted">Not enough consensus data yet.</div>'}
+            </div>
+          </div>
+          <div>
+            <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-red-700 mb-3">✗ Worst Takes</h4>
+            <div class="space-y-3">
+              ${takes.worst.map((t) => renderTakeCard(t, false)).join('') || '<div class="text-[12px] italic text-muted">Not enough consensus data yet.</div>'}
+            </div>
+          </div>
+        </div>
+      </section>
+      `
+          : ''
+      }
 
       <section class="mb-16">
         <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
