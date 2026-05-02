@@ -144,6 +144,8 @@ export interface TeamBreakdown {
   busts: number;
   eliteCount: number;
   eliteNames: string[];
+  bestPicks: Array<{name: string; round: number; year: number; outcome: PickOutcome}>;
+  worstPicks: Array<{name: string; round: number; year: number; outcome: PickOutcome}>;
   topPick?: {name: string; round: number; year: number; outcome: PickOutcome};
   worstPick?: {name: string; round: number; year: number; outcome: PickOutcome};
   windowStart: number;
@@ -477,10 +479,7 @@ export class TeamScoutService {
     const myPicks = allPicks.filter((p) => canonicalTeam(p.teamName)?.abbr === targetKey);
 
     const yearMap = new Map<number, BreakdownPick[]>();
-    let topPick: TeamBreakdown['topPick'];
-    let worstPick: TeamBreakdown['worstPick'];
-    let bestDelta = -Infinity;
-    let worstDelta = Infinity;
+    const ratedRows: Array<{name: string; round: number; year: number; outcome: PickOutcome; delta: number}> = [];
     let eliteCount = 0;
     const eliteNameSet = new Set<string>();
 
@@ -513,14 +512,7 @@ export class TeamScoutService {
       };
 
       if (delta !== null) {
-        if (delta > bestDelta) {
-          bestDelta = delta;
-          topPick = {name: p.playerName, round: p.round, year: p.year, outcome};
-        }
-        if (delta < worstDelta) {
-          worstDelta = delta;
-          worstPick = {name: p.playerName, round: p.round, year: p.year, outcome};
-        }
+        ratedRows.push({name: p.playerName, round: p.round, year: p.year, outcome, delta});
       }
 
       const yearList = yearMap.get(p.year) ?? [];
@@ -545,6 +537,15 @@ export class TeamScoutService {
       })
       .sort((a, b) => b.year - a.year);
 
+    const bestPicks = [...ratedRows]
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 5)
+      .map(({delta: _delta, ...rest}) => rest);
+    const worstPicks = [...ratedRows]
+      .sort((a, b) => a.delta - b.delta)
+      .slice(0, 5)
+      .map(({delta: _delta, ...rest}) => rest);
+
     return {
       teamKey: row.teamKey,
       team: row.team,
@@ -556,8 +557,10 @@ export class TeamScoutService {
       busts: row.busts,
       eliteCount,
       eliteNames: Array.from(eliteNameSet).sort((a, b) => a.localeCompare(b)),
-      topPick,
-      worstPick,
+      bestPicks,
+      worstPicks,
+      topPick: bestPicks[0],
+      worstPick: worstPicks[0],
       windowStart: startYear,
       windowEnd: endYear,
       years,

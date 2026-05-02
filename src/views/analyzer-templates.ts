@@ -2059,20 +2059,30 @@ export function teamBreakdownModal(
       ? renderTeamDebugPanel(b, extras.debugPicks, extras.seasonHistories)
       : '';
   const yearCards = b.years.map(renderBreakdownYear).join('');
-  const topPick = b.topPick
-    ? `<div class="text-[10px]">
-        <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pick</div>
-        <a href="/analyzer/player/${encodeURIComponent(b.topPick.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(b.topPick.name)}</a>
-        <span class="text-muted">· R${b.topPick.round} ${b.topPick.year} · ${b.topPick.outcome}</span>
-      </div>`
-    : '';
-  const worstPick = b.worstPick
-    ? `<div class="text-[10px]">
-        <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Worst Pick</div>
-        <a href="/analyzer/player/${encodeURIComponent(b.worstPick.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(b.worstPick.name)}</a>
-        <span class="text-muted">· R${b.worstPick.round} ${b.worstPick.year} · ${b.worstPick.outcome}</span>
-      </div>`
-    : '';
+  const renderPickList = (
+    title: string,
+    picks: Array<{name: string; round: number; year: number; outcome: string}>,
+    toneClass: string,
+  ): string =>
+    picks.length === 0
+      ? ''
+      : `<div class="text-[10px]">
+          <div class="font-bold uppercase tracking-widest mb-1 ${toneClass}">${title}</div>
+          <div class="space-y-0.5">
+            ${picks
+              .map(
+                (p) => `
+              <div>
+                <a href="/analyzer/player/${encodeURIComponent(p.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(p.name)}</a>
+                <span class="text-muted">· R${p.round} ${p.year} · ${escapeHtml(p.outcome)}</span>
+              </div>
+            `,
+              )
+              .join('')}
+          </div>
+        </div>`;
+  const bestPicks = renderPickList('Best Picks (Top 5)', b.bestPicks, 'text-emerald-700');
+  const worstPicks = renderPickList('Worst Picks (Bottom 5)', b.worstPicks, 'text-rose-700');
 
   return `
     <div class="fixed inset-0 z-[200] flex items-stretch justify-center p-4 md:p-10"
@@ -2109,7 +2119,7 @@ export function teamBreakdownModal(
               <span class="font-bold text-amber-700">orange</span> for mixed classes, and
               <span class="font-bold text-rose-700">red</span> when a class produced busts without a hit.
             </p>
-            ${topPick || worstPick ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">${topPick}${worstPick}</div>` : ''}
+            ${bestPicks || worstPicks ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">${bestPicks}${worstPicks}</div>` : ''}
           </header>
 
           <div class="space-y-4">
