@@ -11,7 +11,12 @@ import {
   type StatModelId,
 } from '../config/analyzer-stat-models.js';
 import type {TeamYearShrinkageResult} from '../services/team-scout.js';
-import {ANALYZER_SINGLE_SEASON_MIN_YEAR, buildDescendingSeasonYears} from '../services/team-scout.js';
+import {
+  ANALYZER_SINGLE_SEASON_MIN_YEAR,
+  buildDescendingSeasonYears,
+  pickLensMetric,
+  pickStatLensScore,
+} from '../services/team-scout.js';
 import {teamLogoUrl} from '../services/lll-rating-engine.js';
 import type {PlayerProfileData, SeasonRow} from '../services/draft-scout.js';
 
@@ -225,6 +230,32 @@ const TOOLTIPS = {
     'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
 } as const;
 
+function franchiseDeltaBarLabel(statModel: StatModelId): string {
+  switch (statModel) {
+    case 'shrinkage':
+      return 'Shrunk Δ';
+    case 'premium':
+      return 'Cap-weighted Δ';
+    case 'slot_value':
+      return 'Slot-weighted Δ';
+    default:
+      return 'League Position';
+  }
+}
+
+function franchiseTableDeltaHeader(statModel: StatModelId): string {
+  switch (statModel) {
+    case 'shrinkage':
+      return 'Shrunk avg Δ';
+    case 'premium':
+      return 'Cap-weighted Δ';
+    case 'slot_value':
+      return 'Slot-weighted Δ';
+    default:
+      return tooltip('Avg Δ', TOOLTIPS.lllDelta);
+  }
+}
+
 /** Black/white popover body (matches [?] `.tip-body`) — lists elite picks or empty state. */
 function renderElitePlayersTipBody(names: string[]): string {
   if (names.length === 0) {
@@ -278,6 +309,14 @@ function renderAdminLensMethodologyDialog(): string {
           <p class="text-black/85">
             Each pick gets weight <span class="font-mono">w = max(0.5, 8 − round)</span> for rounds 1–7 (early picks weigh more). Team score = <span class="font-mono">Σ(Δ·w) / Σ(w)</span>.
             Movers and &ldquo;sort by Δ&rdquo; on All Players use <span class="font-mono">Δ·w</span> when this lens is active; the Δ column still shows raw LLL delta.
+          </p>
+        </section>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Slot-weighted</h3>
+          <p class="text-black/85">
+            Same averaging pattern as Capital-weighted, but <span class="font-mono">w</span> comes from a Jimmy Johnson–style trade chart (round × slot within round, 32 picks per round).
+            Overall pick maps to slot; missing or odd slots fall back to the capital-weight curve. Franchise Index, Movers, and All Players Δ-sort use <span class="font-mono">Δ·w</span>.
           </p>
         </section>
 
@@ -535,8 +574,6 @@ function adminFlags(extras: {isAdmin?: boolean; debug?: boolean}): {isAdmin: boo
 }
 
 export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string): string {
-  const movers = renderMovers(snapshot.topMovers, snapshot.bustMovers);
-
   const isCareer = snapshot.mode === 'career';
   const selectedSeason = snapshot.selectedSeason ?? snapshot.seasonYearMax;
   const selectedWindow = snapshot.window ?? 6;
@@ -548,6 +585,8 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
     model: snapshot.statModel,
     debug: snapshot.debug,
   });
+
+  const movers = renderMovers(snapshot.topMovers, snapshot.bustMovers, fullQs);
 
   const modeStrip = renderViewControls({
     mode: snapshot.mode,
@@ -654,9 +693,10 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
   return analyzerLayout(content, 'Dashboard — LLL Draft Analyzer', clerkKey);
 }
 
-export function renderMovers(hits: IndexMover[], busts: IndexMover[]): string {
+export function renderMovers(hits: IndexMover[], busts: IndexMover[], analyzerQs = ''): string {
+  const pq = analyzerQs ? `?${analyzerQs}` : '';
   const renderRow = (m: IndexMover, isBust = false) => `
-    <a href="/analyzer/player/${encodeURIComponent(m.name)}"
+    <a href="/analyzer/player/${encodeURIComponent(m.name)}${pq}"
        class="flex justify-between items-center py-2.5 border-b border-black/5 group hover:bg-black/[0.02] transition-colors px-2 -mx-2">
       <div class="flex items-center gap-3 min-w-0">
         ${teamLogo(m.teamKey, 'w-7 h-7')}
@@ -818,9 +858,9 @@ function renderScoutWide(rows: ExpertScoutRow[]): string {
 /** Right column on dashboard — switches expert mini-boards by statistical lens. */
 function renderDashboardExpertPanel(snapshot: DashboardSnapshot): string {
   const lensNote =
-    snapshot.statModel === 'shrinkage' || snapshot.statModel === 'premium'
+    snapshot.statModel === 'shrinkage' || snapshot.statModel === 'premium' || snapshot.statModel === 'slot_value'
       ? `<p class="text-[9px] text-amber-900 bg-amber-50 border border-amber-200/80 rounded-md p-2.5 mb-4 leading-snug">
-          Active lens applies to <strong>Franchise Index</strong> &amp; <strong>Movers</strong> (left column). Expert boards below stay full-fidelity so you can compare mock vs talent vs pairwise.
+          Active lens applies to <strong>Franchise Index</strong>, <strong>Movers</strong>, <strong>College Index</strong>, team modals, and player links — same window everywhere. Expert boards below stay full-fidelity so you can compare mock vs talent vs pairwise.
         </p>`
       : '';
 
@@ -899,7 +939,7 @@ function renderDashboardExpertPanel(snapshot: DashboardSnapshot): string {
             Contract bonus only applies in Career view — Single-Season view grades pure production.
           </p>
           <p class="text-[10px] opacity-90 relative z-10 font-serif italic leading-relaxed text-white mt-3 border-t border-white/20 pt-3">
-            Use <strong>Statistical lens</strong> for shrinkage, capital-weighted picks, pairwise order, or blended expert rank — same data, different emphasis.
+            Use <strong>Statistical lens</strong> for shrinkage, capital- or slot-weighted picks, pairwise order, or blended expert rank — same data, different emphasis.
           </p>
         </div>`;
   }
@@ -1403,9 +1443,7 @@ export function teamLeaderboard(
         </div>
         <div>
           <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-            <span>${
-              statModel === 'shrinkage' ? 'Shrunk Δ' : statModel === 'premium' ? 'Cap-weighted Δ' : 'League Position'
-            }</span>
+            <span>${franchiseDeltaBarLabel(statModel)}</span>
             <span class="text-accent font-bold mono">${tooltip('Δ', TOOLTIPS.lllDelta)} ${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</span>
           </div>
           <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
@@ -1417,7 +1455,7 @@ export function teamLeaderboard(
             ? `
           <div class="pt-3 border-t border-black/5 text-[10px]">
             <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pick</div>
-            <a href="/analyzer/player/${encodeURIComponent(t.topPick.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(t.topPick.name)}</a>
+            <a href="/analyzer/player/${encodeURIComponent(t.topPick.name)}?${fullQs}" class="font-bold hover:text-accent transition-colors">${escapeHtml(t.topPick.name)}</a>
             <span class="text-muted">· R${t.topPick.round} ${t.topPick.year} · Δ ${t.topPick.delta.toFixed(2)}</span>
           </div>`
             : ''
@@ -1427,7 +1465,7 @@ export function teamLeaderboard(
             ? `
           <div class="text-[10px]">
             <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Worst Pick</div>
-            <a href="/analyzer/player/${encodeURIComponent(t.worstPick.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(t.worstPick.name)}</a>
+            <a href="/analyzer/player/${encodeURIComponent(t.worstPick.name)}?${fullQs}" class="font-bold hover:text-accent transition-colors">${escapeHtml(t.worstPick.name)}</a>
             <span class="text-muted">· R${t.worstPick.round} ${t.worstPick.year} · Δ ${t.worstPick.delta.toFixed(2)}</span>
           </div>`
             : ''
@@ -1484,12 +1522,7 @@ export function successLeaderboard(
     model: opts.statModel ?? DEFAULT_STAT_MODEL,
     debug: opts.debug,
   });
-  const deltaHeader =
-    opts.statModel === 'shrinkage'
-      ? 'Shrunk avg Δ'
-      : opts.statModel === 'premium'
-        ? 'Cap-weighted Δ'
-        : tooltip('Avg Δ', TOOLTIPS.lllDelta);
+  const deltaHeader = franchiseTableDeltaHeader(opts.statModel ?? DEFAULT_STAT_MODEL);
   const rows = teams
     .map(
       (t, i) => `
@@ -1611,7 +1644,7 @@ export function collegeLeaderboard(
           </div>
           <div>
             <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-              <span>Value Added</span>
+              <span>${franchiseTableDeltaHeader(statModel)}</span>
               <span class="text-accent font-bold mono">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</span>
             </div>
             <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
@@ -1623,7 +1656,7 @@ export function collegeLeaderboard(
               ? `
             <div class="pt-3 border-t border-black/5 text-[10px]">
               <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pro in Window</div>
-              <a href="/analyzer/player/${encodeURIComponent(c.topPro.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(c.topPro.name)}</a>
+              <a href="/analyzer/player/${encodeURIComponent(c.topPro.name)}?${fullQs}" class="font-bold hover:text-accent transition-colors">${escapeHtml(c.topPro.name)}</a>
               <span class="text-muted">· R${c.topPro.round} ${c.topPro.year} · Δ ${c.topPro.delta.toFixed(2)}</span>
             </div>
           `
@@ -1650,9 +1683,8 @@ export function collegeLeaderboard(
         </div>
       </div>
       <p class="text-xs md:text-sm text-muted serif italic mb-4">
-        Which schools consistently out-produce their draft slot? Ranked by avg delta per pick.
-        Only schools with 5+ drafted pros in the 10-year window are included.
-        The statistical lens keeps your URL in sync across tabs; college ranking itself is baseline value-added.
+        Which schools consistently out-produce their draft slot? Ranked by the same lens-averaged Δ per pick as Franchise Index (window controls above).
+        Only schools with 5+ drafted pros in the selected window are included.
       </p>
       ${controls}
 
@@ -1671,9 +1703,21 @@ export function topExpertsMini(experts: ExpertOracleRow[]): string {
 export function playerProfile(
   profile: PlayerProfileData,
   clerkKey?: string,
-  extras: {isAdmin?: boolean; debug?: boolean} = {},
+  extras: {isAdmin?: boolean; debug?: boolean; statModel?: StatModelId} = {},
 ): string {
   const _admin = adminFlags(extras);
+  const statModel = extras.statModel ?? DEFAULT_STAT_MODEL;
+  const lensMetric =
+    profile.round != null
+      ? pickLensMetric(profile.finalGrade, profile.round, profile.pickNumber, statModel)
+      : profile.finalGrade;
+  const showWeightedLensLine =
+    statModel === 'premium' || statModel === 'slot_value'
+      ? `<p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200/80 rounded-md px-3 py-2 mb-6 leading-snug">
+          Active lens · weighted pick contribution <span class="font-mono font-bold">${lensMetric > 0 ? '+' : ''}${lensMetric.toFixed(2)}</span>
+          (<span class="font-mono">Δ·w</span>). Headline LLL grade above is still raw Δ vs round expectation.
+        </p>`
+      : '';
   const seasonRows = profile.seasonHistory
     .map((s) => {
       const stats = s.stats ?? {};
@@ -1737,11 +1781,12 @@ export function playerProfile(
         ${profile.round ? ` · R${profile.round}${profile.pickNumber ? ` #${profile.pickNumber}` : ''}` : ''}
         ${profile.contractOutcome ? ` · Contract: ${escapeHtml(profile.contractOutcome)}` : ''}
       </p>
-      <p class="text-[11px] mono text-muted mb-6">
+      <p class="text-[11px] mono text-muted mb-2">
         career ${profile.careerRating.toFixed(2)}
         ${profile.contractBonus !== 0 ? ` ${profile.contractBonus > 0 ? '+' : '−'} ${Math.abs(profile.contractBonus).toFixed(2)} contract` : ''}
         = perf ${profile.performanceScore.toFixed(2)} − ${profile.expectedForRound} (R${profile.round ?? '?'}) = Δ ${finalSign}${profile.finalGrade.toFixed(2)}
       </p>
+      ${showWeightedLensLine}
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div class="bg-black/5 p-4 rounded-lg flex items-center justify-between">
@@ -1998,7 +2043,7 @@ const OUTCOME_STYLE: Record<PickOutcome, string> = {
   PENDING: 'bg-black/10 text-black/60',
 };
 
-function renderBreakdownYear(y: BreakdownYear): string {
+function renderBreakdownYear(y: BreakdownYear, playerQs = ''): string {
   const style = COLOR_STYLE[y.color];
   const summaryBits =
     [
@@ -2009,10 +2054,11 @@ function renderBreakdownYear(y: BreakdownYear): string {
       .filter(Boolean)
       .join(' · ') || 'No notable signal';
 
+  const pq = playerQs ? `?${playerQs}` : '';
   const pickRows = y.picks
     .map(
       (p) => `
-      <a href="/analyzer/player/${encodeURIComponent(p.name)}"
+      <a href="/analyzer/player/${encodeURIComponent(p.name)}${pq}"
          class="flex items-center justify-between gap-3 py-2 border-b border-black/5 last:border-b-0 hover:bg-black/[0.03] -mx-2 px-2 rounded transition-colors group">
         <div class="min-w-0">
           <div class="font-bold text-sm text-black truncate group-hover:text-accent transition-colors">${escapeHtml(p.name)}</div>
@@ -2052,13 +2098,17 @@ export function teamBreakdownModal(
     debug?: boolean;
     debugPicks?: ScoredPick[];
     seasonHistories?: Map<string, SeasonRow[]>;
+    statModel?: StatModelId;
+    /** Preserve lens/window on links to player profiles. */
+    playerQs?: string;
   } = {},
 ): string {
   const debugPanel =
     extras.isAdmin && extras.debugPicks && extras.debugPicks.length > 0
-      ? renderTeamDebugPanel(b, extras.debugPicks, extras.seasonHistories)
+      ? renderTeamDebugPanel(b, extras.debugPicks, extras.seasonHistories, extras.statModel ?? DEFAULT_STAT_MODEL)
       : '';
-  const yearCards = b.years.map(renderBreakdownYear).join('');
+  const playerQs = extras.playerQs ?? '';
+  const yearCards = b.years.map((y) => renderBreakdownYear(y, playerQs)).join('');
   const renderPickList = (
     title: string,
     picks: Array<{name: string; round: number; year: number; outcome: string}>,
@@ -2073,7 +2123,7 @@ export function teamBreakdownModal(
               .map(
                 (p) => `
               <div>
-                <a href="/analyzer/player/${encodeURIComponent(p.name)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(p.name)}</a>
+                <a href="/analyzer/player/${encodeURIComponent(p.name)}${playerQs ? `?${playerQs}` : ''}" class="font-bold hover:text-accent transition-colors">${escapeHtml(p.name)}</a>
                 <span class="text-muted">· R${p.round} ${p.year} · ${escapeHtml(p.outcome)}</span>
               </div>
             `,
@@ -2142,11 +2192,12 @@ export function teamBreakdownModal(
 function renderTeamDebugPanel(
   b: TeamBreakdown,
   picks: ScoredPick[],
-  seasonHistories?: Map<string, SeasonRow[]>,
+  seasonHistories: Map<string, SeasonRow[]> | undefined,
+  statModel: StatModelId,
 ): string {
   const expectedByRound: Record<number, number> = {1: 7.5, 2: 6.0, 3: 5.0, 4: 4.0, 5: 3.0, 6: 2.0, 7: 1.0};
   const ratedAvg = picks.length > 0 ? Number((picks.reduce((s, p) => s + p.delta, 0) / picks.length).toFixed(3)) : 0;
-  const sortedByDelta = [...picks].sort((a, b) => b.delta - a.delta);
+  const sortedByDelta = [...picks].sort((a, b) => pickStatLensScore(b, statModel) - pickStatLensScore(a, statModel));
 
   const rows = sortedByDelta
     .map((p) => {
@@ -2544,12 +2595,23 @@ export function playersGrid(
     model: statModel,
     debug: snapshot.debug,
   });
-  const premiumNote =
+  const lensSortNote =
     statModel === 'premium'
       ? `<p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
           Sorting by <strong>capital-weighted Δ</strong> (early-round picks weigh more). The Δ column still shows raw LLL delta.
         </p>`
-      : '';
+      : statModel === 'slot_value'
+        ? `<p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+          Sorting by <strong>slot-weighted Δ</strong> (trade-chart weights by draft slot). The Δ column still shows raw LLL delta.
+        </p>`
+        : '';
+  const profileQs = buildAnalyzerQueryString({
+    mode: opts.mode,
+    season: opts.selectedSeason,
+    window: opts.window,
+    model: statModel,
+  });
+  const profileQ = profileQs ? `?${profileQs}` : '';
   const filterPill = (key: 'all' | 'hits' | 'busts', label: string) => {
     const qs = buildPlayersQs(opts, {filter: key, page: 1});
     const active = opts.filter === key;
@@ -2567,7 +2629,7 @@ export function playersGrid(
       (p) => `
     <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
       <td class="py-3 pl-4 pr-2">
-        <a href="/analyzer/player/${encodeURIComponent(p.name)}" class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(p.name)}</a>
+        <a href="/analyzer/player/${encodeURIComponent(p.name)}${profileQ}" class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(p.name)}</a>
       </td>
       <td class="py-3 px-2">
         <div class="flex items-center gap-2">
@@ -2678,7 +2740,7 @@ export function playersGrid(
         Click any column header to sort.
       </p>
       ${controls}
-      ${premiumNote}
+      ${lensSortNote}
 
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <div class="flex items-center bg-black/[0.05] rounded-md p-1">

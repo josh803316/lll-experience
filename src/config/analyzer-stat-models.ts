@@ -3,7 +3,16 @@
  * Each model stresses a different algorithmic story (baseline LLL, shrinkage, pairwise order, etc.).
  */
 
-export const STAT_MODEL_IDS = ['baseline', 'shrinkage', 'premium', 'oracle', 'scout', 'pairwise', 'blend'] as const;
+export const STAT_MODEL_IDS = [
+  'baseline',
+  'shrinkage',
+  'premium',
+  'slot_value',
+  'oracle',
+  'scout',
+  'pairwise',
+  'blend',
+] as const;
 
 export type StatModelId = (typeof STAT_MODEL_IDS)[number];
 
@@ -35,6 +44,13 @@ export const STAT_MODELS: StatModelMeta[] = [
     label: 'Capital-weighted',
     shortLabel: 'Cap',
     description: 'Early-round picks weigh more (round 1 ≈ 7× late-day-3). Highlights premium-slot outcomes.',
+  },
+  {
+    id: 'slot_value',
+    label: 'Slot-weighted',
+    shortLabel: 'Slot',
+    description:
+      'Trade-chart weights by round × pick slot (Jimmy Johnson–style). Same lens for Franchise Index, Movers, and Δ sort.',
   },
   {
     id: 'oracle',

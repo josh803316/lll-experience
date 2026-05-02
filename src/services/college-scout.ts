@@ -1,10 +1,16 @@
 import {getDB} from '../db/index.js';
 import {officialDraftResults} from '../db/schema.js';
 import {gte, lte, and} from 'drizzle-orm';
+import type {StatModelId} from '../config/analyzer-stat-models.js';
+import {DEFAULT_STAT_MODEL} from '../config/analyzer-stat-models.js';
+import {
+  pickCapitalWeight,
+  pickLensMetric,
+  pickSlotTradeWeight,
+  resolveScoutYearRange,
+  type ScoutMode,
+} from './team-scout.js';
 import {LLLRatingEngine, PlayerPerformanceRegistry} from './lll-rating-engine.js';
-
-const LATEST_FAIR_DRAFT_YEAR = 2023;
-const DEFAULT_WINDOW = 10; // Colleges need a larger window for significant sample sizes
 
 export interface CollegeSuccessRow {
   college: string;
@@ -13,28 +19,28 @@ export interface CollegeSuccessRow {
   busts: number;
   hitRate: number;
   avgDelta: number;
-  value: number; // 0-100 score for UI
+  value: number;
   topPro?: {name: string; rating: number; delta: number; round: number; year: number};
 }
 
 export interface CollegeScoutOptions {
+  mode?: ScoutMode;
+  season?: number;
   window?: number;
-  endYear?: number;
+  statModel?: StatModelId;
 }
 
 export class CollegeScoutService {
   /**
-   * Aggregate college performance by comparing their drafted players'
-   * actual NFL performance against their draft slot expectation.
+   * Aggregate college performance — same year window and statistical lens as Franchise Index.
    */
   static async getCollegeSuccessLeaderboard(opts: CollegeScoutOptions = {}): Promise<CollegeSuccessRow[]> {
-    const window = opts.window ?? DEFAULT_WINDOW;
-    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
-    const startYear = endYear - window + 1;
+    const {startYear, endYear} = resolveScoutYearRange(opts);
+    const useContractBonus = (opts.mode ?? 'career') === 'career';
+    const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
 
     const db = getDB();
 
-    // 1. Use the centralized registry (eliminates redundant DB queries and calculations)
     const [ratingMap, picks] = await Promise.all([
       PlayerPerformanceRegistry.getCareerRatingMap(),
       db
@@ -43,7 +49,7 @@ export class CollegeScoutService {
         .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
 
-    // 2. Aggregate by College
+    const allPickDeltas: number[] = [];
 
     const collegeAgg: Record<
       string,
@@ -52,7 +58,11 @@ export class CollegeScoutService {
         hits: number;
         busts: number;
         deltaSum: number;
-        bestDelta: number;
+        premiumWeighted: number;
+        premiumW: number;
+        slotWeighted: number;
+        slotW: number;
+        bestLens: number;
         bestPick?: CollegeSuccessRow['topPro'];
       }
     > = {};
@@ -68,8 +78,12 @@ export class CollegeScoutService {
         continue;
       }
 
-      const perf = LLLRatingEngine.applyContractBonus(rating, p.contractOutcome);
+      const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
       const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+      allPickDeltas.push(delta);
+
+      const cw = pickCapitalWeight(p.round);
+      const sw = pickSlotTradeWeight(p.round, p.pickNumber);
 
       if (!collegeAgg[college]) {
         collegeAgg[college] = {
@@ -77,13 +91,21 @@ export class CollegeScoutService {
           hits: 0,
           busts: 0,
           deltaSum: 0,
-          bestDelta: -Infinity,
+          premiumWeighted: 0,
+          premiumW: 0,
+          slotWeighted: 0,
+          slotW: 0,
+          bestLens: -Infinity,
         };
       }
 
       const agg = collegeAgg[college];
       agg.totalPicks++;
       agg.deltaSum += delta;
+      agg.premiumWeighted += delta * cw;
+      agg.premiumW += cw;
+      agg.slotWeighted += delta * sw;
+      agg.slotW += sw;
       if (delta > 0.5) {
         agg.hits++;
       }
@@ -91,17 +113,32 @@ export class CollegeScoutService {
         agg.busts++;
       }
 
-      if (delta > agg.bestDelta) {
-        agg.bestDelta = delta;
+      const lm = pickLensMetric(delta, p.round, p.pickNumber, statModel);
+      if (lm > agg.bestLens) {
+        agg.bestLens = lm;
         agg.bestPick = {name: p.playerName, rating, delta, round: p.round, year: p.year};
       }
     }
 
-    // 4. Finalize and Filter (only colleges with enough picks to be meaningful)
+    const globalMean = allPickDeltas.length > 0 ? allPickDeltas.reduce((s, d) => s + d, 0) / allPickDeltas.length : 0;
+    const shrinkK = 4;
+
     const result = Object.entries(collegeAgg)
-      .filter(([_, a]) => a.totalPicks >= 5)
+      .filter(([, a]) => a.totalPicks >= 5)
       .map(([college, a]) => {
-        const avgDelta = Number((a.deltaSum / a.totalPicks).toFixed(2));
+        const rawAvg = a.deltaSum / a.totalPicks;
+        const premiumAvg = a.premiumW > 0 ? a.premiumWeighted / a.premiumW : rawAvg;
+        const slotAvg = a.slotW > 0 ? a.slotWeighted / a.slotW : rawAvg;
+        const shrunkAvg =
+          (a.totalPicks / (a.totalPicks + shrinkK)) * rawAvg + (shrinkK / (a.totalPicks + shrinkK)) * globalMean;
+        let lensAvg = rawAvg;
+        if (statModel === 'shrinkage') {
+          lensAvg = shrunkAvg;
+        } else if (statModel === 'premium') {
+          lensAvg = premiumAvg;
+        } else if (statModel === 'slot_value') {
+          lensAvg = slotAvg;
+        }
         const hitRate = Math.round((a.hits / a.totalPicks) * 100);
         return {
           college,
@@ -109,7 +146,7 @@ export class CollegeScoutService {
           hits: a.hits,
           busts: a.busts,
           hitRate,
-          avgDelta,
+          avgDelta: Number(lensAvg.toFixed(2)),
           topPro: a.bestPick,
         };
       });

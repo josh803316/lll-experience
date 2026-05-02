@@ -20,12 +20,14 @@ interface Row {
   player_name: string;
   draft_year: number | null;
   draft_round: number | null;
+  draft_pick_number: number | null;
   draft_team: string | null;
   draft_position: string | null;
   contract_team: string | null;
   contract_year_signed: number;
   years_length: number | null;
   value_total: number | null;
+  average_salary: number | null;
   apy: number | null;
   guaranteed: number | null;
   apy_cap_pct: number | null;
@@ -39,12 +41,14 @@ const rows = await sql<Row[]>`
       pc.player_name,
       o.year AS draft_year,
       o.round AS draft_round,
+      o.pick_number AS draft_pick_number,
       o.team_name AS draft_team,
       o.position AS draft_position,
       pc.team_abbr AS contract_team,
       pc.year_signed AS contract_year_signed,
       pc.years_length,
       pc.value_total,
+      pc.apy AS average_salary,
       pc.apy,
       pc.guaranteed,
       pc.apy_cap_pct,
@@ -92,9 +96,9 @@ const rows = await sql<Row[]>`
     WHERE rn = 1
   )
   SELECT
-    player_name, draft_year, draft_round, draft_team, draft_position,
+    player_name, draft_year, draft_round, draft_pick_number, draft_team, draft_position,
     contract_team, contract_year_signed, years_length,
-    value_total, apy, guaranteed, apy_cap_pct,
+    value_total, average_salary, apy, guaranteed, apy_cap_pct,
     contract_outcome_bucket, source
   FROM sampled
   WHERE pos_rn <= 4
@@ -105,12 +109,14 @@ const HEADERS = [
   'player_name',
   'draft_year',
   'draft_round',
+  'draft_pick_number',
   'draft_team',
   'draft_position',
   'contract_team',
   'contract_year_signed',
   'years_length',
   'value_total',
+  'average_salary',
   'apy',
   'guaranteed',
   'apy_cap_pct',
@@ -136,12 +142,14 @@ for (const r of rows) {
       r.player_name,
       r.draft_year,
       r.draft_round,
+      r.draft_pick_number,
       r.draft_team,
       r.draft_position,
       r.contract_team,
       r.contract_year_signed,
       r.years_length,
       r.value_total,
+      r.average_salary,
       r.apy,
       r.guaranteed,
       r.apy_cap_pct !== null ? Number(r.apy_cap_pct).toFixed(4) : '',

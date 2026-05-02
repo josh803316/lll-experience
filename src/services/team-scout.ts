@@ -10,6 +10,7 @@ import {
 } from './lll-rating-engine.js';
 import type {StatModelId} from '../config/analyzer-stat-models.js';
 import {DEFAULT_STAT_MODEL} from '../config/analyzer-stat-models.js';
+import {DRAFT_SLOT_TRADE_VALUES} from '../config/draft-slot-trade-values.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
 
@@ -20,6 +21,49 @@ export const ANALYZER_SINGLE_SEASON_MIN_YEAR = 2015;
 export function pickCapitalWeight(round: number): number {
   const r = Math.min(Math.max(round, 1), 7);
   return Math.max(0.5, 8 - r);
+}
+
+/**
+ * Trade-chart weight for the actual draft slot (overall pick → slot within round).
+ * Falls back to {@link pickCapitalWeight} when pick number is missing or out of range.
+ */
+export function pickSlotTradeWeight(round: number, overallPick: number | null): number {
+  const r = Math.min(Math.max(Math.floor(round), 1), 7);
+  if (overallPick == null || !Number.isFinite(overallPick)) {
+    return pickCapitalWeight(round);
+  }
+  const pn = Math.floor(overallPick);
+  const slot = Math.min(Math.max(pn - (r - 1) * 32, 1), 32);
+  const row = DRAFT_SLOT_TRADE_VALUES[r - 1];
+  const w = row?.[slot - 1];
+  if (w === undefined || !Number.isFinite(w)) {
+    return pickCapitalWeight(round);
+  }
+  return w;
+}
+
+/**
+ * Scalar used to rank picks under the active lens (Δ for baseline/shrinkage/expert modes; Δ·w for premium/slot).
+ */
+export function pickLensMetric(
+  delta: number,
+  round: number,
+  pickNumber: number | null,
+  statModel: StatModelId | undefined,
+): number {
+  const m = statModel ?? DEFAULT_STAT_MODEL;
+  if (m === 'premium') {
+    return delta * pickCapitalWeight(round);
+  }
+  if (m === 'slot_value') {
+    return delta * pickSlotTradeWeight(round, pickNumber);
+  }
+  return delta;
+}
+
+/** Δ × weight for Franchise Index / Movers / players sort when a weighted lens is selected. */
+export function pickStatLensScore(p: ScoredPick, statModel: StatModelId | undefined): number {
+  return pickLensMetric(p.delta, p.round, p.pickNumber, statModel);
 }
 const DEFAULT_WINDOW = 6;
 
@@ -68,7 +112,7 @@ export interface ScoutOptions {
   statModel?: StatModelId;
 }
 
-function resolveScoutYearRange(opts: ScoutOptions & {draftYear?: number}): {startYear: number; endYear: number} {
+export function resolveScoutYearRange(opts: ScoutOptions & {draftYear?: number}): {startYear: number; endYear: number} {
   if (opts.mode === 'season' && opts.season !== undefined) {
     return {startYear: opts.season, endYear: opts.season};
   }
@@ -239,6 +283,7 @@ export class TeamScoutService {
           playerName: officialDraftResults.playerName,
           teamName: officialDraftResults.teamName,
           round: officialDraftResults.round,
+          pickNumber: officialDraftResults.pickNumber,
           contractOutcome: officialDraftResults.contractOutcome,
           year: officialDraftResults.year,
         })
@@ -261,9 +306,11 @@ export class TeamScoutService {
         deltaSum: number;
         premiumWeighted: number;
         premiumW: number;
-        bestDelta: number;
+        slotWeighted: number;
+        slotW: number;
+        bestLens: number;
         bestPick?: TeamSuccessRow['topPick'];
-        worstDelta: number;
+        worstLens: number;
         worstPick?: TeamSuccessRow['worstPick'];
       }
     > = {};
@@ -285,6 +332,7 @@ export class TeamScoutService {
       allPickDeltas.push(delta);
 
       const cw = pickCapitalWeight(p.round);
+      const sw = pickSlotTradeWeight(p.round, p.pickNumber);
 
       const key = team.abbr;
       if (!teamAgg[key]) {
@@ -299,8 +347,10 @@ export class TeamScoutService {
           deltaSum: 0,
           premiumWeighted: 0,
           premiumW: 0,
-          bestDelta: -Infinity,
-          worstDelta: Infinity,
+          slotWeighted: 0,
+          slotW: 0,
+          bestLens: -Infinity,
+          worstLens: Infinity,
         };
       }
       const agg = teamAgg[key];
@@ -308,6 +358,8 @@ export class TeamScoutService {
       agg.deltaSum += delta;
       agg.premiumWeighted += delta * cw;
       agg.premiumW += cw;
+      agg.slotWeighted += delta * sw;
+      agg.slotW += sw;
       if (delta > 0.5) {
         agg.hits++;
       }
@@ -319,12 +371,13 @@ export class TeamScoutService {
         agg.eliteNameSet.add(p.playerName);
       }
 
-      if (delta > agg.bestDelta) {
-        agg.bestDelta = delta;
+      const lm = pickLensMetric(delta, p.round, p.pickNumber, statModel);
+      if (lm > agg.bestLens) {
+        agg.bestLens = lm;
         agg.bestPick = {name: p.playerName, rating: normalizedRating, delta, round: p.round, year: p.year};
       }
-      if (delta < agg.worstDelta) {
-        agg.worstDelta = delta;
+      if (lm < agg.worstLens) {
+        agg.worstLens = lm;
         agg.worstPick = {name: p.playerName, rating: normalizedRating, delta, round: p.round, year: p.year};
       }
     }
@@ -336,6 +389,7 @@ export class TeamScoutService {
       const rawAvg = a.deltaSum / a.totalPicks;
       const avgDelta = Number(rawAvg.toFixed(2));
       const premiumAvg = a.premiumW > 0 ? Number((a.premiumWeighted / a.premiumW).toFixed(2)) : avgDelta;
+      const slotAvg = a.slotW > 0 ? Number((a.slotWeighted / a.slotW).toFixed(2)) : avgDelta;
       const shrunkAvg = Number(
         (
           (a.totalPicks / (a.totalPicks + shrinkK)) * rawAvg +
@@ -347,6 +401,8 @@ export class TeamScoutService {
         lensDelta = shrunkAvg;
       } else if (statModel === 'premium') {
         lensDelta = premiumAvg;
+      } else if (statModel === 'slot_value') {
+        lensDelta = slotAvg;
       }
       const hitRate = Math.round((a.hits / a.totalPicks) * 100);
       return {abbr, a, avgDelta, premiumAvg, shrunkAvg, lensDelta, hitRate};
@@ -440,7 +496,7 @@ export class TeamScoutService {
     const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
     const scored = await TeamScoutService.getAllScoredPicks(opts);
 
-    const lensScore = (p: ScoredPick) => (statModel === 'premium' ? p.delta * pickCapitalWeight(p.round) : p.delta);
+    const lensScore = (p: ScoredPick) => pickStatLensScore(p, statModel);
 
     const byLensDesc = [...scored].sort((a, b) => lensScore(b) - lensScore(a));
     const byLensAsc = [...scored].sort((a, b) => lensScore(a) - lensScore(b));
@@ -479,7 +535,6 @@ export class TeamScoutService {
     const myPicks = allPicks.filter((p) => canonicalTeam(p.teamName)?.abbr === targetKey);
 
     const yearMap = new Map<number, BreakdownPick[]>();
-    const ratedRows: Array<{name: string; round: number; year: number; outcome: PickOutcome; delta: number}> = [];
     let eliteCount = 0;
     const eliteNameSet = new Set<string>();
 
@@ -491,10 +546,9 @@ export class TeamScoutService {
       const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
 
       let outcome: PickOutcome = 'PENDING';
-      let delta: number | null = null;
       if (rating !== null) {
         const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
-        delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+        const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
 
         if (rating >= 8.0) {
@@ -511,40 +565,68 @@ export class TeamScoutService {
         outcome,
       };
 
-      if (delta !== null) {
-        ratedRows.push({name: p.playerName, round: p.round, year: p.year, outcome, delta});
-      }
-
       const yearList = yearMap.get(p.year) ?? [];
       yearList.push(breakdown);
       yearMap.set(p.year, yearList);
     }
 
+    const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
+    const teamScored = (await TeamScoutService.getAllScoredPicks(opts)).filter((p) => p.teamKey === targetKey);
+    const lensScoreMap = new Map<string, number>();
+    for (const sp of teamScored) {
+      lensScoreMap.set(`${sp.year}::${sp.name}`, pickLensMetric(sp.delta, sp.round, sp.pickNumber, statModel));
+    }
+
     const years: BreakdownYear[] = Array.from(yearMap.entries())
       .map(([year, picks]) => {
-        const hits = picks.filter((p) => p.outcome === 'ELITE HIT' || p.outcome === 'HIT').length;
-        const busts = picks.filter((p) => p.outcome === 'BUST').length;
-        const pendingCount = picks.filter((p) => p.outcome === 'PENDING').length;
+        const sortedPicks = [...picks].sort((a, b) => {
+          const va = lensScoreMap.get(`${year}::${a.name}`) ?? -Infinity;
+          const vb = lensScoreMap.get(`${year}::${b.name}`) ?? -Infinity;
+          if (vb !== va) {
+            return vb - va;
+          }
+          return a.round - b.round;
+        });
+        const hits = sortedPicks.filter((p) => p.outcome === 'ELITE HIT' || p.outcome === 'HIT').length;
+        const busts = sortedPicks.filter((p) => p.outcome === 'BUST').length;
+        const pendingCount = sortedPicks.filter((p) => p.outcome === 'PENDING').length;
         return {
           year,
-          color: colorForYear(picks),
+          color: colorForYear(sortedPicks),
           hits,
           busts,
           pendingCount,
-          picks: picks.sort((a, b) => a.round - b.round),
-          headline: headlineForYear(picks),
+          picks: sortedPicks,
+          headline: headlineForYear(sortedPicks),
         };
       })
       .sort((a, b) => b.year - a.year);
 
-    const bestPicks = [...ratedRows]
-      .sort((a, b) => b.delta - a.delta)
+    const lensCmp = (a: ScoredPick, b: ScoredPick) =>
+      pickLensMetric(b.delta, b.round, b.pickNumber, statModel) -
+      pickLensMetric(a.delta, a.round, a.pickNumber, statModel);
+    const lensCmpWorst = (a: ScoredPick, b: ScoredPick) =>
+      pickLensMetric(a.delta, a.round, a.pickNumber, statModel) -
+      pickLensMetric(b.delta, b.round, b.pickNumber, statModel);
+
+    const bestPicks = [...teamScored]
+      .sort(lensCmp)
       .slice(0, 5)
-      .map(({delta: _delta, ...rest}) => rest);
-    const worstPicks = [...ratedRows]
-      .sort((a, b) => a.delta - b.delta)
+      .map((p) => ({
+        name: p.name,
+        round: p.round,
+        year: p.year,
+        outcome: p.outcome as PickOutcome,
+      }));
+    const worstPicks = [...teamScored]
+      .sort(lensCmpWorst)
       .slice(0, 5)
-      .map(({delta: _delta, ...rest}) => rest);
+      .map((p) => ({
+        name: p.name,
+        round: p.round,
+        year: p.year,
+        outcome: p.outcome as PickOutcome,
+      }));
 
     return {
       teamKey: row.teamKey,

@@ -27,7 +27,7 @@ import {
   TEAM_WINDOW_DEFAULT,
   TEAM_WINDOW_END_DEFAULT,
   getOfficialDraftYearBounds,
-  pickCapitalWeight,
+  pickStatLensScore,
   type ScoutOptions,
   type ScoutMode,
   type ScoredPick,
@@ -35,7 +35,7 @@ import {
 import {getDB} from '../db/index.js';
 import {experts, officialDraftResults} from '../db/schema.js';
 import {sql, gte, lte, and} from 'drizzle-orm';
-import {parseStatModel} from '../config/analyzer-stat-models.js';
+import {buildAnalyzerQueryString, DEFAULT_STAT_MODEL, parseStatModel} from '../config/analyzer-stat-models.js';
 
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
@@ -194,7 +194,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   .get('/colleges', async (ctx) => {
     const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
     const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
-    const data = await CollegeScoutService.getCollegeSuccessLeaderboard();
+    const data = await CollegeScoutService.getCollegeSuccessLeaderboard(opts);
     ctx.set.headers['Content-Type'] = 'text/html';
     return collegeLeaderboard(data, CLERK_KEY, {
       ...admin,
@@ -209,10 +209,14 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   })
 
   .get('/player/:name', async (ctx) => {
-    const admin = await resolveAdminContext(ctx);
+    const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
+    const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
     const data = await DraftScoutService.getPlayerCareerProfile(ctx.params.name);
     ctx.set.headers['Content-Type'] = 'text/html';
-    return playerProfile(data, CLERK_KEY, admin);
+    return playerProfile(data, CLERK_KEY, {
+      ...admin,
+      statModel: opts.statModel ?? DEFAULT_STAT_MODEL,
+    });
   })
 
   .get('/expert/:slug', async (ctx) => {
@@ -245,7 +249,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     });
 
     const statModel = opts.statModel ?? 'baseline';
-    const lensScore = (p: ScoredPick) => (statModel === 'premium' ? p.delta * pickCapitalWeight(p.round) : p.delta);
+    const lensScore = (p: ScoredPick) => pickStatLensScore(p, statModel);
 
     filtered.sort((a, b) => {
       const mul = dir === 'asc' ? 1 : -1;
@@ -355,9 +359,21 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
       scored = all.filter((p) => p.teamKey === breakdown.teamKey);
       seasonHistories = await DraftScoutService.getSeasonHistoriesForPlayers(scored.map((p) => p.name));
     }
+    const playerQs = buildAnalyzerQueryString({
+      mode: opts.mode ?? 'career',
+      season: opts.season,
+      window: opts.window ?? TEAM_WINDOW_DEFAULT,
+      model: opts.statModel ?? DEFAULT_STAT_MODEL,
+    });
     set.headers['Content-Type'] = 'text/html';
     return breakdown
-      ? teamBreakdownModal(breakdown, {...admin, debugPicks: scored, seasonHistories})
+      ? teamBreakdownModal(breakdown, {
+          ...admin,
+          debugPicks: scored,
+          seasonHistories,
+          statModel: opts.statModel ?? DEFAULT_STAT_MODEL,
+          playerQs,
+        })
       : teamBreakdownNotFound(params.teamKey);
   })
 
@@ -366,6 +382,12 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(query as Record<string, string | undefined>), bounds);
     const draftYear = query.year && query.year !== 'all' ? Number(query.year) : undefined;
     const movers = await TeamScoutService.getTopMovers({...opts, draftYear, limit: 10});
+    const playerQs = buildAnalyzerQueryString({
+      mode: opts.mode ?? 'career',
+      season: opts.season,
+      window: opts.window ?? TEAM_WINDOW_DEFAULT,
+      model: opts.statModel ?? DEFAULT_STAT_MODEL,
+    });
     set.headers['Content-Type'] = 'text/html';
-    return renderMovers(movers.topHits, movers.topBusts);
+    return renderMovers(movers.topHits, movers.topBusts, playerQs);
   });
