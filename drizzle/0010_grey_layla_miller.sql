@@ -1,4 +1,4 @@
-CREATE TABLE "player_contracts" (
+CREATE TABLE IF NOT EXISTS "player_contracts" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"player_name" text NOT NULL,
 	"team_abbr" text,

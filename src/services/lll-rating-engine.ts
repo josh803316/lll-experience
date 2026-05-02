@@ -65,6 +65,15 @@ export const CONTRACT_BONUSES: Record<string, number> = {
   CUT_FIRST_2_YEARS: -2.0,
 };
 
+/**
+ * After `normalizeName` base pass, map known spelling variants to the canonical
+ * key used in `player_performance_ratings` / joins (draft feeds sometimes differ
+ * from the career table, e.g. Max vs Maxx).
+ */
+const PLAYER_NAME_CANONICAL_ALIASES: Record<string, string> = {
+  'max crosby': 'maxx crosby',
+};
+
 export class LLLRatingEngine {
   /**
    * Convert a cumulative w_av total to a per-season-equivalent 0–10 rating.
@@ -269,12 +278,13 @@ export class LLLRatingEngine {
     if (!name) {
       return '';
     }
-    return name
+    const n = name
       .toLowerCase()
       .replace(/\bjr\.?\b|\bsr\.?\b|\bii+\b|\biv\b/g, '')
       .replace(/[^\w\s]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
+    return PLAYER_NAME_CANONICAL_ALIASES[n] ?? n;
   }
 }
 

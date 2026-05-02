@@ -1,6 +1,6 @@
 import {getDB} from '../db/index.js';
 import {officialDraftResults} from '../db/schema.js';
-import {gte, lte, and} from 'drizzle-orm';
+import {gte, lte, and, sql} from 'drizzle-orm';
 import {
   LLLRatingEngine,
   canonicalTeam,
@@ -8,12 +8,54 @@ import {
   CONTRACT_BONUSES,
   PlayerPerformanceRegistry,
 } from './lll-rating-engine.js';
+import type {StatModelId} from '../config/analyzer-stat-models.js';
+import {DEFAULT_STAT_MODEL} from '../config/analyzer-stat-models.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
+
+/** Earliest NFL season year offered in Single Season view (raised if DB has no older draft rows). */
+export const ANALYZER_SINGLE_SEASON_MIN_YEAR = 2015;
+
+/** Draft-capital weight: early rounds matter more for the premium lens (round 1 ≈ weight 7). */
+export function pickCapitalWeight(round: number): number {
+  const r = Math.min(Math.max(round, 1), 7);
+  return Math.max(0.5, 8 - r);
+}
 const DEFAULT_WINDOW = 6;
 
 export const TEAM_WINDOW_DEFAULT = DEFAULT_WINDOW;
 export const TEAM_WINDOW_END_DEFAULT = LATEST_FAIR_DRAFT_YEAR;
+
+/**
+ * Min/max draft years in `official_draft_results` for the season dropdown.
+ * `min` is at least `ANALYZER_SINGLE_SEASON_MIN_YEAR` but not lower than the oldest row.
+ */
+export async function getOfficialDraftYearBounds(): Promise<{min: number; max: number}> {
+  const db = getDB();
+  const [row] = await db
+    .select({
+      minY: sql<number | null>`MIN(${officialDraftResults.year})`,
+      maxY: sql<number | null>`MAX(${officialDraftResults.year})`,
+    })
+    .from(officialDraftResults);
+
+  const rawMin = row?.minY ?? ANALYZER_SINGLE_SEASON_MIN_YEAR;
+  const rawMax = row?.maxY ?? LATEST_FAIR_DRAFT_YEAR;
+  const min = Math.max(ANALYZER_SINGLE_SEASON_MIN_YEAR, rawMin);
+  const max = Math.max(min, rawMax);
+  return {min, max};
+}
+
+/** Descending years for `<select>` (newest first). */
+export function buildDescendingSeasonYears(minYear: number, maxYear: number): number[] {
+  const lo = Math.min(minYear, maxYear);
+  const hi = Math.max(minYear, maxYear);
+  const years: number[] = [];
+  for (let y = hi; y >= lo; y--) {
+    years.push(y);
+  }
+  return years;
+}
 
 export type ScoutMode = 'career' | 'season';
 
@@ -22,6 +64,19 @@ export interface ScoutOptions {
   season?: number;
   window?: number;
   endYear?: number;
+  /** Statistical lens for team/mover rankings (Franchise Index). */
+  statModel?: StatModelId;
+}
+
+function resolveScoutYearRange(opts: ScoutOptions & {draftYear?: number}): {startYear: number; endYear: number} {
+  if (opts.mode === 'season' && opts.season !== undefined) {
+    return {startYear: opts.season, endYear: opts.season};
+  }
+  const window = opts.window ?? DEFAULT_WINDOW;
+  const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
+  const startYear = opts.draftYear ?? endYear - window + 1;
+  const stopYear = opts.draftYear ?? endYear;
+  return {startYear, endYear: stopYear};
 }
 
 export interface ScoredPick {
@@ -48,6 +103,8 @@ export interface TeamSuccessRow {
   hits: number;
   busts: number;
   eliteCount: number;
+  /** Unique player names with LLL career rating ≥ 8.0 in this window (for tooltips). */
+  eliteNames: string[];
   hitRate: number;
   avgDelta: number;
   value: number;
@@ -86,11 +143,32 @@ export interface TeamBreakdown {
   hits: number;
   busts: number;
   eliteCount: number;
+  eliteNames: string[];
   topPick?: {name: string; round: number; year: number; outcome: PickOutcome};
   worstPick?: {name: string; round: number; year: number; outcome: PickOutcome};
   windowStart: number;
   windowEnd: number;
   years: BreakdownYear[];
+}
+
+/** Prototype: empirical-Bayes-style shrinkage of per-year average pick delta toward the league mean. */
+export interface TeamYearShrinkageRow {
+  teamKey: string;
+  team: string;
+  year: number;
+  pickCount: number;
+  rawAvgDelta: number;
+  shrunkAvgDelta: number;
+  globalMean: number;
+  /** Prior effective sample size; larger = more pull toward `globalMean`. */
+  shrinkageK: number;
+}
+
+export interface TeamYearShrinkageResult {
+  rows: TeamYearShrinkageRow[];
+  globalMean: number;
+  globalPickCount: number;
+  shrinkageK: number;
 }
 
 function colorForYear(picks: BreakdownPick[]): BreakdownYear['color'] {
@@ -145,10 +223,9 @@ export class TeamScoutService {
    * against per-round expected value.
    */
   static async getTeamSuccessLeaderboard(opts: ScoutOptions = {}): Promise<TeamSuccessRow[]> {
-    const window = opts.window ?? DEFAULT_WINDOW;
-    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
-    const startYear = endYear - window + 1;
+    const {startYear, endYear} = resolveScoutYearRange(opts);
     const useContractBonus = (opts.mode ?? 'career') === 'career';
+    const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
 
     const db = getDB();
 
@@ -167,6 +244,8 @@ export class TeamScoutService {
         .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
 
+    const allPickDeltas: number[] = [];
+
     const teamAgg: Record<
       string,
       {
@@ -176,7 +255,10 @@ export class TeamScoutService {
         hits: number;
         busts: number;
         eliteCount: number;
+        eliteNameSet: Set<string>;
         deltaSum: number;
+        premiumWeighted: number;
+        premiumW: number;
         bestDelta: number;
         bestPick?: TeamSuccessRow['topPick'];
         worstDelta: number;
@@ -198,6 +280,9 @@ export class TeamScoutService {
       const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
       const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
       const normalizedRating = rating;
+      allPickDeltas.push(delta);
+
+      const cw = pickCapitalWeight(p.round);
 
       const key = team.abbr;
       if (!teamAgg[key]) {
@@ -208,7 +293,10 @@ export class TeamScoutService {
           hits: 0,
           busts: 0,
           eliteCount: 0,
+          eliteNameSet: new Set<string>(),
           deltaSum: 0,
+          premiumWeighted: 0,
+          premiumW: 0,
           bestDelta: -Infinity,
           worstDelta: Infinity,
         };
@@ -216,6 +304,8 @@ export class TeamScoutService {
       const agg = teamAgg[key];
       agg.totalPicks++;
       agg.deltaSum += delta;
+      agg.premiumWeighted += delta * cw;
+      agg.premiumW += cw;
       if (delta > 0.5) {
         agg.hits++;
       }
@@ -224,6 +314,7 @@ export class TeamScoutService {
       }
       if (rating >= 8.0) {
         agg.eliteCount++;
+        agg.eliteNameSet.add(p.playerName);
       }
 
       if (delta > agg.bestDelta) {
@@ -236,17 +327,34 @@ export class TeamScoutService {
       }
     }
 
+    const globalMean = allPickDeltas.length > 0 ? allPickDeltas.reduce((s, d) => s + d, 0) / allPickDeltas.length : 0;
+    const shrinkK = 4;
+
     const interim = Object.entries(teamAgg).map(([abbr, a]) => {
-      const avgDelta = Number((a.deltaSum / a.totalPicks).toFixed(2));
+      const rawAvg = a.deltaSum / a.totalPicks;
+      const avgDelta = Number(rawAvg.toFixed(2));
+      const premiumAvg = a.premiumW > 0 ? Number((a.premiumWeighted / a.premiumW).toFixed(2)) : avgDelta;
+      const shrunkAvg = Number(
+        (
+          (a.totalPicks / (a.totalPicks + shrinkK)) * rawAvg +
+          (shrinkK / (a.totalPicks + shrinkK)) * globalMean
+        ).toFixed(2),
+      );
+      let lensDelta = avgDelta;
+      if (statModel === 'shrinkage') {
+        lensDelta = shrunkAvg;
+      } else if (statModel === 'premium') {
+        lensDelta = premiumAvg;
+      }
       const hitRate = Math.round((a.hits / a.totalPicks) * 100);
-      return {abbr, a, avgDelta, hitRate};
+      return {abbr, a, avgDelta, premiumAvg, shrunkAvg, lensDelta, hitRate};
     });
 
-    interim.sort((x, y) => y.avgDelta - x.avgDelta);
+    interim.sort((x, y) => y.lensDelta - x.lensDelta);
 
-    const deltas = interim.map((i) => i.avgDelta);
-    const maxD = Math.max(...deltas);
-    const minD = Math.min(...deltas);
+    const lensDeltas = interim.map((i) => i.lensDelta);
+    const maxD = Math.max(...lensDeltas);
+    const minD = Math.min(...lensDeltas);
     const span = Math.max(0.01, maxD - minD);
 
     return interim.map((i, idx) => ({
@@ -256,9 +364,10 @@ export class TeamScoutService {
       hits: i.a.hits,
       busts: i.a.busts,
       eliteCount: i.a.eliteCount,
+      eliteNames: Array.from(i.a.eliteNameSet).sort((a, b) => a.localeCompare(b)),
       hitRate: i.hitRate,
-      avgDelta: i.avgDelta,
-      value: Math.round(((i.avgDelta - minD) / span) * 100),
+      avgDelta: i.lensDelta,
+      value: Math.round(((i.lensDelta - minD) / span) * 100),
       grade: LLLRatingEngine.rankToLetterGrade(idx + 1, interim.length),
       topPick: i.a.bestPick,
       worstPick: i.a.worstPick,
@@ -271,12 +380,8 @@ export class TeamScoutService {
    * /analyzer/players grid (paginate + sort).
    */
   static async getAllScoredPicks(opts: ScoutOptions & {draftYear?: number} = {}): Promise<ScoredPick[]> {
-    const window = opts.window ?? DEFAULT_WINDOW;
-    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
+    const {startYear, endYear} = resolveScoutYearRange(opts);
     const useContractBonus = (opts.mode ?? 'career') === 'career';
-
-    const startYear = opts.draftYear ?? endYear - window + 1;
-    const stopYear = opts.draftYear ?? endYear;
 
     const db = getDB();
     const [lookupMap, picks] = await Promise.all([
@@ -284,7 +389,7 @@ export class TeamScoutService {
       db
         .select()
         .from(officialDraftResults)
-        .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, stopYear))),
+        .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
 
     const scored: ScoredPick[] = [];
@@ -330,10 +435,17 @@ export class TeamScoutService {
    */
   static async getTopMovers(opts: ScoutOptions & {draftYear?: number; limit?: number} = {}) {
     const limit = opts.limit ?? 10;
+    const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
     const scored = await TeamScoutService.getAllScoredPicks(opts);
+
+    const lensScore = (p: ScoredPick) => (statModel === 'premium' ? p.delta * pickCapitalWeight(p.round) : p.delta);
+
+    const byLensDesc = [...scored].sort((a, b) => lensScore(b) - lensScore(a));
+    const byLensAsc = [...scored].sort((a, b) => lensScore(a) - lensScore(b));
+
     return {
-      topHits: scored.slice(0, limit),
-      topBusts: scored.slice(-limit).reverse(),
+      topHits: byLensDesc.slice(0, limit),
+      topBusts: byLensAsc.slice(0, limit),
     };
   }
 
@@ -341,8 +453,7 @@ export class TeamScoutService {
    * Per-team explainer used by the dashboard modal.
    */
   static async getTeamBreakdown(teamKey: string, opts: ScoutOptions = {}): Promise<TeamBreakdown | null> {
-    const window = opts.window ?? DEFAULT_WINDOW;
-    const endYear = opts.endYear ?? LATEST_FAIR_DRAFT_YEAR;
+    const {startYear, endYear} = resolveScoutYearRange(opts);
     const useContractBonus = (opts.mode ?? 'career') === 'career';
 
     const leaderboard = await TeamScoutService.getTeamSuccessLeaderboard(opts);
@@ -354,7 +465,6 @@ export class TeamScoutService {
     const row = leaderboard[idx];
 
     const db = getDB();
-    const startYear = endYear - window + 1;
 
     const [lookupMap, allPicks] = await Promise.all([
       PlayerPerformanceRegistry.getCareerRatingMap(),
@@ -372,6 +482,7 @@ export class TeamScoutService {
     let bestDelta = -Infinity;
     let worstDelta = Infinity;
     let eliteCount = 0;
+    const eliteNameSet = new Set<string>();
 
     for (const p of myPicks) {
       if (!p.round || !p.playerName || !p.pickNumber) {
@@ -379,17 +490,17 @@ export class TeamScoutService {
       }
 
       const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
-      const futurePick = opts.mode === 'season' && opts.season !== undefined && p.year > opts.season;
 
       let outcome: PickOutcome = 'PENDING';
       let delta: number | null = null;
-      if (rating !== null && !futurePick) {
+      if (rating !== null) {
         const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
         delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
 
         if (rating >= 8.0) {
           eliteCount++;
+          eliteNameSet.add(p.playerName);
         }
       }
 
@@ -444,11 +555,68 @@ export class TeamScoutService {
       hits: row.hits,
       busts: row.busts,
       eliteCount,
+      eliteNames: Array.from(eliteNameSet).sort((a, b) => a.localeCompare(b)),
       topPick,
       worstPick,
       windowStart: startYear,
       windowEnd: endYear,
       years,
+    };
+  }
+
+  /**
+   * Prototype: for each (team, draft year), shrink the average pick delta toward the
+   * window-wide mean of all pick deltas — small-N classes pull toward the league to
+   * reduce noise (James–Stein / partial-pooling intuition).
+   */
+  static async getTeamYearShrinkagePrototype(
+    opts: ScoutOptions & {draftYear?: number} = {},
+    shrinkageK = 4,
+  ): Promise<TeamYearShrinkageResult> {
+    const scored = await TeamScoutService.getAllScoredPicks(opts);
+    if (scored.length === 0) {
+      return {rows: [], globalMean: 0, globalPickCount: 0, shrinkageK};
+    }
+
+    const allDeltas = scored.map((p) => p.delta);
+    const globalMean = allDeltas.reduce((a, b) => a + b, 0) / allDeltas.length;
+
+    const byKey = new Map<string, {teamKey: string; team: string; year: number; deltas: number[]}>();
+    for (const p of scored) {
+      const k = `${p.teamKey}::${p.year}`;
+      const cur = byKey.get(k);
+      if (cur) {
+        cur.deltas.push(p.delta);
+      } else {
+        byKey.set(k, {teamKey: p.teamKey, team: p.team, year: p.year, deltas: [p.delta]});
+      }
+    }
+
+    const k = shrinkageK;
+    const rows: TeamYearShrinkageRow[] = [];
+    for (const g of byKey.values()) {
+      const n = g.deltas.length;
+      const sum = g.deltas.reduce((a, b) => a + b, 0);
+      const rawAvgDelta = Number((sum / n).toFixed(3));
+      const shrunkAvgDelta = Number(((n / (n + k)) * rawAvgDelta + (k / (n + k)) * globalMean).toFixed(3));
+      rows.push({
+        teamKey: g.teamKey,
+        team: g.team,
+        year: g.year,
+        pickCount: n,
+        rawAvgDelta,
+        shrunkAvgDelta,
+        globalMean: Number(globalMean.toFixed(3)),
+        shrinkageK: k,
+      });
+    }
+
+    rows.sort((a, b) => b.shrunkAvgDelta - a.shrunkAvgDelta);
+    return {
+      rows,
+      globalMean: Number(globalMean.toFixed(3)),
+      globalPickCount: allDeltas.length,
+      shrinkageK: k,
     };
   }
 }

@@ -116,7 +116,15 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
-	ALTER TABLE "pff_player_stats" ADD CONSTRAINT "pff_player_stats_player_name_season_category_unique" UNIQUE ("player_name", "season", "category");
-EXCEPTION
-	WHEN duplicate_object THEN null;
+	IF NOT EXISTS (
+		SELECT 1
+		FROM pg_constraint
+		WHERE conname = 'pff_player_stats_player_name_season_category_unique'
+	) AND NOT EXISTS (
+		SELECT 1
+		FROM pg_class
+		WHERE relname = 'pff_player_stats_player_name_season_category_unique'
+	) THEN
+		ALTER TABLE "pff_player_stats" ADD CONSTRAINT "pff_player_stats_player_name_season_category_unique" UNIQUE ("player_name", "season", "category");
+	END IF;
 END $$;

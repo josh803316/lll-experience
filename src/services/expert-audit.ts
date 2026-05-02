@@ -1,9 +1,24 @@
 import {getDB} from '../db/index.js';
 import {experts, expertRankings, officialDraftResults, playerPerformanceRatings} from '../db/schema.js';
-import {eq} from 'drizzle-orm';
-import {LLLRatingEngine} from './lll-rating-engine.js';
+import {eq, lte} from 'drizzle-orm';
+import type {ExpertPairwiseRow} from './expert-pairwise-rank.js';
+import {LLLRatingEngine, PlayerPerformanceRegistry} from './lll-rating-engine.js';
+import {ExpertPairwiseRankService} from './expert-pairwise-rank.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
+
+/** Mean of percentile ranks across Oracle / Scout / Pairwise boards (lower = better). */
+export interface ExpertBlendRow {
+  expertSlug: string;
+  expertName: string;
+  org: string | null;
+  avgRank: number;
+  nComponents: number;
+  oracleRank: number | null;
+  scoutRank: number | null;
+  pairwiseRank: number | null;
+  sampleSize: number;
+}
 
 export interface ExpertOracleRow {
   expertSlug: string;
@@ -52,8 +67,11 @@ export class ExpertAuditService {
     const db = getDB();
 
     const allExperts = await db.select().from(experts);
-    const allRankings = await db.select().from(expertRankings);
-    const allResults = await db.select().from(officialDraftResults);
+    const allRankings = await db.select().from(expertRankings).where(lte(expertRankings.year, LATEST_FAIR_DRAFT_YEAR));
+    const allResults = await db
+      .select()
+      .from(officialDraftResults)
+      .where(lte(officialDraftResults.year, LATEST_FAIR_DRAFT_YEAR));
 
     // Build a (year, normalizedName) -> pickNumber index.
     const resultIndex = new Map<string, number>();
@@ -113,28 +131,29 @@ export class ExpertAuditService {
     }
 
     ranked.sort((a, b) => a.rmse - b.rmse);
-    empty.sort((a, b) => a.expertName.localeCompare(b.expertName));
+    empty.sort((a, b) => String(a.expertName ?? '').localeCompare(String(b.expertName ?? '')));
     return [...ranked, ...empty];
   }
 
   /**
    * Scout Leaderboard — Talent Delta.
    * For each expert, compare the LLL career rating implied by their big-board rank
-   * to the player's actual normalized career rating. RMSE — lower is better.
+   * to the player's actual career rating from PlayerPerformanceRegistry (best-4 seasons
+   * or WAV fallback — same construction as team draft grades). RMSE — lower is better.
    * Only counts players from <= LATEST_FAIR_DRAFT_YEAR with at least 2 NFL seasons.
    */
   static async getScoutLeaderboard(): Promise<ExpertScoutRow[]> {
     const db = getDB();
     const evalYear = new Date().getFullYear();
 
-    const allExperts = await db.select().from(experts);
-    const allRankings = await db.select().from(expertRankings);
-    const allRatings = await db
-      .select()
-      .from(playerPerformanceRatings)
-      .where(eq(playerPerformanceRatings.isCareerRating, true));
+    const [allExperts, allRankings, allRatings, careerMap] = await Promise.all([
+      db.select().from(experts),
+      db.select().from(expertRankings).where(lte(expertRankings.year, LATEST_FAIR_DRAFT_YEAR)),
+      db.select().from(playerPerformanceRatings).where(eq(playerPerformanceRatings.isCareerRating, true)),
+      PlayerPerformanceRegistry.getCareerRatingMap(),
+    ]);
 
-    // (normalizedName) -> career rating record.
+    // Draft year for maturity filter (same names as career rows).
     const ratingByName = new Map<string, (typeof allRatings)[number]>();
     for (const r of allRatings) {
       ratingByName.set(LLLRatingEngine.normalizeName(r.playerName), r);
@@ -153,17 +172,21 @@ export class ExpertAuditService {
         if (!rk.rank) {
           continue;
         }
-        const rating = ratingByName.get(LLLRatingEngine.normalizeName(rk.playerName));
-        if (!rating) {
+        const norm = LLLRatingEngine.normalizeName(rk.playerName);
+        const row = ratingByName.get(norm);
+        if (!row) {
           continue;
         }
-        const yearsSinceDraft = Math.max(1, evalYear - rating.draftYear);
+        const yearsSinceDraft = Math.max(1, evalYear - row.draftYear);
         if (yearsSinceDraft < 2) {
           continue;
         }
 
-        const wav = (rating.metadata as {wav?: number} | null)?.wav ?? 0;
-        const actualRating = LLLRatingEngine.normalizeWavToRating(wav, yearsSinceDraft);
+        const actualRating = careerMap.get(norm);
+        if (actualRating === undefined) {
+          continue;
+        }
+
         const expectedRating = LLLRatingEngine.rankToExpectedRating(rk.rank);
 
         pairs.push({expectedRating, actualRating, year: rk.year});
@@ -195,8 +218,80 @@ export class ExpertAuditService {
     }
 
     ranked.sort((a, b) => a.talentDelta - b.talentDelta);
-    empty.sort((a, b) => a.expertName.localeCompare(b.expertName));
+    empty.sort((a, b) => String(a.expertName ?? '').localeCompare(String(b.expertName ?? '')));
     return [...ranked, ...empty];
+  }
+
+  /**
+   * Blend leaderboard — average rank position across Oracle, Scout, and Pairwise tables
+   * (each expert ranked 1..n among those with data in that slice). Lower avgRank = better.
+   * Pass preloaded leaderboards to avoid re-querying (e.g. dashboard already loaded them).
+   */
+  static blendLeaderboardFrom(
+    oracle: ExpertOracleRow[],
+    scout: ExpertScoutRow[],
+    pairwise: ExpertPairwiseRow[],
+  ): ExpertBlendRow[] {
+    const oracleRanked = oracle.filter((e) => e.sampleSize > 0);
+    const scoutRanked = scout.filter((e) => e.sampleSize > 0);
+    const pairRanked = pairwise.filter((e) => e.pairCount > 0);
+
+    const slugSet = new Set<string>();
+    for (const e of oracleRanked) {
+      slugSet.add(e.expertSlug);
+    }
+    for (const e of scoutRanked) {
+      slugSet.add(e.expertSlug);
+    }
+    for (const e of pairRanked) {
+      slugSet.add(e.expertSlug);
+    }
+
+    const rows: ExpertBlendRow[] = [];
+    for (const slug of slugSet) {
+      const oi = oracleRanked.findIndex((e) => e.expertSlug === slug);
+      const si = scoutRanked.findIndex((e) => e.expertSlug === slug);
+      const pi = pairRanked.findIndex((e) => e.expertSlug === slug);
+
+      const oR = oi >= 0 ? oi + 1 : null;
+      const sR = si >= 0 ? si + 1 : null;
+      const pR = pi >= 0 ? pi + 1 : null;
+      const parts = [oR, sR, pR].filter((x): x is number => x !== null);
+      if (parts.length === 0) {
+        continue;
+      }
+
+      const oEx = oi >= 0 ? oracleRanked[oi] : oracle.find((e) => e.expertSlug === slug);
+      const sEx = si >= 0 ? scoutRanked[si] : scout.find((e) => e.expertSlug === slug);
+      const pEx = pi >= 0 ? pairRanked[pi] : undefined;
+      const name = oEx?.expertName ?? sEx?.expertName ?? pEx?.expertName ?? slug;
+      const org = oEx?.org ?? sEx?.org ?? pEx?.org ?? null;
+      const sampleSize = Math.max(oEx?.sampleSize ?? 0, sEx?.sampleSize ?? 0, pEx?.pairCount ?? 0);
+
+      rows.push({
+        expertSlug: slug,
+        expertName: name,
+        org,
+        avgRank: Number((parts.reduce((a, b) => a + b, 0) / parts.length).toFixed(2)),
+        nComponents: parts.length,
+        oracleRank: oR,
+        scoutRank: sR,
+        pairwiseRank: pR,
+        sampleSize,
+      });
+    }
+
+    rows.sort((a, b) => a.avgRank - b.avgRank);
+    return rows;
+  }
+
+  static async getBlendLeaderboard(): Promise<ExpertBlendRow[]> {
+    const [oracle, scout, pairwise] = await Promise.all([
+      ExpertAuditService.getOracleLeaderboard(),
+      ExpertAuditService.getScoutLeaderboard(),
+      ExpertPairwiseRankService.getPairwiseLeaderboard(),
+    ]);
+    return ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
   }
 
   /**
@@ -218,10 +313,11 @@ export class ExpertAuditService {
     const db = getDB();
     const evalYear = new Date().getFullYear();
 
-    const [allExperts, allRankings, allRatings] = await Promise.all([
+    const [allExperts, allRankings, allRatings, careerMap] = await Promise.all([
       db.select().from(experts),
-      db.select().from(expertRankings),
+      db.select().from(expertRankings).where(lte(expertRankings.year, LATEST_FAIR_DRAFT_YEAR)),
       db.select().from(playerPerformanceRatings).where(eq(playerPerformanceRatings.isCareerRating, true)),
+      PlayerPerformanceRegistry.getCareerRatingMap(),
     ]);
     const expertById = new Map(allExperts.map((e) => [e.id, e]));
 
@@ -231,10 +327,12 @@ export class ExpertAuditService {
       if (ysd < 2) {
         continue;
       }
-      const wav = (r.metadata as {wav?: number} | null)?.wav ?? 0;
-      ratingByName.set(LLLRatingEngine.normalizeName(r.playerName), {
-        rating: LLLRatingEngine.normalizeWavToRating(wav, ysd),
-      });
+      const norm = LLLRatingEngine.normalizeName(r.playerName);
+      const cr = careerMap.get(norm);
+      if (cr === undefined) {
+        continue;
+      }
+      ratingByName.set(norm, {rating: cr});
     }
 
     type RankRow = (typeof allRankings)[number];
@@ -468,12 +566,12 @@ export async function getExpertProfile(slug: string): Promise<ExpertProfile | nu
     return null;
   }
 
-  const myRankings = await db.select().from(expertRankings).where(eq(expertRankings.expertId, expert.id));
-  const allResults = await db.select().from(officialDraftResults);
-  const allRatings = await db
-    .select()
-    .from(playerPerformanceRatings)
-    .where(eq(playerPerformanceRatings.isCareerRating, true));
+  const [myRankings, allResults, allRatings, careerMap] = await Promise.all([
+    db.select().from(expertRankings).where(eq(expertRankings.expertId, expert.id)),
+    db.select().from(officialDraftResults),
+    db.select().from(playerPerformanceRatings).where(eq(playerPerformanceRatings.isCareerRating, true)),
+    PlayerPerformanceRegistry.getCareerRatingMap(),
+  ]);
 
   const resultIndex = new Map<string, {pickNumber: number}>();
   for (const r of allResults) {
@@ -509,8 +607,11 @@ export async function getExpertProfile(slug: string): Promise<ExpertProfile | nu
       continue;
     }
 
-    const wav = (rating.metadata as {wav?: number} | null)?.wav ?? 0;
-    const actualRating = LLLRatingEngine.normalizeWavToRating(wav, yearsSinceDraft);
+    const actualRating = careerMap.get(norm);
+    if (actualRating === undefined) {
+      continue;
+    }
+
     const expectedRating = LLLRatingEngine.rankToExpectedRating(rk.rank);
     const actualPick = resultIndex.get(`${rk.year}::${norm}`)?.pickNumber ?? null;
     const rankAccuracy = actualPick !== null ? Math.abs(rk.rank - actualPick) : -1;

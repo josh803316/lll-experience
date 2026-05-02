@@ -42,6 +42,14 @@ export function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+/** Public URL for an app row — draft UI is mounted at `/draft`, not `/nfl-draft` (redirect-only). */
+export function appPublicHref(slug: string): string {
+  if (slug === 'nfl-draft') {
+    return '/draft';
+  }
+  return `/${encodeURIComponent(slug)}`;
+}
+
 export function baseLayout(content: string, title = 'LLL Experience', clerkPublishableKey?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -159,7 +167,7 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
       // Inject Bearer token into all protected HTMX requests (must be synchronous)
       document.body.addEventListener('htmx:configRequest', function(evt) {
         const path = new URL(evt.detail.path, window.location.origin).pathname;
-        if (path.startsWith('/draft') || path.startsWith('/apps')) {
+        if (path.startsWith('/draft') || path.startsWith('/apps') || path.startsWith('/analyzer')) {
           if (window.__clerkToken) {
             evt.detail.headers['Authorization'] = 'Bearer ' + window.__clerkToken;
           }
@@ -217,7 +225,7 @@ export function appsPage(appList: App[], clerkPublishableKey?: string): string {
   const cards = appList
     .map(
       (app) => `
-    <a href="/${escapeHtml(app.slug)}"
+    <a href="${escapeHtml(appPublicHref(app.slug))}"
        class="block bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-200 p-6 transition-shadow">
       <h2 class="text-xl font-semibold text-gray-900 mb-2">${escapeHtml(app.name)}</h2>
       ${app.description ? `<p class="text-gray-500">${escapeHtml(app.description)}</p>` : ''}

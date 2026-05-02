@@ -8,6 +8,7 @@ import {
   bigint,
   jsonb,
   unique,
+  index,
   doublePrecision,
 } from 'drizzle-orm/pg-core';
 
@@ -82,20 +83,33 @@ export const draftMockState = pgTable('draft_mock_state', {
     .notNull(),
 });
 
-export const officialDraftResults = pgTable('official_draft_results', {
-  id: serial('id').primaryKey(),
-  appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
-    .notNull(),
-  year: integer('year').notNull(),
-  round: integer('round'),
-  pickNumber: integer('pick_number').notNull(),
-  playerName: text('player_name'),
-  teamName: text('team_name'),
-  position: text('position'),
-  college: text('college'),
-  contractOutcome: text('contract_outcome'), // TOP_OF_MARKET, MARKET_OR_ABOVE, etc.
-});
+export const officialDraftResults = pgTable(
+  'official_draft_results',
+  {
+    id: serial('id').primaryKey(),
+    appId: integer('app_id')
+      .references(() => apps.id, {onDelete: 'cascade'})
+      .notNull(),
+    year: integer('year').notNull(),
+    round: integer('round'),
+    pickNumber: integer('pick_number').notNull(),
+    playerName: text('player_name'),
+    teamName: text('team_name'),
+    position: text('position'),
+    college: text('college'),
+    contractOutcome: text('contract_outcome'), // TOP_OF_MARKET, MARKET_OR_ABOVE, etc.
+  },
+  (t) => ({
+    idxOfficialDraftResultsYear: index('idx_official_draft_results_year').on(t.year),
+    idxOfficialDraftResultsAppYearPick: index('idx_official_draft_results_app_year_pick').on(
+      t.appId,
+      t.year,
+      t.pickNumber,
+    ),
+    idxOfficialDraftResultsYearTeam: index('idx_official_draft_results_year_team').on(t.year, t.teamName),
+    idxOfficialDraftResultsPlayer: index('idx_official_draft_results_player').on(t.playerName),
+  }),
+);
 
 /**
  * Cached LLM-generated analysis for a draft pick.
@@ -199,17 +213,25 @@ export const experts = pgTable('experts', {
   bio: text('bio'),
 });
 
-export const expertRankings = pgTable('expert_rankings', {
-  id: serial('id').primaryKey(),
-  expertId: integer('expert_id')
-    .references(() => experts.id, {onDelete: 'cascade'})
-    .notNull(),
-  year: integer('year').notNull(),
-  playerName: text('player_name').notNull(),
-  rank: integer('rank'),
-  grade: text('grade'),
-  commentary: text('commentary'),
-});
+export const expertRankings = pgTable(
+  'expert_rankings',
+  {
+    id: serial('id').primaryKey(),
+    expertId: integer('expert_id')
+      .references(() => experts.id, {onDelete: 'cascade'})
+      .notNull(),
+    year: integer('year').notNull(),
+    playerName: text('player_name').notNull(),
+    rank: integer('rank'),
+    grade: text('grade'),
+    commentary: text('commentary'),
+  },
+  (t) => ({
+    idxExpertRankingsYear: index('idx_expert_rankings_year').on(t.year),
+    idxExpertRankingsExpertYear: index('idx_expert_rankings_expert_year').on(t.expertId, t.year),
+    idxExpertRankingsPlayer: index('idx_expert_rankings_player').on(t.playerName),
+  }),
+);
 
 export const teamDraftAnalysis = pgTable('team_draft_analysis', {
   id: serial('id').primaryKey(),
@@ -232,17 +254,27 @@ export const expertTeamGrades = pgTable('expert_team_grades', {
   commentary: text('commentary'),
 });
 
-export const playerPerformanceRatings = pgTable('player_performance_ratings', {
-  id: serial('id').primaryKey(),
-  playerName: text('player_name').notNull(),
-  draftYear: integer('draft_year').notNull(),
-  evaluationYear: integer('evaluation_year').notNull(), // Year the rating was given
-  rating: doublePrecision('rating').notNull(), // 0-10 scale
-  isCareerRating: boolean('is_career_rating').default(false).notNull(),
-  justification: text('justification'),
-  metadata: jsonb('metadata'), // Stats, snaps, etc.
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const playerPerformanceRatings = pgTable(
+  'player_performance_ratings',
+  {
+    id: serial('id').primaryKey(),
+    playerName: text('player_name').notNull(),
+    draftYear: integer('draft_year').notNull(),
+    evaluationYear: integer('evaluation_year').notNull(), // Year the rating was given
+    rating: doublePrecision('rating').notNull(), // 0-10 scale
+    isCareerRating: boolean('is_career_rating').default(false).notNull(),
+    justification: text('justification'),
+    metadata: jsonb('metadata'), // Stats, snaps, etc.
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    idxPlayerPerformanceCareerPlayer: index('idx_player_performance_career_player').on(t.isCareerRating, t.playerName),
+    idxPlayerPerformancePlayerEvalYear: index('idx_player_performance_player_eval_year').on(
+      t.playerName,
+      t.evaluationYear,
+    ),
+  }),
+);
 
 export const expertAccuracyScores = pgTable('expert_accuracy_scores', {
   id: serial('id').primaryKey(),

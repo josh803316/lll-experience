@@ -22,14 +22,34 @@ import {generatePendingPickWriteups} from './services/pick-writeup-cron.js';
 const PORT = Number(process.env.PORT ?? 3000);
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
+/** Drizzle often wraps the driver error; include `cause` so logs show the real PG reason. */
 const getErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current != null; depth++) {
+    if (current instanceof Error) {
+      if (current.message) {
+        parts.push(current.message);
+      }
+      current = (current as Error & {cause?: unknown}).cause;
+    } else if (typeof current === 'object' && current !== null) {
+      const o = current as {message?: string; code?: string; detail?: string; cause?: unknown};
+      const bit = [o.code, o.message, o.detail].filter(Boolean).join(' — ');
+      if (bit) {
+        parts.push(bit);
+      }
+      const next = o.cause;
+      if (next === undefined) {
+        break;
+      }
+      current = next;
+    } else {
+      parts.push(String(current));
+      break;
+    }
   }
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    return String((error as any).message);
-  }
-  return String(error);
+  const merged = parts.filter(Boolean).join(' | ');
+  return merged || String(error);
 };
 
 const baseApp = new Elysia().use(swagger({path: '/docs'})).use(cors());

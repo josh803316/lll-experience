@@ -1,7 +1,17 @@
 import {baseLayout, escapeHtml} from './templates.js';
 import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome, ScoredPick} from '../services/team-scout.js';
 import type {CollegeSuccessRow} from '../services/college-scout.js';
-import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile, Take} from '../services/expert-audit.js';
+import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile, Take, ExpertBlendRow} from '../services/expert-audit.js';
+import type {ExpertPairwiseRow} from '../services/expert-pairwise-rank.js';
+import {
+  STAT_MODELS,
+  DEFAULT_STAT_MODEL,
+  statModelMeta,
+  buildAnalyzerQueryString,
+  type StatModelId,
+} from '../config/analyzer-stat-models.js';
+import type {TeamYearShrinkageResult} from '../services/team-scout.js';
+import {ANALYZER_SINGLE_SEASON_MIN_YEAR, buildDescendingSeasonYears} from '../services/team-scout.js';
 import {teamLogoUrl} from '../services/lll-rating-engine.js';
 import type {PlayerProfileData, SeasonRow} from '../services/draft-scout.js';
 
@@ -28,8 +38,14 @@ export interface DashboardSnapshot {
   bustMovers: IndexMover[];
   oracleTop: ExpertOracleRow[];
   scoutTop: ExpertScoutRow[];
+  pairwiseTop: ExpertPairwiseRow[];
+  blendTop: ExpertBlendRow[];
+  statModel: StatModelId;
   mode: 'career' | 'season';
   selectedSeason?: number;
+  /** Single Season dropdown bounds (from draft DB + 2015 floor). */
+  seasonYearMin: number;
+  seasonYearMax: number;
   window: number;
   isAdmin?: boolean;
   debug?: boolean;
@@ -102,6 +118,17 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
       }
       .lll-tip:hover > .tip-body,
       .lll-tip:focus-within > .tip-body { opacity: 1; }
+      /* Elite list: same B/W treatment as [?] tooltips, slightly wider for names */
+      .lll-tip > .tip-body.tip-body--elite {
+        min-width: 240px;
+        max-width: min(360px, 92vw);
+        text-align: left;
+      }
+      /* Outer elite row stays :hover while cursor is on nested [?]; hide list so it doesn't stack */
+      .lll-tip.lll-elite-bar:has(.lll-tip:is(:hover, :focus-within)) > .tip-body.tip-body--elite {
+        opacity: 0;
+      }
+      .lll-elite-bar { cursor: help; }
 
       /* Account menu (gear dropdown) */
       .analyzer-account-menu summary { list-style: none; }
@@ -187,7 +214,7 @@ const TOOLTIPS = {
   hitRate:
     'Hit Rate = the share of a team\u2019s picks that beat the expected value for their round (LLL Delta > 0.5). The cleanest way to see who\u2019s consistently winning the draft.',
   elitePlayers:
-    'Elite Players = the number of players drafted by this team who achieved an LLL Career Rating of 8.0 or higher (Top 10 at position). Essential for winning championships.',
+    'Elite Players = draft picks on this team whose raw LLL Career Rating (best-4 seasons) is ≥ 8.0 — not “media elite,” and separate from ELITE HIT (value vs round). Spelling must match our registry; common aliases are merged. A dominant late pick can grade off the charts vs expectation but still sit at 7.x–7.9 on the career scale.',
   collegeHitRate:
     'College Hit Rate = the share of players from this school whose NFL performance beat their draft slot expectation (LLL Delta > 0.5). Higher = the school consistently produces NFL-ready talent.',
   producedLike:
@@ -198,55 +225,182 @@ const TOOLTIPS = {
     'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
 } as const;
 
-/**
- * Shared view controls — Career / Single Season toggle + season picker + window picker.
- * Used on both the dashboard and the /teams page so a window selection on one
- * carries to the other through URL params.
- */
-export function renderViewControls(opts: {mode: 'career' | 'season'; selectedSeason: number; window: number}): string {
-  const isCareer = opts.mode === 'career';
-  const seasonOptions = [2024, 2023, 2022, 2021, 2020, 2019, 2018];
-  const windowOptions = [3, 5, 6, 8, 10];
+/** Black/white popover body (matches [?] `.tip-body`) — lists elite picks or empty state. */
+function renderElitePlayersTipBody(names: string[]): string {
+  if (names.length === 0) {
+    return `<span class="block">No players with LLL career rating ≥ 8.0 in this window. Stars may be outside the selected years or not in our career-rating registry yet.</span>`;
+  }
+  const head =
+    '<div class="text-[10px] font-bold uppercase tracking-[0.15em] text-[#f3ede0]/90 mb-2 not-italic">Elite picks (LLL ≥ 8.0)</div>';
+  const items = names.map((n) => `<li class="text-[#f3ede0] leading-snug">${escapeHtml(n)}</li>`).join('');
+  return `${head}<ul class="list-disc pl-4 m-0 space-y-1 not-italic text-left font-sans">${items}</ul>`;
+}
+
+/** Admin-only modal: how each statistical lens is computed (not rendered for non-admins). */
+function renderAdminLensMethodologyDialog(): string {
   return `
-    <div class="flex flex-wrap items-center gap-3 mb-6">
+    <dialog id="lll-lens-methodology" class="max-w-2xl w-[min(100%,36rem)] rounded-lg border border-black/15 bg-[#f3ede0] p-0 text-black shadow-2xl backdrop:bg-black/50 open:flex open:flex-col">
+      <div class="sticky top-0 flex items-start justify-between gap-3 border-b border-black/10 bg-[#f3ede0] px-5 py-4">
+        <div>
+          <h2 class="text-base font-bold tracking-tight text-black">Statistical lenses — methodology</h2>
+          <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-accent mt-1">Internal · admins only</p>
+        </div>
+        <button type="button"
+          class="shrink-0 flex h-8 w-8 items-center justify-center rounded-md border border-black/20 text-lg leading-none text-black hover:bg-black hover:text-white transition-colors"
+          onclick="document.getElementById('lll-lens-methodology').close()"
+          aria-label="Close">
+          ×
+        </button>
+      </div>
+      <div class="space-y-5 px-5 py-4 text-[12px] leading-relaxed text-black max-h-[min(70vh,520px)] overflow-y-auto">
+        <p class="text-[11px] text-muted serif italic border-l-2 border-accent pl-3">
+          For core team review (e.g. Jeff &amp; Tim). Same data everywhere; each lens re-ranks or re-weights so you can stress-test what feels authentic before shipping a single &ldquo;official&rdquo; story.
+        </p>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Baseline LLL</h3>
+          <p class="text-black/85">
+            Default franchise view: each pick gets LLL Δ = performance score minus Tim&rsquo;s round expected chart; team score = unweighted mean Δ across picks in the window. Expert mini-boards use raw Oracle RMSE and Scout talent Δ RMSE leaderboards.
+          </p>
+        </section>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Shrinkage (EB)</h3>
+          <p class="text-black/85">
+            Empirical-Bayes style pooling: league mean μ is the mean pick Δ across <em>all</em> picks in the window. Each team&rsquo;s displayed average is
+            <span class="font-mono text-[11px]">(n/(n+k))·rawAvg + (k/(n+k))·μ</span> with fixed <span class="font-mono">k = 4</span> prior strength.
+            Small draft classes pull toward the league mean to reduce noise.
+          </p>
+        </section>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Capital-weighted</h3>
+          <p class="text-black/85">
+            Each pick gets weight <span class="font-mono">w = max(0.5, 8 − round)</span> for rounds 1–7 (early picks weigh more). Team score = <span class="font-mono">Σ(Δ·w) / Σ(w)</span>.
+            Movers and &ldquo;sort by Δ&rdquo; on All Players use <span class="font-mono">Δ·w</span> when this lens is active; the Δ column still shows raw LLL delta.
+          </p>
+        </section>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Oracle-first / Scout-first</h3>
+          <p class="text-black/85">
+            UI ordering only: which expert table is emphasized on the dashboard and whether Scout or Oracle appears first on Expert Audit. Metrics unchanged — Oracle = RMSE(predicted big-board rank, actual draft slot); Scout = RMSE(rank-implied rating from <span class="font-mono">rankToExpectedRating</span>, career rating from PlayerPerformanceRegistry).
+          </p>
+        </section>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Pairwise order</h3>
+          <p class="text-black/85">
+            Within each expert and draft year, take unordered pairs of players they ranked that both have a career rating. Compare expert order (lower rank = higher on board) to truth order (higher LLL career rating = better). Report concordance rate = correct pairs / total non-tie pairs.
+          </p>
+        </section>
+
+        <section>
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.2em] text-black mb-1">Rank blend</h3>
+          <p class="text-black/85">
+            For each expert, assign ordinal rank within Oracle (by RMSE), Scout (by talent Δ), and Pairwise (by pair %) among rows with data. Blend score = arithmetic mean of available ranks (1 = best). Experts missing a board skip that component in the average.
+          </p>
+        </section>
+      </div>
+      <div class="border-t border-black/10 px-5 py-3 bg-black/[0.03]">
+        <button type="button"
+          class="text-[10px] font-bold uppercase tracking-[0.2em] text-black border border-black px-4 py-2 rounded-md hover:bg-black hover:text-white transition-colors"
+          onclick="document.getElementById('lll-lens-methodology').close()">
+          Close
+        </button>
+      </div>
+    </dialog>`;
+}
+
+/**
+ * Shared view controls — Career / Single Season + window + statistical lens (algorithm selector).
+ */
+export function renderViewControls(opts: {
+  mode: 'career' | 'season';
+  selectedSeason: number;
+  seasonYearMin: number;
+  seasonYearMax: number;
+  window: number;
+  statModel?: StatModelId;
+  /** Hide the lens strip (e.g. colleges page keeps URL sync only). */
+  hideLens?: boolean;
+  /** Show admin-only (?) methodology modal next to the lens. */
+  isAdmin?: boolean;
+}): string {
+  const isCareer = opts.mode === 'career';
+  const seasonOptions = buildDescendingSeasonYears(opts.seasonYearMin, opts.seasonYearMax);
+  const windowOptions = [3, 4, 5, 6, 7, 8, 9, 10];
+  const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
+  const lensMeta = statModelMeta(statModel);
+  const showLensHelp = opts.isAdmin === true && opts.hideLens !== true;
+  const lensHelpBtn = showLensHelp
+    ? `<button type="button"
+        class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black/35 text-[10px] font-bold text-muted hover:border-black hover:bg-black hover:text-white transition-colors"
+        aria-label="Open methodology (admins only)"
+        title="How lenses work — internal"
+        onclick="document.getElementById('lll-lens-methodology').showModal()">?</button>`
+    : '';
+  const lensSelect =
+    opts.hideLens === true
+      ? ''
+      : `
+    <div class="w-full mt-5 pt-5 border-t border-black/10">
+      <div class="flex flex-wrap items-start gap-4">
+        <div class="min-w-[200px]">
+          <div class="flex items-center gap-2 mb-1.5">
+            <label class="text-[9px] font-bold uppercase tracking-[0.25em] text-black">Statistical lens</label>
+            ${lensHelpBtn}
+          </div>
+          <select
+            onchange="setView({model:this.value})"
+            class="w-full max-w-sm px-3 py-2 text-[11px] font-bold border border-black bg-white rounded-md shadow-sm">
+            ${STAT_MODELS.map(
+              (m) => `<option value="${m.id}" ${m.id === statModel ? 'selected' : ''}>${escapeHtml(m.label)}</option>`,
+            ).join('')}
+          </select>
+        </div>
+        <p class="flex-1 min-w-[220px] text-[11px] text-muted serif italic leading-snug pt-1">
+          <span class="font-bold text-black not-italic">${escapeHtml(lensMeta.shortLabel)}:</span>
+          ${escapeHtml(lensMeta.description)}
+        </p>
+      </div>
+    </div>`;
+
+  return `
+    <div class="flex flex-wrap items-center gap-3 mb-2">
       <div class="flex items-center bg-black/[0.05] rounded-md p-1 text-[10px] font-bold uppercase tracking-[0.2em]">
-        <button onclick="setView({mode:'career'})"
+        <button type="button" onclick="setView({mode:'career'})"
           class="px-3 py-1.5 rounded-md transition-all ${isCareer ? 'bg-black text-white' : 'text-muted hover:text-black'}">
           Career
         </button>
-        <button onclick="setView({mode:'season'})"
+        <button type="button" onclick="setView({mode:'season'})"
           class="px-3 py-1.5 rounded-md transition-all ${!isCareer ? 'bg-black text-white' : 'text-muted hover:text-black'}">
           Single Season
         </button>
       </div>
-      <select onchange="setView({season:this.value})"
-        class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] border border-black bg-white ${isCareer ? 'opacity-30 pointer-events-none' : ''}">
-        ${seasonOptions
-          .map((y) => `<option value="${y}" ${y === opts.selectedSeason ? 'selected' : ''}>${y} season</option>`)
-          .join('')}
-      </select>
-      <div class="flex items-center bg-black/[0.05] rounded-md p-1">
-        ${windowOptions
-          .map(
-            (w) => `
-          <button onclick="setView({window:${w}})"
-            class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] rounded-md transition-all ${
-              w === opts.window ? 'bg-black text-white' : 'text-muted hover:text-black'
-            }">
-            ${w}Y
-          </button>
-        `,
-          )
-          .join('')}
-      </div>
-      <span class="text-[10px] text-muted serif italic">
+      <select onchange="setView({${isCareer ? 'window' : 'season'}:this.value})"
+        class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] border border-black bg-white">
         ${
           isCareer
-            ? `Career view · last ${opts.window} draft years`
-            : `${opts.selectedSeason} NFL season · last ${opts.window} draft years`
+            ? windowOptions
+                .map(
+                  (w) =>
+                    `<option value="${w}" ${w === opts.window ? 'selected' : ''}>Career · last ${w} years</option>`,
+                )
+                .join('')
+            : seasonOptions
+                .map(
+                  (y) =>
+                    `<option value="${y}" ${y === opts.selectedSeason ? 'selected' : ''}>Single Season · ${y}</option>`,
+                )
+                .join('')
         }
+      </select>
+      <span class="text-[10px] text-muted serif italic">
+        ${isCareer ? `Career view · last ${opts.window} draft years` : `${opts.selectedSeason} draft class only`}
       </span>
     </div>
+    ${lensSelect}
     <script>
       (function () {
         if (window.__lllSetView) return;
@@ -258,7 +412,7 @@ export function renderViewControls(opts: {mode: 'career' | 'season'; selectedSea
             url.searchParams.delete('season');
           } else if (updates.mode === 'season') {
             url.searchParams.set('mode', 'season');
-            if (!url.searchParams.get('season')) url.searchParams.set('season', '${opts.selectedSeason}');
+            if (!url.searchParams.get('season')) url.searchParams.set('season', String(${opts.seasonYearMax}));
           }
           if (updates.season) {
             url.searchParams.set('mode', 'season');
@@ -267,10 +421,18 @@ export function renderViewControls(opts: {mode: 'career' | 'season'; selectedSea
           if (updates.window) {
             url.searchParams.set('window', updates.window);
           }
+          if (updates.model !== undefined) {
+            if (updates.model === '${DEFAULT_STAT_MODEL}') {
+              url.searchParams.delete('model');
+            } else {
+              url.searchParams.set('model', updates.model);
+            }
+          }
           window.location.href = url.toString();
         };
       })();
     </script>
+    ${showLensHelp ? renderAdminLensMethodologyDialog() : ''}
   `;
 }
 
@@ -374,20 +536,30 @@ function adminFlags(extras: {isAdmin?: boolean; debug?: boolean}): {isAdmin: boo
 
 export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string): string {
   const movers = renderMovers(snapshot.topMovers, snapshot.bustMovers);
-  const oracle = renderOracleMini(snapshot.oracleTop);
-  const scout = renderScoutMini(snapshot.scoutTop);
 
   const isCareer = snapshot.mode === 'career';
-  const selectedSeason = snapshot.selectedSeason ?? 2024;
+  const selectedSeason = snapshot.selectedSeason ?? snapshot.seasonYearMax;
   const selectedWindow = snapshot.window ?? 6;
+
+  const fullQs = buildAnalyzerQueryString({
+    mode: snapshot.mode,
+    season: snapshot.selectedSeason,
+    window: snapshot.window,
+    model: snapshot.statModel,
+    debug: snapshot.debug,
+  });
 
   const modeStrip = renderViewControls({
     mode: snapshot.mode,
     selectedSeason,
+    seasonYearMin: snapshot.seasonYearMin,
+    seasonYearMax: snapshot.seasonYearMax,
     window: selectedWindow,
+    statModel: snapshot.statModel,
+    isAdmin: snapshot.isAdmin ?? false,
   });
 
-  const modeQs = `${isCareer ? 'mode=career' : `mode=season&season=${selectedSeason}`}&window=${selectedWindow}`;
+  const expertPanel = renderDashboardExpertPanel(snapshot);
 
   const content = `
     ${header('dashboard', adminFlags(snapshot))}
@@ -416,11 +588,11 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
                <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">FRANCHISE INDEX · TOP 10</h3>
                <span class="text-[10px] text-muted serif italic">Window controls above filter all sections</span>
              </div>
-             <div id="success-leaderboard" hx-get="/analyzer/fragment/success-leaderboard?${modeQs}" hx-trigger="load">
+             <div id="success-leaderboard" hx-get="/analyzer/fragment/success-leaderboard?${fullQs}" hx-trigger="load">
                 <p class="italic py-8 text-muted text-center text-sm">Aggregating receipts...</p>
              </div>
              <div class="flex justify-end pt-2">
-               <a href="/analyzer/teams?${modeQs}"
+               <a href="/analyzer/teams?${fullQs}"
                   class="text-[10px] font-bold uppercase tracking-[0.3em] text-black hover:text-accent border-b-2 border-accent pb-0.5 transition-colors">
                  View all 32 teams →
                </a>
@@ -448,15 +620,15 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
               </div>
             </div>
             <p class="text-[10px] text-muted">${tooltip('LLL Delta', TOOLTIPS.lllDelta)} = how far each pick beat or missed its round expectation. ${isCareer ? 'Cumulative career view.' : `Filtered to the ${selectedSeason} NFL season only.`} Buttons below filter by draft year.</p>
-            <div id="movers-feed" hx-get="/analyzer/fragment/movers?year=all&${modeQs}" hx-trigger="load">
+            <div id="movers-feed" hx-get="/analyzer/fragment/movers?year=all&${fullQs}" hx-trigger="load">
               ${movers}
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-              <a href="/analyzer/players?filter=hits&${modeQs}"
+              <a href="/analyzer/players?filter=hits&${fullQs}"
                  class="text-[10px] font-bold uppercase tracking-[0.3em] text-black hover:text-accent border-b-2 border-accent pb-0.5 transition-colors text-center md:text-left">
                 View all hits →
               </a>
-              <a href="/analyzer/players?filter=busts&${modeQs}"
+              <a href="/analyzer/players?filter=busts&${fullQs}"
                  class="text-[10px] font-bold uppercase tracking-[0.3em] text-black hover:text-accent border-b-2 border-accent pb-0.5 transition-colors text-center md:text-right">
                 View all busts →
               </a>
@@ -467,38 +639,14 @@ export function analyzerDashboard(snapshot: DashboardSnapshot, clerkKey?: string
                   b.classList.toggle('bg-black', b.dataset.year === year);
                   b.classList.toggle('text-white', b.dataset.year === year);
                 });
-                htmx.ajax('GET', '/analyzer/fragment/movers?year=' + year + '&${modeQs}', '#movers-feed');
+                htmx.ajax('GET', '/analyzer/fragment/movers?year=' + year + '&${fullQs}', '#movers-feed');
               }
             </script>
           </section>
         </div>
 
         <div class="space-y-12 text-black">
-          <div class="card-paper p-8 rounded-lg shadow-lg text-black">
-            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">ORACLE · MOCK ACCURACY</h3>
-            <p class="text-[10px] text-muted mb-5">${tooltip('RMSE', TOOLTIPS.rmse)} between expert big-board rank and actual draft slot. Lower is better.</p>
-            ${oracle}
-          </div>
-
-          <div class="card-paper p-8 rounded-lg shadow-lg text-black">
-            <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">SCOUT · ${tooltip('TALENT DELTA', TOOLTIPS.talentDelta)}</h3>
-            <p class="text-[10px] text-muted mb-5">RMSE between expert's rank-implied quality and actual LLL career rating. Lower is better.</p>
-            ${scout}
-          </div>
-
-          <div class="p-6 bg-accent text-white rounded-lg shadow-xl relative overflow-hidden group">
-            <div class="absolute -right-4 -bottom-4 text-black/10 text-9xl font-bold italic group-hover:scale-110 transition-transform">LLL</div>
-            <h3 class="font-bold text-sm mb-2 uppercase tracking-widest relative z-10 text-white">How the math works</h3>
-            <div class="text-xs opacity-95 relative z-10 font-mono leading-relaxed text-white space-y-1.5">
-              <div>career = best-4 avg of all season ratings</div>
-              <div>perf = career + contract bonus</div>
-              <div>Δ = perf − round_expected</div>
-            </div>
-            <p class="text-[10px] opacity-80 relative z-10 font-serif italic leading-relaxed text-white mt-3">
-              Per-season ratings get an award floor (Pro Bowl ≥ 5.5, All-Pro ≥ 6.5/8.0, MVP/DPOY ≥ 9.0) before the best-4 average.
-              Contract bonus only applies in Career view — Single-Season view grades pure production.
-            </p>
-          </div>
+          ${expertPanel}
         </div>
       </div>
     </main>
@@ -600,6 +748,163 @@ function renderScoutMini(rows: ExpertScoutRow[]): string {
   `;
 }
 
+function renderPairwiseMini(rows: ExpertPairwiseRow[]): string {
+  const withData = rows.filter((e) => e.pairCount > 0);
+  if (withData.length === 0) {
+    return `<p class="text-[11px] italic text-muted text-center py-4">Not enough pairwise comparisons yet.</p>`;
+  }
+  return `
+    <div class="space-y-1 text-black">
+      ${withData
+        .slice(0, 6)
+        .map(
+          (e, i) => `
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}"
+           class="flex justify-between items-center ${i < 5 ? 'border-b border-black/5 pb-3 mb-3' : ''} group hover:bg-black/[0.02] -mx-2 px-2 py-1 rounded transition-colors">
+          <div>
+            <div class="font-bold text-sm text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</div>
+            <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${escapeHtml(e.org || 'Independent')} · ${e.pairCount} pairs</div>
+          </div>
+          <div class="text-right">
+            <div class="font-mono font-bold text-black text-lg">${(e.pairAccuracy * 100).toFixed(1)}%</div>
+            <div class="text-[8px] text-accent font-bold uppercase tracking-tighter">PAIR ORDER</div>
+          </div>
+        </a>
+      `,
+        )
+        .join('')}
+      <a href="/analyzer/experts" class="block text-center text-[9px] font-bold uppercase tracking-[0.3em] text-muted hover:text-black mt-4 transition-colors border-t border-black/5 pt-3">Expert audit →</a>
+    </div>
+  `;
+}
+
+function renderBlendMini(rows: ExpertBlendRow[]): string {
+  if (rows.length === 0) {
+    return `<p class="text-[11px] italic text-muted text-center py-4">Blend needs overlapping expert data.</p>`;
+  }
+  return `
+    <div class="space-y-1 text-black">
+      ${rows
+        .slice(0, 6)
+        .map(
+          (e, i) => `
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}"
+           class="flex justify-between items-center ${i < 5 ? 'border-b border-black/5 pb-3 mb-3' : ''} group hover:bg-black/[0.02] -mx-2 px-2 py-1 rounded transition-colors">
+          <div>
+            <div class="font-bold text-sm text-black group-hover:text-accent transition-colors">${escapeHtml(e.expertName)}</div>
+            <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${escapeHtml(e.org || 'Independent')} · ${e.nComponents}/3 boards</div>
+          </div>
+          <div class="text-right">
+            <div class="font-mono font-bold text-black text-lg">${e.avgRank.toFixed(2)}</div>
+            <div class="text-[8px] text-accent font-bold uppercase tracking-tighter">AVG RANK</div>
+          </div>
+        </a>
+      `,
+        )
+        .join('')}
+      <a href="/analyzer/experts" class="block text-center text-[9px] font-bold uppercase tracking-[0.3em] text-muted hover:text-black mt-4 transition-colors border-t border-black/5 pt-3">Expert audit →</a>
+    </div>
+  `;
+}
+
+function renderOracleWide(rows: ExpertOracleRow[]): string {
+  return renderOracleMini(rows.slice(0, 8));
+}
+
+function renderScoutWide(rows: ExpertScoutRow[]): string {
+  return renderScoutMini(rows.slice(0, 8));
+}
+
+/** Right column on dashboard — switches expert mini-boards by statistical lens. */
+function renderDashboardExpertPanel(snapshot: DashboardSnapshot): string {
+  const lensNote =
+    snapshot.statModel === 'shrinkage' || snapshot.statModel === 'premium'
+      ? `<p class="text-[9px] text-amber-900 bg-amber-50 border border-amber-200/80 rounded-md p-2.5 mb-4 leading-snug">
+          Active lens applies to <strong>Franchise Index</strong> &amp; <strong>Movers</strong> (left column). Expert boards below stay full-fidelity so you can compare mock vs talent vs pairwise.
+        </p>`
+      : '';
+
+  switch (snapshot.statModel) {
+    case 'oracle':
+      return `
+        ${lensNote}
+        <div class="card-paper p-8 rounded-lg shadow-lg text-black">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-2 text-black">ORACLE · MOCK ACCURACY</h3>
+          <p class="text-[10px] text-muted mb-5">Lens: predicted big-board rank vs actual draft slot (RMSE). Lower is better.</p>
+          ${renderOracleWide(snapshot.oracleTop)}
+        </div>
+        <div class="card-paper p-6 rounded-lg shadow-md text-black mt-6 opacity-90">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-2 text-black/70">SCOUT · reference</h3>
+          ${renderScoutMini(snapshot.scoutTop)}
+        </div>`;
+    case 'scout':
+      return `
+        ${lensNote}
+        <div class="card-paper p-8 rounded-lg shadow-lg text-black">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-2 text-black">SCOUT · TALENT Δ</h3>
+          <p class="text-[10px] text-muted mb-5">Lens: rank-implied rating vs LLL career rating (RMSE).</p>
+          ${renderScoutWide(snapshot.scoutTop)}
+        </div>
+        <div class="card-paper p-6 rounded-lg shadow-md text-black mt-6 opacity-90">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-2 text-black/70">ORACLE · reference</h3>
+          ${renderOracleMini(snapshot.oracleTop)}
+        </div>`;
+    case 'pairwise':
+      return `
+        ${lensNote}
+        <div class="card-paper p-8 rounded-lg shadow-lg text-black">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-2 text-black">PAIRWISE · BOARD ORDER</h3>
+          <p class="text-[10px] text-muted mb-5">Share of pairs where big-board order matches career strength (ordinal).</p>
+          ${renderPairwiseMini(snapshot.pairwiseTop)}
+        </div>
+        <div class="grid grid-cols-1 gap-6 mt-6">
+          <div class="card-paper p-6 rounded-lg shadow-md"><h4 class="text-[9px] font-bold uppercase tracking-widest mb-2 text-muted">Oracle</h4>${renderOracleMini(snapshot.oracleTop)}</div>
+          <div class="card-paper p-6 rounded-lg shadow-md"><h4 class="text-[9px] font-bold uppercase tracking-widest mb-2 text-muted">Scout</h4>${renderScoutMini(snapshot.scoutTop)}</div>
+        </div>`;
+    case 'blend':
+      return `
+        ${lensNote}
+        <div class="card-paper p-8 rounded-lg shadow-lg text-black">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-2 text-black">BLEND · MEAN RANK</h3>
+          <p class="text-[10px] text-muted mb-5">Average rank across Oracle, Scout, and Pairwise where each expert appears (lower = better).</p>
+          ${renderBlendMini(snapshot.blendTop)}
+        </div>
+        <div class="grid grid-cols-1 gap-6 mt-6">
+          <div class="card-paper p-6 rounded-lg shadow-md"><h4 class="text-[9px] font-bold uppercase tracking-widest mb-2 text-muted">Oracle</h4>${renderOracleMini(snapshot.oracleTop)}</div>
+          <div class="card-paper p-6 rounded-lg shadow-md"><h4 class="text-[9px] font-bold uppercase tracking-widest mb-2 text-muted">Scout</h4>${renderScoutMini(snapshot.scoutTop)}</div>
+        </div>`;
+    default:
+      return `
+        ${lensNote}
+        <div class="card-paper p-8 rounded-lg shadow-lg text-black">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">ORACLE · MOCK ACCURACY</h3>
+          <p class="text-[10px] text-muted mb-5">${tooltip('RMSE', TOOLTIPS.rmse)} between expert big-board rank and actual draft slot. Lower is better.</p>
+          ${renderOracleMini(snapshot.oracleTop)}
+        </div>
+        <div class="card-paper p-8 rounded-lg shadow-lg text-black">
+          <h3 class="text-[10px] font-bold uppercase tracking-[0.3em] mb-4 text-black">SCOUT · ${tooltip('TALENT DELTA', TOOLTIPS.talentDelta)}</h3>
+          <p class="text-[10px] text-muted mb-5">RMSE between expert's rank-implied quality and actual LLL career rating. Lower is better.</p>
+          ${renderScoutMini(snapshot.scoutTop)}
+        </div>
+        <div class="p-6 bg-accent text-white rounded-lg shadow-xl relative overflow-hidden group">
+          <div class="absolute -right-4 -bottom-4 text-black/10 text-9xl font-bold italic group-hover:scale-110 transition-transform">LLL</div>
+          <h3 class="font-bold text-sm mb-2 uppercase tracking-widest relative z-10 text-white">How the math works</h3>
+          <div class="text-xs opacity-95 relative z-10 font-mono leading-relaxed text-white space-y-1.5">
+            <div>career = best-4 avg of all season ratings</div>
+            <div>perf = career + contract bonus</div>
+            <div>Δ = perf − round_expected</div>
+          </div>
+          <p class="text-[10px] opacity-80 relative z-10 font-serif italic leading-relaxed text-white mt-3">
+            Per-season ratings get an award floor (Pro Bowl ≥ 5.5, All-Pro ≥ 6.5/8.0, MVP/DPOY ≥ 9.0) before the best-4 average.
+            Contract bonus only applies in Career view — Single-Season view grades pure production.
+          </p>
+          <p class="text-[10px] opacity-90 relative z-10 font-serif italic leading-relaxed text-white mt-3 border-t border-white/20 pt-3">
+            Use <strong>Statistical lens</strong> for shrinkage, capital-weighted picks, pairwise order, or blended expert rank — same data, different emphasis.
+          </p>
+        </div>`;
+  }
+}
+
 function renderTakeCard(t: Take, isBest: boolean): string {
   const accent = isBest ? 'border-l-4 border-emerald-500' : 'border-l-4 border-red-500';
   const labelColor = isBest ? 'text-emerald-700' : 'text-red-700';
@@ -629,14 +934,183 @@ function renderTakeCard(t: Take, isBest: boolean): string {
   `;
 }
 
+function renderPairwiseDebug(pairwise: ExpertPairwiseRow[]): string {
+  const rows = pairwise
+    .filter((e) => e.pairCount > 0)
+    .slice(0, 20)
+    .map((e, i) => {
+      const pct = (e.pairAccuracy * 100).toFixed(1);
+      return `
+    <tr class="border-b border-black/5">
+      <td class="py-2 px-3 font-mono text-sm">#${i + 1}</td>
+      <td class="py-2 px-3">
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black hover:text-accent">${escapeHtml(e.expertName)}</a>
+        <div class="text-[9px] text-muted uppercase tracking-widest">${escapeHtml(e.org || 'Independent')}</div>
+      </td>
+      <td class="py-2 px-3 text-center font-mono font-bold text-accent">${pct}%</td>
+      <td class="py-2 px-3 text-center text-muted">${e.pairCount}</td>
+      <td class="py-2 px-3 text-center text-[10px] text-muted">${e.yearsCovered.join(', ')}</td>
+    </tr>`;
+    })
+    .join('');
+  if (!rows) {
+    return '';
+  }
+  return `
+      <section class="mt-12 border-t border-dashed border-black/20 pt-8">
+        <div class="mb-4">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">Prototype · Pairwise board order</h3>
+          <p class="text-[11px] text-muted serif italic mt-1">
+            Share of player pairs (same expert-year) where big-board order matches LLL career rating order — complements RMSE.
+            <span class="font-mono text-[10px]">debug=1</span>
+          </p>
+        </div>
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black/30 shadow-xl">
+          <table class="w-full text-left border-collapse text-black text-sm">
+            <thead>
+              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
+                <th class="py-3 px-3">Rank</th>
+                <th class="py-3 px-3">Expert</th>
+                <th class="py-3 px-3 text-center">Pair %</th>
+                <th class="py-3 px-3 text-center">Pairs</th>
+                <th class="py-3 px-3 text-center">Years</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+}
+
+function renderBlendFull(blend: ExpertBlendRow[]): string {
+  if (blend.length === 0) {
+    return '';
+  }
+  const rows = blend
+    .map(
+      (e, i) => `
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+      <td class="py-3 px-4 font-bold">${i + 1}</td>
+      <td class="py-3">
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black hover:text-accent">${escapeHtml(e.expertName)}</a>
+        <div class="text-[9px] text-muted uppercase tracking-widest">${escapeHtml(e.org || 'Independent')}</div>
+      </td>
+      <td class="py-3 text-center font-mono font-bold text-accent">${e.avgRank.toFixed(2)}</td>
+      <td class="py-3 text-center text-muted text-sm">${e.oracleRank ?? '—'}</td>
+      <td class="py-3 text-center text-muted text-sm">${e.scoutRank ?? '—'}</td>
+      <td class="py-3 text-center text-muted text-sm">${e.pairwiseRank ?? '—'}</td>
+      <td class="py-3 text-center">${e.nComponents}/3</td>
+    </tr>`,
+    )
+    .join('');
+  return `
+      <section class="mb-16">
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">BLEND · Mean rank across boards</h3>
+          <p class="text-[11px] text-muted italic">Lower avg rank = better. Only experts with ≥1 component rank.</p>
+        </div>
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black/40 shadow-xl">
+          <table class="w-full text-left border-collapse text-black text-sm">
+            <thead>
+              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
+                <th class="py-3 px-4">#</th>
+                <th class="py-3">Expert</th>
+                <th class="py-3 text-center">Avg rank</th>
+                <th class="py-3 text-center">O</th>
+                <th class="py-3 text-center">S</th>
+                <th class="py-3 text-center">P</th>
+                <th class="py-3 text-center">Boards</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+}
+
+function renderPairwiseFull(pairwise: ExpertPairwiseRow[]): string {
+  const rows = pairwise
+    .filter((e) => e.pairCount > 0)
+    .map(
+      (e, i) => `
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+      <td class="py-3 px-4 font-bold">${i + 1}</td>
+      <td class="py-3">
+        <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black hover:text-accent">${escapeHtml(e.expertName)}</a>
+        <div class="text-[9px] text-muted uppercase tracking-widest">${escapeHtml(e.org || 'Independent')}</div>
+      </td>
+      <td class="py-3 text-center font-mono font-bold text-accent">${(e.pairAccuracy * 100).toFixed(2)}%</td>
+      <td class="py-3 text-center">${e.pairCount}</td>
+      <td class="py-3 text-center text-[11px] text-muted">${e.yearsCovered.join(', ')}</td>
+    </tr>`,
+    )
+    .join('');
+  if (!rows) {
+    return '';
+  }
+  return `
+      <section class="mb-16">
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">PAIRWISE · Board order vs career</h3>
+          <p class="text-[11px] text-muted italic">Concordance rate on expert-year player pairs (ordinal).</p>
+        </div>
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black/40 shadow-xl">
+          <table class="w-full text-left border-collapse text-black text-sm">
+            <thead>
+              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
+                <th class="py-3 px-4">#</th>
+                <th class="py-3">Expert</th>
+                <th class="py-3 text-center">Pair %</th>
+                <th class="py-3 text-center">Pairs</th>
+                <th class="py-3 text-center">Years</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+}
+
 export function expertLeaderboard(
   oracle: ExpertOracleRow[],
   scout: ExpertScoutRow[],
   takes: {best: Take[]; worst: Take[]},
   clerkKey?: string,
-  extras: {isAdmin?: boolean; debug?: boolean} = {},
+  extras: {
+    isAdmin?: boolean;
+    debug?: boolean;
+    pairwise?: ExpertPairwiseRow[];
+    blend?: ExpertBlendRow[];
+    statModel?: StatModelId;
+    mode?: 'career' | 'season';
+    season?: number;
+    window?: number;
+    seasonYearMin?: number;
+    seasonYearMax?: number;
+  } = {},
 ): string {
   const _admin = adminFlags(extras);
+  const statModel = extras.statModel ?? DEFAULT_STAT_MODEL;
+  const seasonYearMin = extras.seasonYearMin ?? ANALYZER_SINGLE_SEASON_MIN_YEAR;
+  const seasonYearMax = extras.seasonYearMax ?? 2024;
+  const selectedSeason = extras.season ?? seasonYearMax;
+  const selectedWindow = extras.window ?? 6;
+  const pageQs = buildAnalyzerQueryString({
+    mode: extras.mode ?? 'career',
+    season: extras.season,
+    window: selectedWindow,
+    model: statModel,
+    debug: _admin.debug,
+  });
+  const controls = renderViewControls({
+    mode: extras.mode ?? 'career',
+    selectedSeason,
+    seasonYearMin,
+    seasonYearMax,
+    window: selectedWindow,
+    statModel,
+    isAdmin: _admin.isAdmin,
+  });
   let oracleSeenWithData = 0;
   const oracleRows = oracle
     .map((e) => {
@@ -695,14 +1169,72 @@ export function expertLeaderboard(
     })
     .join('');
 
+  const oracleSection = `
+      <section class="mb-16">
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">ORACLE · Mock Draft Accuracy</h3>
+          <p class="text-[11px] text-muted italic">${tooltip('RMSE', TOOLTIPS.rmse)}(predicted rank, actual draft slot) · lower = better</p>
+        </div>
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black shadow-xl">
+          <table class="w-full text-left border-collapse text-black">
+            <thead>
+              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
+                <th class="py-4 px-4">Rank</th>
+                <th class="py-4">Expert / Source</th>
+                <th class="py-4 text-center">RMSE</th>
+                <th class="py-4 text-center">Sample</th>
+                <th class="py-4 text-center">Years</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${oracleRows || '<tr><td colspan="5" class="py-8 text-center italic text-muted">No mock-vs-draft matches found.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </section>`;
+
+  const scoutSection = `
+      <section>
+        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">SCOUT · ${tooltip('Talent Delta', TOOLTIPS.talentDelta)}</h3>
+          <p class="text-[11px] text-muted italic">RMSE(rank-implied rating, LLL career rating from PlayerPerformanceRegistry) · lower = better</p>
+        </div>
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-accent shadow-xl">
+          <table class="w-full text-left border-collapse text-black">
+            <thead>
+              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
+                <th class="py-4 px-4">Rank</th>
+                <th class="py-4">Expert / Source</th>
+                <th class="py-4 text-center">Talent Δ</th>
+                <th class="py-4 text-center">Sample</th>
+                <th class="py-4 text-center">Letter</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${scoutRows || '<tr><td colspan="5" class="py-8 text-center italic text-muted">Need more career-rating data.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </section>`;
+
+  let lensPrefix = '';
+  if (statModel === 'blend' && extras.blend && extras.blend.length > 0) {
+    lensPrefix = renderBlendFull(extras.blend);
+  } else if (statModel === 'pairwise' && extras.pairwise) {
+    lensPrefix = renderPairwiseFull(extras.pairwise);
+  }
+
+  const orderedOs = statModel === 'scout' ? `${scoutSection}${oracleSection}` : `${oracleSection}${scoutSection}`;
+
   const content = `
     ${header('experts', _admin)}
     <div class="max-w-5xl mx-auto py-12 px-4 text-black">
-      <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-6 inline-block transition-colors">← Back to Dashboard</a>
+      <a href="/analyzer?${pageQs}" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-6 inline-block transition-colors">← Back to Dashboard</a>
       <h2 class="text-6xl font-bold tracking-tighter mb-2 text-black">EXPERT AUDIT</h2>
-      <p class="text-muted italic mb-10 border-b border-black/10 pb-4 serif text-lg">
-        Two scoreboards. Same talent universe.
+      <p class="text-muted italic mb-6 border-b border-black/10 pb-4 serif text-lg">
+        Two scoreboards. Same talent universe. Switch <strong>Statistical lens</strong> on the dashboard too — URL stays in sync.
       </p>
+      ${controls}
 
       ${
         takes.best.length > 0 || takes.worst.length > 0
@@ -736,83 +1268,106 @@ export function expertLeaderboard(
           : ''
       }
 
-      <section class="mb-16">
-        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">ORACLE · Mock Draft Accuracy</h3>
-          <p class="text-[11px] text-muted italic">${tooltip('RMSE', TOOLTIPS.rmse)}(predicted rank, actual draft slot) · lower = better</p>
-        </div>
-        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black shadow-xl">
-          <table class="w-full text-left border-collapse text-black">
-            <thead>
-              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
-                <th class="py-4 px-4">Rank</th>
-                <th class="py-4">Expert / Source</th>
-                <th class="py-4 text-center">RMSE</th>
-                <th class="py-4 text-center">Sample</th>
-                <th class="py-4 text-center">Years</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${oracleRows || '<tr><td colspan="5" class="py-8 text-center italic text-muted">No mock-vs-draft matches found.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section>
-        <div class="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">SCOUT · ${tooltip('Talent Delta', TOOLTIPS.talentDelta)}</h3>
-          <p class="text-[11px] text-muted italic">RMSE(rank-implied rating, actual career rating) · lower = better</p>
-        </div>
-        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-accent shadow-xl">
-          <table class="w-full text-left border-collapse text-black">
-            <thead>
-              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
-                <th class="py-4 px-4">Rank</th>
-                <th class="py-4">Expert / Source</th>
-                <th class="py-4 text-center">Talent Δ</th>
-                <th class="py-4 text-center">Sample</th>
-                <th class="py-4 text-center">Letter</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${scoutRows || '<tr><td colspan="5" class="py-8 text-center italic text-muted">Need more career-rating data.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      ${lensPrefix}
+      ${orderedOs}
+      ${_admin.debug && extras.pairwise ? renderPairwiseDebug(extras.pairwise) : ''}
     </div>
   `;
   return analyzerLayout(content, 'Expert Audit — LLL', clerkKey);
 }
 
+function renderTeamShrinkageDebug(shrinkage: TeamYearShrinkageResult): string {
+  const rows = shrinkage.rows
+    .slice(0, 40)
+    .map((r) => {
+      const raw = r.rawAvgDelta > 0 ? '+' : '';
+      const sh = r.shrunkAvgDelta > 0 ? '+' : '';
+      return `
+    <tr class="border-b border-black/5 text-[12px]">
+      <td class="py-2 px-2 font-bold">${escapeHtml(r.team)}</td>
+      <td class="py-2 px-2 text-center">${r.year}</td>
+      <td class="py-2 px-2 text-center">${r.pickCount}</td>
+      <td class="py-2 px-2 text-center font-mono">${raw}${r.rawAvgDelta.toFixed(2)}</td>
+      <td class="py-2 px-2 text-center font-mono font-bold text-accent">${sh}${r.shrunkAvgDelta.toFixed(2)}</td>
+    </tr>`;
+    })
+    .join('');
+  const gm = shrinkage.globalMean > 0 ? '+' : '';
+  return `
+      <section class="mt-12 border-t border-dashed border-black/20 pt-8">
+        <div class="mb-4">
+          <h3 class="text-xs font-bold uppercase tracking-[0.3em] text-black">Prototype · Team-year shrinkage</h3>
+          <p class="text-[11px] text-muted serif italic mt-1">
+            Per (team, draft year): shrunk avg =
+            <span class="font-mono">(n/(n+${shrinkage.shrinkageK}))·raw + (${shrinkage.shrinkageK}/(n+${shrinkage.shrinkageK}))·μ</span>
+            with μ = ${gm}${shrinkage.globalMean} over ${shrinkage.globalPickCount} picks in this window.
+            <span class="font-mono text-[10px]">debug=1</span>
+          </p>
+        </div>
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black/30 shadow-xl overflow-x-auto">
+          <table class="w-full text-left border-collapse text-black">
+            <thead>
+              <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
+                <th class="py-3 px-2">Team</th>
+                <th class="py-3 px-2 text-center">Year</th>
+                <th class="py-3 px-2 text-center">Picks</th>
+                <th class="py-3 px-2 text-center">Raw avg Δ</th>
+                <th class="py-3 px-2 text-center">Shrunk avg Δ</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </section>`;
+}
+
 export function teamLeaderboard(
   teams: TeamSuccessRow[],
   clerkKey?: string,
-  opts: {mode?: 'career' | 'season'; season?: number; window?: number} = {},
-  extras: {isAdmin?: boolean; debug?: boolean} = {},
+  opts: {
+    mode?: 'career' | 'season';
+    season?: number;
+    window?: number;
+    statModel?: StatModelId;
+    seasonYearMin?: number;
+    seasonYearMax?: number;
+  } = {},
+  extras: {isAdmin?: boolean; debug?: boolean; shrinkage?: TeamYearShrinkageResult} = {},
 ): string {
   const _admin = adminFlags(extras);
   const isSeason = opts.mode === 'season' && opts.season !== undefined;
-  const selectedSeason = opts.season ?? 2024;
+  const seasonYearMin = opts.seasonYearMin ?? ANALYZER_SINGLE_SEASON_MIN_YEAR;
+  const seasonYearMax = opts.seasonYearMax ?? 2024;
+  const selectedSeason = opts.season ?? seasonYearMax;
   const selectedWindow = opts.window ?? 6;
+  const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
   const viewLabel = isSeason ? `${opts.season} NFL season` : 'Career';
   const totalPicks = teams.reduce((s, t) => s + t.totalPicks, 0);
   const controls = renderViewControls({
     mode: opts.mode ?? 'career',
     selectedSeason,
+    seasonYearMin,
+    seasonYearMax,
     window: selectedWindow,
+    statModel,
+    isAdmin: _admin.isAdmin,
   });
-  const modeQs = `${isSeason ? `mode=season&season=${selectedSeason}` : 'mode=career'}&window=${selectedWindow}`;
+  const fullQs = buildAnalyzerQueryString({
+    mode: opts.mode ?? 'career',
+    season: opts.season,
+    window: selectedWindow,
+    model: statModel,
+    debug: extras.debug,
+  });
   const cards = teams
     .map((t, i) => {
       const accent = i < 8 ? 'border-accent' : 'border-black/20';
       return `
     <div class="card-paper p-6 rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group cursor-pointer"
-         hx-get="/analyzer/fragment/team-breakdown/${encodeURIComponent(t.teamKey)}?${modeQs}"
+         hx-get="/analyzer/fragment/team-breakdown/${encodeURIComponent(t.teamKey)}?${fullQs}"
          hx-target="#team-modal-root"
          hx-swap="innerHTML"
-         hx-trigger="click[!event.target.closest('a')]"
+         hx-trigger="click[!event.target.closest('a')&&!event.target.closest('.lll-tip')]"
          title="Why this grade? Click for the breakdown.">
       <div class="flex justify-between items-start mb-4 gap-3">
         <div class="flex items-start gap-3 min-w-0">
@@ -834,18 +1389,23 @@ export function teamLeaderboard(
             <div class="h-full bg-black" style="width: ${t.hitRate}%"></div>
           </div>
         </div>
-        <div>
-          <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-            <span>${tooltip('Elite Players', TOOLTIPS.elitePlayers)}</span>
-            <span class="text-black font-bold">${t.eliteCount}</span>
+        <div class="lll-tip lll-elite-bar block w-full" tabindex="0">
+          <div>
+            <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
+              <span>${tooltip('Elite Players', TOOLTIPS.elitePlayers)}</span>
+              <span class="text-black font-bold">${t.eliteCount}</span>
+            </div>
+            <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500" style="width: ${Math.min(100, (t.eliteCount / 5) * 100)}%"></div>
+            </div>
           </div>
-          <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
-            <div class="h-full bg-emerald-500" style="width: ${Math.min(100, (t.eliteCount / 5) * 100)}%"></div>
-          </div>
+          <span role="tooltip" class="tip-body tip-body--elite">${renderElitePlayersTipBody(t.eliteNames)}</span>
         </div>
         <div>
           <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-            <span>League Position</span>
+            <span>${
+              statModel === 'shrinkage' ? 'Shrunk Δ' : statModel === 'premium' ? 'Cap-weighted Δ' : 'League Position'
+            }</span>
             <span class="text-accent font-bold mono">${tooltip('Δ', TOOLTIPS.lllDelta)} ${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</span>
           </div>
           <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
@@ -881,7 +1441,7 @@ export function teamLeaderboard(
   const content = `
     ${header('teams', _admin)}
     <div class="max-w-6xl mx-auto py-6 px-4 text-black">
-      <a href="/analyzer?${modeQs}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
+      <a href="/analyzer?${fullQs}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
       <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">FRANCHISE INDEX</h2>
@@ -901,6 +1461,7 @@ export function teamLeaderboard(
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
         ${cards}
       </div>
+      ${_admin.debug && extras.shrinkage ? renderTeamShrinkageDebug(extras.shrinkage) : ''}
     </div>
   `;
   return analyzerLayout(content, 'Franchise Index — LLL Draft Analyzer', clerkKey);
@@ -908,14 +1469,27 @@ export function teamLeaderboard(
 
 export function successLeaderboard(
   teams: TeamSuccessRow[],
-  opts: {mode?: 'career' | 'season'; season?: number; window?: number; debug?: boolean} = {},
+  opts: {
+    mode?: 'career' | 'season';
+    season?: number;
+    window?: number;
+    statModel?: StatModelId;
+    debug?: boolean;
+  } = {},
 ): string {
-  const winQs = opts.window ? `&window=${opts.window}` : '';
-  const debugQs = opts.debug ? '&debug=1' : '';
-  const modeQs =
-    opts.mode === 'season' && opts.season !== undefined
-      ? `mode=season&season=${opts.season}${winQs}${debugQs}`
-      : `mode=career${winQs}${debugQs}`;
+  const modeQs = buildAnalyzerQueryString({
+    mode: opts.mode ?? 'career',
+    season: opts.season,
+    window: opts.window ?? 6,
+    model: opts.statModel ?? DEFAULT_STAT_MODEL,
+    debug: opts.debug,
+  });
+  const deltaHeader =
+    opts.statModel === 'shrinkage'
+      ? 'Shrunk avg Δ'
+      : opts.statModel === 'premium'
+        ? 'Cap-weighted Δ'
+        : tooltip('Avg Δ', TOOLTIPS.lllDelta);
   const rows = teams
     .map(
       (t, i) => `
@@ -923,7 +1497,7 @@ export function successLeaderboard(
         hx-get="/analyzer/fragment/team-breakdown/${encodeURIComponent(t.teamKey)}?${modeQs}"
         hx-target="#team-modal-root"
         hx-swap="innerHTML"
-        hx-trigger="click"
+        hx-trigger="click[!event.target.closest('.lll-tip')]"
         title="Why this grade? Click for the breakdown.">
       <td class="py-4 px-4 font-bold text-black text-xl serif italic">#${i + 1}</td>
       <td class="py-4 text-black">
@@ -935,9 +1509,14 @@ export function successLeaderboard(
           </div>
         </div>
       </td>
-      <td class="py-4 text-center text-black">
-        <div class="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-sm">${t.hitRate}%</div>
-        <div class="text-[8px] text-muted font-bold uppercase mt-1">${t.eliteCount} Elite</div>
+      <td class="py-4 text-center text-black relative align-top">
+        <div class="lll-tip lll-elite-bar inline-block max-w-full text-left" tabindex="0">
+          <div>
+            <div class="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-sm">${t.hitRate}%</div>
+            <div class="text-[8px] text-muted font-bold uppercase mt-1">${t.eliteCount} Elite</div>
+          </div>
+          <span role="tooltip" class="tip-body tip-body--elite">${renderElitePlayersTipBody(t.eliteNames)}</span>
+        </div>
       </td>
       <td class="py-4 text-center font-mono font-bold text-accent text-lg">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
       <td class="py-4 pr-4 text-right text-black">
@@ -957,7 +1536,7 @@ export function successLeaderboard(
             <th class="py-3 px-4 w-16">Rank</th>
             <th class="py-3">Franchise</th>
             <th class="py-3 text-center">${tooltip('Hit Rate', TOOLTIPS.hitRate)}</th>
-            <th class="py-3 text-center">${tooltip('Avg Δ', TOOLTIPS.lllDelta)}</th>
+            <th class="py-3 text-center">${deltaHeader}</th>
             <th class="py-3 pr-4 text-right">LLL Grade</th>
           </tr>
         </thead>
@@ -972,9 +1551,39 @@ export function successLeaderboard(
 export function collegeLeaderboard(
   colleges: CollegeSuccessRow[],
   clerkKey?: string,
-  extras: {isAdmin?: boolean; debug?: boolean} = {},
+  extras: {
+    isAdmin?: boolean;
+    debug?: boolean;
+    statModel?: StatModelId;
+    mode?: 'career' | 'season';
+    season?: number;
+    window?: number;
+    seasonYearMin?: number;
+    seasonYearMax?: number;
+  } = {},
 ): string {
   const _admin = adminFlags(extras);
+  const seasonYearMin = extras.seasonYearMin ?? ANALYZER_SINGLE_SEASON_MIN_YEAR;
+  const seasonYearMax = extras.seasonYearMax ?? 2024;
+  const selectedSeason = extras.season ?? seasonYearMax;
+  const selectedWindow = extras.window ?? 6;
+  const statModel = extras.statModel ?? DEFAULT_STAT_MODEL;
+  const fullQs = buildAnalyzerQueryString({
+    mode: extras.mode ?? 'career',
+    season: extras.season,
+    window: selectedWindow,
+    model: statModel,
+    debug: extras.debug,
+  });
+  const controls = renderViewControls({
+    mode: extras.mode ?? 'career',
+    selectedSeason,
+    seasonYearMin,
+    seasonYearMax,
+    window: selectedWindow,
+    statModel,
+    isAdmin: _admin.isAdmin,
+  });
   const totalPicks = colleges.reduce((s, c) => s + c.totalPicks, 0);
 
   const rows = colleges
@@ -1029,7 +1638,7 @@ export function collegeLeaderboard(
   const content = `
     ${header('colleges', _admin)}
     <div class="max-w-6xl mx-auto py-6 px-4 text-black">
-      <a href="/analyzer" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
+      <a href="/analyzer?${fullQs}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
       <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">COLLEGE SCOUT INDEX</h2>
@@ -1043,7 +1652,9 @@ export function collegeLeaderboard(
       <p class="text-xs md:text-sm text-muted serif italic mb-4">
         Which schools consistently out-produce their draft slot? Ranked by avg delta per pick.
         Only schools with 5+ drafted pros in the 10-year window are included.
+        The statistical lens keeps your URL in sync across tabs; college ranking itself is baseline value-added.
       </p>
+      ${controls}
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
         ${rows}
@@ -1488,6 +2099,11 @@ export function teamBreakdownModal(
             </div>
             <p class="text-sm text-muted serif italic leading-relaxed">
               ${b.totalPicks} picks evaluated · ${b.hits} hits · ${b.eliteCount} elite · ${b.busts} busts.
+              ${
+                b.eliteNames.length > 0
+                  ? `<span class="block mt-2 text-[11px] font-sans not-italic text-emerald-900 leading-snug">Elite picks (≥8.0 LLL): ${b.eliteNames.map((n) => escapeHtml(n)).join(' · ')}</span>`
+                  : ''
+              }
               Years are flagged
               <span class="font-bold text-emerald-700">green</span> when there's a clear hit,
               <span class="font-bold text-amber-700">orange</span> for mixed classes, and
@@ -1838,7 +2454,10 @@ export function expertProfileNotFound(
 export interface PlayersGridOptions {
   mode: 'career' | 'season';
   selectedSeason: number;
+  seasonYearMin: number;
+  seasonYearMax: number;
   window: number;
+  statModel?: StatModelId;
   filter: 'all' | 'hits' | 'busts';
   sort: 'delta' | 'name' | 'team' | 'round' | 'year' | 'position';
   dir: 'asc' | 'desc';
@@ -1862,6 +2481,9 @@ function buildPlayersQs(opts: PlayersGridOptions, override: Partial<PlayersGridO
     params.set('season', String(merged.selectedSeason));
   }
   params.set('window', String(merged.window));
+  if (merged.statModel && merged.statModel !== DEFAULT_STAT_MODEL) {
+    params.set('model', merged.statModel);
+  }
   if (merged.filter !== 'all') {
     params.set('filter', merged.filter);
   }
@@ -1893,13 +2515,31 @@ export function playersGrid(
   extras: {isAdmin?: boolean; debug?: boolean} = {},
 ): string {
   const snapshot = adminFlags(extras);
+  const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
   const controls = renderViewControls({
     mode: opts.mode,
     selectedSeason: opts.selectedSeason,
+    seasonYearMin: opts.seasonYearMin,
+    seasonYearMax: opts.seasonYearMax,
     window: opts.window,
+    statModel,
+    isAdmin: snapshot.isAdmin,
   });
   const isSeason = opts.mode === 'season';
   const viewLabel = isSeason ? `${opts.selectedSeason} NFL season` : 'Career';
+  const dashQs = buildAnalyzerQueryString({
+    mode: opts.mode,
+    season: opts.selectedSeason,
+    window: opts.window,
+    model: statModel,
+    debug: snapshot.debug,
+  });
+  const premiumNote =
+    statModel === 'premium'
+      ? `<p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-4">
+          Sorting by <strong>capital-weighted Δ</strong> (early-round picks weigh more). The Δ column still shows raw LLL delta.
+        </p>`
+      : '';
   const filterPill = (key: 'all' | 'hits' | 'busts', label: string) => {
     const qs = buildPlayersQs(opts, {filter: key, page: 1});
     const active = opts.filter === key;
@@ -2011,7 +2651,7 @@ export function playersGrid(
   const content = `
     ${header('dashboard', adminFlags(snapshot))}
     <div class="max-w-6xl mx-auto py-6 px-4 text-black">
-      <a href="/analyzer?${buildPlayersQs(opts, {})}"
+      <a href="/analyzer?${dashQs}"
          class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent mb-3 inline-block transition-colors">← Back to Dashboard</a>
       <div class="flex flex-wrap items-baseline justify-between gap-4 mb-3">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -2028,6 +2668,7 @@ export function playersGrid(
         Click any column header to sort.
       </p>
       ${controls}
+      ${premiumNote}
 
       <div class="flex flex-wrap items-center gap-3 mb-4">
         <div class="flex items-center bg-black/[0.05] rounded-md p-1">
