@@ -46,7 +46,13 @@ function parseScoutOpts(query: Record<string, string | undefined>): ScoutOptions
   const windowRaw = query.window ? Number(query.window) : NaN;
   const window = Number.isFinite(windowRaw) ? windowRaw : undefined;
   const statModel = parseStatModel(query);
-  return {mode, season, window, statModel};
+  const wPffRaw = query.w_pff ? Number(query.w_pff) : NaN;
+  const wContractRaw = query.w_contract ? Number(query.w_contract) : NaN;
+  const marketWeights =
+    Number.isFinite(wPffRaw) && Number.isFinite(wContractRaw) && wPffRaw + wContractRaw > 0
+      ? {pff: wPffRaw, contract: wContractRaw}
+      : undefined;
+  return {mode, season, window, statModel, marketWeights};
 }
 
 type SeasonBounds = {min: number; max: number};

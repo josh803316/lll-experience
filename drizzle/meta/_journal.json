@@ -85,6 +85,13 @@
       "when": 1777736609805,
       "tag": "0011_perfect_mariko_yashida",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778101296837,
+      "tag": "0012_simple_penance",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   CONTRACT_BONUSES,
   PlayerPerformanceRegistry,
 } from './lll-rating-engine.js';
+import {MarketTierService, type MarketTierWeights} from './market-tier.js';
 import type {StatModelId} from '../config/analyzer-stat-models.js';
 import {DEFAULT_STAT_MODEL} from '../config/analyzer-stat-models.js';
 import {DRAFT_SLOT_TRADE_VALUES} from '../config/draft-slot-trade-values.js';
@@ -65,6 +66,30 @@ export function pickLensMetric(
 export function pickStatLensScore(p: ScoredPick, statModel: StatModelId | undefined): number {
   return pickLensMetric(p.delta, p.round, p.pickNumber, statModel);
 }
+
+/**
+ * Resolve the per-player rating source for a given lens.
+ *   - contract_aware: uses MarketTierService blended talent score; skips the
+ *     categorical contract bonus to avoid double-counting market signal.
+ *   - everything else: existing PlayerPerformanceRegistry career rating.
+ */
+async function resolveRatingMap(opts: ScoutOptions): Promise<{
+  ratingFor: (playerName: string) => number | null;
+  applyContractBonus: boolean;
+}> {
+  if ((opts.statModel ?? DEFAULT_STAT_MODEL) === 'contract_aware') {
+    const map = await MarketTierService.getTalentScoreMap(opts.marketWeights);
+    return {
+      ratingFor: (name: string) => map.get(LLLRatingEngine.normalizeName(name))?.talentScore ?? null,
+      applyContractBonus: false,
+    };
+  }
+  const map = await PlayerPerformanceRegistry.getCareerRatingMap();
+  return {
+    ratingFor: (name: string) => map.get(LLLRatingEngine.normalizeName(name)) ?? null,
+    applyContractBonus: true,
+  };
+}
 const DEFAULT_WINDOW = 6;
 
 export const TEAM_WINDOW_DEFAULT = DEFAULT_WINDOW;
@@ -110,6 +135,11 @@ export interface ScoutOptions {
   endYear?: number;
   /** Statistical lens for team/mover rankings (Franchise Index). */
   statModel?: StatModelId;
+  /**
+   * PFF/contract weights for the contract_aware lens. Default 0.5/0.5.
+   * Only consulted when statModel === 'contract_aware'.
+   */
+  marketWeights?: MarketTierWeights;
 }
 
 export function resolveScoutYearRange(opts: ScoutOptions & {draftYear?: number}): {startYear: number; endYear: number} {
@@ -270,14 +300,13 @@ export class TeamScoutService {
    */
   static async getTeamSuccessLeaderboard(opts: ScoutOptions = {}): Promise<TeamSuccessRow[]> {
     const {startYear, endYear} = resolveScoutYearRange(opts);
-    const useContractBonus = (opts.mode ?? 'career') === 'career';
+    const useContractBonusBase = (opts.mode ?? 'career') === 'career';
     const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
 
     const db = getDB();
 
-    // 1. Use centralized registry (eliminates redundant O(N) calculations)
-    const [lookupMap, picks] = await Promise.all([
-      PlayerPerformanceRegistry.getCareerRatingMap(),
+    const [{ratingFor, applyContractBonus: lensAllowsBonus}, picks] = await Promise.all([
+      resolveRatingMap(opts),
       db
         .select({
           playerName: officialDraftResults.playerName,
@@ -290,6 +319,7 @@ export class TeamScoutService {
         .from(officialDraftResults)
         .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
+    const useContractBonus = useContractBonusBase && lensAllowsBonus;
 
     const allPickDeltas: number[] = [];
 
@@ -321,7 +351,7 @@ export class TeamScoutService {
         continue;
       }
 
-      const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
+      const rating = ratingFor(p.playerName);
       if (rating === null) {
         continue;
       }
@@ -439,16 +469,17 @@ export class TeamScoutService {
    */
   static async getAllScoredPicks(opts: ScoutOptions & {draftYear?: number} = {}): Promise<ScoredPick[]> {
     const {startYear, endYear} = resolveScoutYearRange(opts);
-    const useContractBonus = (opts.mode ?? 'career') === 'career';
+    const useContractBonusBase = (opts.mode ?? 'career') === 'career';
 
     const db = getDB();
-    const [lookupMap, picks] = await Promise.all([
-      PlayerPerformanceRegistry.getCareerRatingMap(),
+    const [{ratingFor, applyContractBonus: lensAllowsBonus}, picks] = await Promise.all([
+      resolveRatingMap(opts),
       db
         .select()
         .from(officialDraftResults)
         .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
+    const useContractBonus = useContractBonusBase && lensAllowsBonus;
 
     const scored: ScoredPick[] = [];
     for (const p of picks) {
@@ -456,7 +487,7 @@ export class TeamScoutService {
       if (!team || !p.round || !p.playerName) {
         continue;
       }
-      const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
+      const rating = ratingFor(p.playerName);
       if (rating === null) {
         continue;
       }
@@ -524,13 +555,14 @@ export class TeamScoutService {
 
     const db = getDB();
 
-    const [lookupMap, allPicks] = await Promise.all([
-      PlayerPerformanceRegistry.getCareerRatingMap(),
+    const [{ratingFor, applyContractBonus: lensAllowsBonus}, allPicks] = await Promise.all([
+      resolveRatingMap(opts),
       db
         .select()
         .from(officialDraftResults)
         .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear))),
     ]);
+    const effectiveUseContractBonus = useContractBonus && lensAllowsBonus;
 
     const myPicks = allPicks.filter((p) => canonicalTeam(p.teamName)?.abbr === targetKey);
 
@@ -543,11 +575,11 @@ export class TeamScoutService {
         continue;
       }
 
-      const rating = lookupMap.get(LLLRatingEngine.normalizeName(p.playerName)) ?? null;
+      const rating = ratingFor(p.playerName);
 
       let outcome: PickOutcome = 'PENDING';
       if (rating !== null) {
-        const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
+        const perf = LLLRatingEngine.applyContractBonus(rating, effectiveUseContractBonus ? p.contractOutcome : null);
         const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
 

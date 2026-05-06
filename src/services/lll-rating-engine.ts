@@ -289,6 +289,75 @@ export class LLLRatingEngine {
 }
 
 /**
+ * Map a raw player position to its NFL franchise-tag bucket. The franchise
+ * tag groups interchangeable-compensation positions (per CBA), so it's the
+ * natural unit for "rank this player against peers" — both for PFF
+ * three-good-years percentiles and for contract-percentile ranking.
+ *
+ *   QB · RB · WR · TE · OL · DE · DT · LB · CB · S · K · P
+ *
+ * Returns null for unrecognized strings so callers can decide whether to
+ * fall back to PFF-only or skip the player entirely.
+ */
+export type FranchisePosition = 'QB' | 'RB' | 'WR' | 'TE' | 'OL' | 'DE' | 'DT' | 'LB' | 'CB' | 'S' | 'K' | 'P';
+
+const FRANCHISE_POSITION_MAP: Record<string, FranchisePosition> = {
+  QB: 'QB',
+  RB: 'RB',
+  HB: 'RB',
+  FB: 'RB',
+  WR: 'WR',
+  TE: 'TE',
+  C: 'OL',
+  G: 'OL',
+  LG: 'OL',
+  RG: 'OL',
+  T: 'OL',
+  LT: 'OL',
+  RT: 'OL',
+  OT: 'OL',
+  OG: 'OL',
+  OL: 'OL',
+  IOL: 'OL',
+  DE: 'DE',
+  LE: 'DE',
+  RE: 'DE',
+  EDGE: 'DE',
+  ED: 'DE',
+  DT: 'DT',
+  NT: 'DT',
+  DI: 'DT',
+  DL: 'DT',
+  LB: 'LB',
+  ILB: 'LB',
+  MLB: 'LB',
+  OLB: 'LB',
+  WLB: 'LB',
+  SLB: 'LB',
+  CB: 'CB',
+  LCB: 'CB',
+  RCB: 'CB',
+  DB: 'CB',
+  S: 'S',
+  FS: 'S',
+  SS: 'S',
+  SAF: 'S',
+  K: 'K',
+  PK: 'K',
+  'K/P': 'K',
+  P: 'P',
+  LS: 'P', // long snapper bucketed with P (rare draftees, no franchise tag of its own)
+};
+
+export function toFranchisePosition(raw: string | null | undefined): FranchisePosition | null {
+  if (!raw) {
+    return null;
+  }
+  const key = raw.trim().toUpperCase();
+  return FRANCHISE_POSITION_MAP[key] ?? null;
+}
+
+/**
  * NFL franchise canonical-name mapping for nflverse abbreviations.
  * Merges relocated franchises (OAK→LVR, SDG→LAC, STL→LAR).
  * `espn` is the lowercase logo slug used on ESPN's CDN.

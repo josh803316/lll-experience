@@ -318,6 +318,57 @@ export const pffPlayerStats = pgTable(
 );
 
 /**
+ * Per-player career PFF summary, sourced from Tim's pff_summary_2016_2025.xlsx
+ * Column O ("3 good years"). The source formula deliberately drops the top
+ * year to suppress small-sample anomalies (e.g. backup posting 90+ in 4 games):
+ *   - 4+ seasons: avg of 2nd, 3rd, 4th best
+ *   - 3 seasons : avg of 2nd, 3rd best
+ *   - 2 seasons : avg of 1st, 2nd best
+ *   - 1 season  : that season's grade
+ * Ingested as source of truth — re-run when Tim updates the spreadsheet.
+ */
+export const pffCareerSummary = pgTable(
+  'pff_career_summary',
+  {
+    id: serial('id').primaryKey(),
+    playerName: text('player_name').notNull(),
+    pffPlayerId: integer('pff_player_id'),
+    rawPosition: text('raw_position'), // e.g. 'C', 'CB', 'LT'
+    franchisePosition: text('franchise_position').notNull(), // 'OL', 'CB', 'OL'
+    side: text('side').notNull(), // 'offense' | 'defense' | 'special'
+    threeGoodYears: doublePrecision('three_good_years').notNull(), // 0-100 PFF grade
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqPffPlayerSide: unique().on(t.playerName, t.side),
+    idxPffCareerFranchisePos: index('idx_pff_career_franchise_pos').on(t.franchisePosition),
+  }),
+);
+
+/**
+ * Per-player best-contract market signal, sourced from Tim's
+ * "Best Contract Once" column (only the row representing the player's
+ * single best percentile is non-blank). Lower percentile = better contract
+ * (top-of-market = ~0%, bottom = ~100%). Ranked within franchise position
+ * × year_signed cohort.
+ */
+export const playerContractSignal = pgTable(
+  'player_contract_signal',
+  {
+    id: serial('id').primaryKey(),
+    playerName: text('player_name').notNull().unique(),
+    franchisePosition: text('franchise_position').notNull(),
+    bestContractPercentile: doublePrecision('best_contract_percentile').notNull(), // 0-1 (lower=better)
+    bestYearSigned: integer('best_year_signed').notNull(),
+    qualifiesNonRookie: boolean('qualifies_non_rookie').default(false).notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    idxContractSignalFranchisePos: index('idx_contract_signal_franchise_pos').on(t.franchisePosition),
+  }),
+);
+
+/**
  * Per-contract dollar data for drafted players. Populated additively
  * alongside official_draft_results.contractOutcome (which keeps the
  * categorical 7-bucket signal). Lets us weight by APY-as-cap-%, total

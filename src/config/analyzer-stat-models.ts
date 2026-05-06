@@ -12,6 +12,7 @@ export const STAT_MODEL_IDS = [
   'scout',
   'pairwise',
   'blend',
+  'contract_aware',
 ] as const;
 
 export type StatModelId = (typeof STAT_MODEL_IDS)[number];
@@ -75,6 +76,13 @@ export const STAT_MODELS: StatModelMeta[] = [
     label: 'Rank blend',
     shortLabel: 'Blend',
     description: 'Expert lens: mean percentile rank across Oracle, Scout, and Pairwise where data exists.',
+  },
+  {
+    id: 'contract_aware',
+    label: 'Market-tier (PFF + Contract)',
+    shortLabel: 'Market',
+    description:
+      'Talent score blends PFF best-3-years tier with best-contract market tier (50/50). Rookie-only contracts fall back to PFF tier.',
   },
 ];
 
