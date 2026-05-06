@@ -1,0 +1,1 @@
+ALTER TABLE "pff_career_summary" ADD COLUMN "seasons_count" integer DEFAULT 0 NOT NULL;

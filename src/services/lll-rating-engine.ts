@@ -55,6 +55,25 @@ export const EXPECTED_VALUE_BY_ROUND: Record<number, number> = {
   7: 1.0,
 };
 
+/**
+ * Per-round expectation calibrated for the contract_aware lens, where the
+ * talent score is a 1-10 percentile tier (uniform distribution, mean ≈ 5.5).
+ * Anchored to the empirical avg tier of drafted-with-PFF players by round
+ * — see `scripts/diagnose-latu.ts`. Round-1 picks average tier ~7.2, R7
+ * picks average ~4.6, with the spread compressed compared to LLL because
+ * marginal NFL players cluster above tier 1 (everyone with ANY data is
+ * above the percentile floor).
+ */
+export const EXPECTED_TIER_BY_ROUND: Record<number, number> = {
+  1: 7.25,
+  2: 6.3,
+  3: 5.65,
+  4: 5.0,
+  5: 4.85,
+  6: 4.65,
+  7: 4.55,
+};
+
 export const CONTRACT_BONUSES: Record<string, number> = {
   TOP_OF_MARKET: 2.0,
   MARKET_OR_ABOVE: 1.5,
@@ -159,9 +178,15 @@ export class LLLRatingEngine {
 
   /**
    * Player Grade = Actual Performance Score − Expected Score (by round)
+   * Pass a custom expected-by-round map for lenses that operate on a
+   * different scale than LLL career rating (e.g. percentile-tier).
    */
-  static calculateFinalGrade(performanceScore: number, round: number): number {
-    const expected = EXPECTED_VALUE_BY_ROUND[round] || 0;
+  static calculateFinalGrade(
+    performanceScore: number,
+    round: number,
+    expectedByRound: Record<number, number> = EXPECTED_VALUE_BY_ROUND,
+  ): number {
+    const expected = expectedByRound[round] || 0;
     return Number((performanceScore - expected).toFixed(2));
   }
 

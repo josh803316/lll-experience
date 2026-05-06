@@ -33,12 +33,15 @@ interface PivotRow {
   pffPlayerId: number | null;
   player: string;
   threeGoodYears: number;
+  seasonsCount: number; // # of non-null season cells (D-M)
 }
 
 const HEADER_ROW_IDX = 3; // row index 3 is the real header in pivot tabs
 const COL_POSITION = 0;
 const COL_PLAYER_ID = 1;
 const COL_PLAYER = 2;
+const COL_YEAR_FIRST = 3; // D = 2016
+const COL_YEAR_LAST = 12; // M = 2025
 const COL_THREE_GOOD = 14; // Column O
 
 function parsePivotTab(ws: XLSX.WorkSheet): PivotRow[] {
@@ -63,11 +66,19 @@ function parsePivotTab(ws: XLSX.WorkSheet): PivotRow[] {
       continue;
     }
     const pid = r[COL_PLAYER_ID];
+    let seasonsCount = 0;
+    for (let c = COL_YEAR_FIRST; c <= COL_YEAR_LAST; c++) {
+      const v = r[c];
+      if (v !== null && v !== undefined && Number.isFinite(typeof v === 'number' ? v : Number(v))) {
+        seasonsCount++;
+      }
+    }
     out.push({
       position: position.trim(),
       pffPlayerId: typeof pid === 'number' ? pid : null,
       player: player.trim(),
       threeGoodYears: tg,
+      seasonsCount,
     });
   }
   return out;
@@ -108,6 +119,7 @@ for (const tab of tabs) {
         franchisePosition: fp,
         side: tab.side,
         threeGoodYears: p.threeGoodYears,
+        seasonsCount: p.seasonsCount,
       };
     })
     .filter((v): v is NonNullable<typeof v> => v !== null);

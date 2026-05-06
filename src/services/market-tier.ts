@@ -13,8 +13,17 @@
  * URL params for live A/B without redeploys.
  */
 import {getDB} from '../db/index.js';
-import {pffCareerSummary, playerContractSignal} from '../db/schema.js';
+import {pffCareerSummary, playerContractSignal, officialDraftResults} from '../db/schema.js';
 import {LLLRatingEngine} from './lll-rating-engine.js';
+
+/**
+ * Tim's column-O formula falls back to MAX or AVG-of-2 when a player has
+ * fewer than 3 NFL seasons — that small-sample rating is unreliable and
+ * tends to over-rank players like Cameron Latu (1 fluky season). We
+ * suppress those from the percentile pool unless the player has a
+ * qualifying non-rookie contract (the league has signaled belief).
+ */
+const MIN_PFF_SEASONS_FOR_PERCENTILE = 3;
 
 export interface MarketTierWeights {
   pff: number;
@@ -36,6 +45,7 @@ interface CareerSummaryRow {
   playerName: string;
   franchisePosition: string;
   threeGoodYears: number;
+  seasonsCount: number;
 }
 
 interface ContractSignalRow {
@@ -104,12 +114,13 @@ export class MarketTierService {
     }
     const promise = (async () => {
       const db = getDB();
-      const [pffRows, contractRows] = await Promise.all([
+      const [pffRows, contractRows, draftedRows] = await Promise.all([
         db
           .select({
             playerName: pffCareerSummary.playerName,
             franchisePosition: pffCareerSummary.franchisePosition,
             threeGoodYears: pffCareerSummary.threeGoodYears,
+            seasonsCount: pffCareerSummary.seasonsCount,
           })
           .from(pffCareerSummary),
         db
@@ -120,7 +131,17 @@ export class MarketTierService {
             qualifiesNonRookie: playerContractSignal.qualifiesNonRookie,
           })
           .from(playerContractSignal),
+        db.select({playerName: officialDraftResults.playerName}).from(officialDraftResults),
       ]);
+
+      // Drafted-only universe — UDFAs / non-drafted PFF entries don't shape our
+      // percentile tiers (they pollute the pool with marginal NFL players).
+      const draftedKeys = new Set<string>();
+      for (const d of draftedRows) {
+        if (d.playerName) {
+          draftedKeys.add(LLLRatingEngine.normalizeName(d.playerName));
+        }
+      }
 
       // PFF: keep highest 3-good-years per (normalized name) — multiple rows can exist
       // when a player appears on Offense + Defense tabs (rare but possible).
@@ -128,14 +149,23 @@ export class MarketTierService {
       const pffByKey = new Map<string, PffBest>();
       for (const r of pffRows) {
         const key = LLLRatingEngine.normalizeName(r.playerName);
+        if (!draftedKeys.has(key)) {
+          continue;
+        }
         const cur = pffByKey.get(key);
         if (!cur || r.threeGoodYears > cur.threeGoodYears) {
           pffByKey.set(key, {...r, key});
         }
       }
-      const pffList = Array.from(pffByKey.values());
+      const pffListAll = Array.from(pffByKey.values());
+
+      // Suppress small-sample players from the percentile pool — Tim's column-O
+      // formula falls back to MAX/AVG-2 below 3 seasons, which over-rates 1-game
+      // anomalies (Cameron Latu being the textbook case). They can still get a
+      // contract-only score if the league has signed them to a real deal.
+      const pffListForRanking = pffListAll.filter((p) => p.seasonsCount >= MIN_PFF_SEASONS_FOR_PERCENTILE);
       const pffTierMap = buildTierLookup(
-        pffList,
+        pffListForRanking,
         (r) => r.franchisePosition,
         (r) => r.threeGoodYears,
         true, // ascending: highest grade → highest tier
@@ -147,7 +177,9 @@ export class MarketTierService {
         const key = LLLRatingEngine.normalizeName(r.playerName);
         contractByKey.set(key, {...r, key});
       }
-      const contractList = Array.from(contractByKey.values()).filter((c) => c.qualifiesNonRookie);
+      const contractList = Array.from(contractByKey.values()).filter(
+        (c) => c.qualifiesNonRookie && draftedKeys.has(c.key),
+      );
       const contractTierMap = buildTierLookup(
         contractList,
         (r) => r.franchisePosition,
@@ -157,9 +189,11 @@ export class MarketTierService {
 
       const out = new Map<string, PlayerTalentScore>();
 
-      // Players with PFF data drive the universe; contract-only with no PFF is rare in our drafted population.
-      for (const pff of pffList) {
-        const pffTier = pffTierMap.get(pff) ?? null;
+      // Iterate full PFF universe (drafted) so even small-sample players show up
+      // *if* they have a qualifying contract. Otherwise we skip them — small
+      // sample with no league belief = no signal.
+      for (const pff of pffListAll) {
+        const pffTier = pffTierMap.get(pff) ?? null; // null when sample is small
         const contract = contractByKey.get(pff.key);
         const contractTier = contract && contract.qualifiesNonRookie ? (contractTierMap.get(contract) ?? null) : null;
         const qualifies = !!contract && contract.qualifiesNonRookie;
@@ -168,9 +202,14 @@ export class MarketTierService {
         if (qualifies && contractTier !== null && pffTier !== null) {
           const wSum = weights.pff + weights.contract;
           talentScore = (weights.pff * pffTier + weights.contract * contractTier) / wSum;
+        } else if (qualifies && contractTier !== null) {
+          // Big contract but small PFF sample — trust the league.
+          talentScore = contractTier;
         } else if (pffTier !== null) {
+          // Multi-season PFF, no qualifying contract yet.
           talentScore = pffTier;
         } else {
+          // Small-sample PFF and no qualifying contract → no signal, skip.
           continue;
         }
 
@@ -184,7 +223,7 @@ export class MarketTierService {
         });
       }
 
-      // Add contract-only players (have a qualifying contract but no PFF row in our import).
+      // Add drafted contract-only players (have a qualifying contract but no PFF row in our import).
       for (const c of contractList) {
         if (out.has(c.key)) {
           continue;

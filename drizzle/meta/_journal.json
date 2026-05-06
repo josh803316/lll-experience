@@ -92,6 +92,13 @@
       "when": 1778101296837,
       "tag": "0012_simple_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1778110153624,
+      "tag": "0013_rich_skaar",
+      "breakpoints": true
     }
   ]
 }

@@ -337,6 +337,7 @@ export const pffCareerSummary = pgTable(
     franchisePosition: text('franchise_position').notNull(), // 'OL', 'CB', 'OL'
     side: text('side').notNull(), // 'offense' | 'defense' | 'special'
     threeGoodYears: doublePrecision('three_good_years').notNull(), // 0-100 PFF grade
+    seasonsCount: integer('seasons_count').default(0).notNull(), // # of non-null season cells (D-M)
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => ({

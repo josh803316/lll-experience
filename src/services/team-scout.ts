@@ -5,6 +5,7 @@ import {
   LLLRatingEngine,
   canonicalTeam,
   EXPECTED_VALUE_BY_ROUND,
+  EXPECTED_TIER_BY_ROUND,
   CONTRACT_BONUSES,
   PlayerPerformanceRegistry,
 } from './lll-rating-engine.js';
@@ -76,18 +77,21 @@ export function pickStatLensScore(p: ScoredPick, statModel: StatModelId | undefi
 async function resolveRatingMap(opts: ScoutOptions): Promise<{
   ratingFor: (playerName: string) => number | null;
   applyContractBonus: boolean;
+  expectedByRound: Record<number, number>;
 }> {
   if ((opts.statModel ?? DEFAULT_STAT_MODEL) === 'contract_aware') {
     const map = await MarketTierService.getTalentScoreMap(opts.marketWeights);
     return {
       ratingFor: (name: string) => map.get(LLLRatingEngine.normalizeName(name))?.talentScore ?? null,
       applyContractBonus: false,
+      expectedByRound: EXPECTED_TIER_BY_ROUND,
     };
   }
   const map = await PlayerPerformanceRegistry.getCareerRatingMap();
   return {
     ratingFor: (name: string) => map.get(LLLRatingEngine.normalizeName(name)) ?? null,
     applyContractBonus: true,
+    expectedByRound: EXPECTED_VALUE_BY_ROUND,
   };
 }
 const DEFAULT_WINDOW = 6;
@@ -305,7 +309,7 @@ export class TeamScoutService {
 
     const db = getDB();
 
-    const [{ratingFor, applyContractBonus: lensAllowsBonus}, picks] = await Promise.all([
+    const [{ratingFor, applyContractBonus: lensAllowsBonus, expectedByRound}, picks] = await Promise.all([
       resolveRatingMap(opts),
       db
         .select({
@@ -357,7 +361,7 @@ export class TeamScoutService {
       }
 
       const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
-      const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+      const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round, expectedByRound);
       const normalizedRating = rating;
       allPickDeltas.push(delta);
 
@@ -472,7 +476,7 @@ export class TeamScoutService {
     const useContractBonusBase = (opts.mode ?? 'career') === 'career';
 
     const db = getDB();
-    const [{ratingFor, applyContractBonus: lensAllowsBonus}, picks] = await Promise.all([
+    const [{ratingFor, applyContractBonus: lensAllowsBonus, expectedByRound}, picks] = await Promise.all([
       resolveRatingMap(opts),
       db
         .select()
@@ -494,7 +498,7 @@ export class TeamScoutService {
 
       const contractBonus = useContractBonus && p.contractOutcome ? (CONTRACT_BONUSES[p.contractOutcome] ?? 0) : 0;
       const perf = LLLRatingEngine.applyContractBonus(rating, useContractBonus ? p.contractOutcome : null);
-      const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+      const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round, expectedByRound);
       const outcome = LLLRatingEngine.getGradeOutcomeLabel(delta);
 
       scored.push({
@@ -509,7 +513,7 @@ export class TeamScoutService {
         contractOutcome: p.contractOutcome ?? null,
         contractBonus,
         performanceScore: perf,
-        expected: EXPECTED_VALUE_BY_ROUND[p.round] ?? 0,
+        expected: expectedByRound[p.round] ?? 0,
         delta,
         outcome,
       });
@@ -555,7 +559,7 @@ export class TeamScoutService {
 
     const db = getDB();
 
-    const [{ratingFor, applyContractBonus: lensAllowsBonus}, allPicks] = await Promise.all([
+    const [{ratingFor, applyContractBonus: lensAllowsBonus, expectedByRound}, allPicks] = await Promise.all([
       resolveRatingMap(opts),
       db
         .select()
@@ -580,7 +584,7 @@ export class TeamScoutService {
       let outcome: PickOutcome = 'PENDING';
       if (rating !== null) {
         const perf = LLLRatingEngine.applyContractBonus(rating, effectiveUseContractBonus ? p.contractOutcome : null);
-        const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round);
+        const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round, expectedByRound);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
 
         if (rating >= 8.0) {
