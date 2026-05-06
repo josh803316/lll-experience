@@ -1,0 +1,1 @@
+ALTER TABLE "player_contract_signal" ADD COLUMN "best_apy_cap_pct" double precision;

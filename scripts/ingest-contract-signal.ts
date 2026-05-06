@@ -38,6 +38,7 @@ const COL = {
   draft_year: 1,
   franchise_position: 6,
   contract_year_signed: 8,
+  apy_cap_pct: 14,
   is_second_contract: 15,
   best_contract_once: 23, // Column X
 };
@@ -54,6 +55,7 @@ interface Signal {
   playerName: string;
   franchisePosition: string;
   bestContractPercentile: number;
+  bestApyCapPct: number | null;
   bestYearSigned: number;
   qualifiesNonRookie: boolean;
 }
@@ -95,12 +97,16 @@ for (let i = 1; i < rows.length; i++) {
   const draftYear = Number(r[COL.draft_year]);
   const isSecond = r[COL.is_second_contract];
   const isSecondBool = isSecond === true || isSecond === 'true' || isSecond === 'TRUE';
+  const apyCapRaw = r[COL.apy_cap_pct];
+  const bestApyCapPct =
+    typeof apyCapRaw === 'number' ? apyCapRaw : Number.isFinite(Number(apyCapRaw)) ? Number(apyCapRaw) : null;
   const qualifies = isSecondBool || (Number.isFinite(draftYear) && yearSigned - draftYear >= 4);
 
   signals.push({
     playerName: playerName.trim(),
     franchisePosition: franchise,
     bestContractPercentile: pct,
+    bestApyCapPct,
     bestYearSigned: yearSigned,
     qualifiesNonRookie: qualifies,
   });

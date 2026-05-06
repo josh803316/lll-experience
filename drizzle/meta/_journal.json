@@ -99,6 +99,13 @@
       "when": 1778110153624,
       "tag": "0013_rich_skaar",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1778110961740,
+      "tag": "0014_illegal_paladin",
+      "breakpoints": true
     }
   ]
 }

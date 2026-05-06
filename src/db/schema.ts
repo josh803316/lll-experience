@@ -360,6 +360,7 @@ export const playerContractSignal = pgTable(
     playerName: text('player_name').notNull().unique(),
     franchisePosition: text('franchise_position').notNull(),
     bestContractPercentile: doublePrecision('best_contract_percentile').notNull(), // 0-1 (lower=better)
+    bestApyCapPct: doublePrecision('best_apy_cap_pct'), // 0-1, dollar value of the best contract
     bestYearSigned: integer('best_year_signed').notNull(),
     qualifiesNonRookie: boolean('qualifies_non_rookie').default(false).notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

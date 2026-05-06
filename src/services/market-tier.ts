@@ -25,6 +25,16 @@ import {LLLRatingEngine} from './lll-rating-engine.js';
  */
 const MIN_PFF_SEASONS_FOR_PERCENTILE = 3;
 
+/**
+ * Tim's "Best Contract Once" picks the lowest-percentile contract across a
+ * player's career — but in cohorts dominated by backups, even a tiny
+ * deal can land top-decile (Trey Lance's 2026 LAC $2.5M backup pact is the
+ * canonical case). We additionally require the contract to be ≥ ~2% of
+ * cap (~$5M APY at current cap levels) to count as "the league believes
+ * in this player." Below that, signal falls back to PFF-only.
+ */
+const MIN_QUALIFYING_APY_CAP_PCT = 0.02;
+
 export interface MarketTierWeights {
   pff: number;
   contract: number;
@@ -52,6 +62,7 @@ interface ContractSignalRow {
   playerName: string;
   franchisePosition: string;
   bestContractPercentile: number;
+  bestApyCapPct: number | null;
   qualifiesNonRookie: boolean;
 }
 
@@ -62,6 +73,20 @@ function percentileTier(rank0Indexed: number, total: number): number {
   }
   const pct = (rank0Indexed + 0.5) / total; // mid-rank percentile, 0..1
   return Math.min(10, Math.max(1, Math.floor(pct * 10) + 1));
+}
+
+/**
+ * Map a "lower is better" percentile (Tim's column W) directly to a 1-10 tier.
+ *   pct = 0.05 (top 5% deal)  → tier 10
+ *   pct = 0.55 (mid-pack)     → tier 5
+ *   pct = 0.99 (bottom)       → tier 1
+ * Used instead of re-binning because Tim's percentile is already the cohort-relative rank we want.
+ */
+function contractPercentileToTier(pct: number): number {
+  if (!Number.isFinite(pct)) {
+    return 1;
+  }
+  return Math.min(10, Math.max(1, 11 - Math.ceil(Math.max(0.0001, Math.min(1, pct)) * 10)));
 }
 
 /**
@@ -128,6 +153,7 @@ export class MarketTierService {
             playerName: playerContractSignal.playerName,
             franchisePosition: playerContractSignal.franchisePosition,
             bestContractPercentile: playerContractSignal.bestContractPercentile,
+            bestApyCapPct: playerContractSignal.bestApyCapPct,
             qualifiesNonRookie: playerContractSignal.qualifiesNonRookie,
           })
           .from(playerContractSignal),
@@ -172,20 +198,24 @@ export class MarketTierService {
       );
 
       // Contracts: one row per player already (filtered to "Best Contract Once").
+      // Apply additional dollar-value gate: backup-pay deals don't count as the
+      // league validating the player even if they top a small cohort's percentile.
       const contractByKey = new Map<string, ContractSignalRow & {key: string}>();
       for (const r of contractRows) {
         const key = LLLRatingEngine.normalizeName(r.playerName);
-        contractByKey.set(key, {...r, key});
+        const apyOk = r.bestApyCapPct !== null && r.bestApyCapPct >= MIN_QUALIFYING_APY_CAP_PCT;
+        contractByKey.set(key, {...r, qualifiesNonRookie: r.qualifiesNonRookie && apyOk, key});
       }
       const contractList = Array.from(contractByKey.values()).filter(
         (c) => c.qualifiesNonRookie && draftedKeys.has(c.key),
       );
-      const contractTierMap = buildTierLookup(
-        contractList,
-        (r) => r.franchisePosition,
-        (r) => r.bestContractPercentile,
-        false, // descending so lowest percentile (best deal) lands at idx 0 → tier 10
-      );
+      // Direct mapping from Tim's already-computed cohort percentile to 1-10
+      // — re-ranking within the qualifying-only pool would distort top-of-market
+      // signals (e.g. Bosa's 5% percentile would mid-pack against a small filtered pool).
+      const contractTierMap = new Map<ContractSignalRow & {key: string}, number>();
+      for (const c of contractList) {
+        contractTierMap.set(c, contractPercentileToTier(c.bestContractPercentile));
+      }
 
       const out = new Map<string, PlayerTalentScore>();
 
