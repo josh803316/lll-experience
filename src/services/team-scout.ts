@@ -94,7 +94,7 @@ async function resolveRatingMap(opts: ScoutOptions): Promise<{
     expectedByRound: EXPECTED_VALUE_BY_ROUND,
   };
 }
-const DEFAULT_WINDOW = 6;
+const DEFAULT_WINDOW = 10;
 
 export const TEAM_WINDOW_DEFAULT = DEFAULT_WINDOW;
 export const TEAM_WINDOW_END_DEFAULT = LATEST_FAIR_DRAFT_YEAR;
@@ -181,7 +181,7 @@ export interface TeamSuccessRow {
   hits: number;
   busts: number;
   eliteCount: number;
-  /** Unique player names with LLL career rating ≥ 8.0 in this window (for tooltips). */
+  /** Unique player names with LLL career rating ≥ 9.0 in this window (for tooltips). */
   eliteNames: string[];
   hitRate: number;
   avgDelta: number;
@@ -400,7 +400,7 @@ export class TeamScoutService {
       if (delta < -1.0) {
         agg.busts++;
       }
-      if (rating >= 8.0) {
+      if (rating >= 9.0) {
         agg.eliteCount++;
         agg.eliteNameSet.add(p.playerName);
       }
@@ -587,7 +587,7 @@ export class TeamScoutService {
         const delta = LLLRatingEngine.calculateFinalGrade(perf, p.round, expectedByRound);
         outcome = LLLRatingEngine.getGradeOutcomeLabel(delta) as PickOutcome;
 
-        if (rating >= 8.0) {
+        if (rating >= 9.0) {
           eliteCount++;
           eliteNameSet.add(p.playerName);
         }

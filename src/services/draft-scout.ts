@@ -378,7 +378,7 @@ export class DraftScoutService {
       }
       roundAgg[p.round].sum += perf;
       roundAgg[p.round].count++;
-      if (rating >= 8.0) {
+      if (rating >= 9.0) {
         roundAgg[p.round].eliteCount++;
       }
     }

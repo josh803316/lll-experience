@@ -219,13 +219,13 @@ const TOOLTIPS = {
   hitRate:
     'Hit Rate = the share of a team\u2019s picks that beat the expected value for their round (LLL Delta > 0.5). The cleanest way to see who\u2019s consistently winning the draft.',
   elitePlayers:
-    'Elite Players = draft picks on this team whose raw LLL Career Rating (best-4 seasons) is ≥ 8.0 — not “media elite,” and separate from ELITE HIT (value vs round). Spelling must match our registry; common aliases are merged. A dominant late pick can grade off the charts vs expectation but still sit at 7.x–7.9 on the career scale.',
+    'Elite Players = draft picks on this team whose raw LLL Career Rating (best-4 seasons) is ≥ 9.0 — not “media elite,” and separate from ELITE HIT (value vs round). Spelling must match our registry; common aliases are merged. A dominant late pick can grade off the charts vs expectation but still sit below the elite threshold on the career scale.',
   collegeHitRate:
     'College Hit Rate = the share of players from this school whose NFL performance beat their draft slot expectation (LLL Delta > 0.5). Higher = the school consistently produces NFL-ready talent.',
   producedLike:
     'Jeff\u2019s Production Index. Based on this player\u2019s current LLL Career Rating, they are producing at the same level as the average NFL player drafted in this round. Comparison is against all positions league-wide.',
   eliteProb:
-    'Elite Player Probability. The historical percentage of players drafted in this round who achieve an LLL Career Rating of 8.0 or higher (Top 10 at their position). Helps evaluate if trading down for more picks outweighs the drop in elite talent odds.',
+    'Elite Player Probability. The historical percentage of players drafted in this round who achieve an LLL Career Rating of 9.0 or higher (Top 5 at their position). Helps evaluate if trading down for more picks outweighs the drop in elite talent odds.',
   outcomes:
     'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
 } as const;
@@ -259,10 +259,10 @@ function franchiseTableDeltaHeader(statModel: StatModelId): string {
 /** Black/white popover body (matches [?] `.tip-body`) — lists elite picks or empty state. */
 function renderElitePlayersTipBody(names: string[]): string {
   if (names.length === 0) {
-    return `<span class="block">No players with LLL career rating ≥ 8.0 in this window. Stars may be outside the selected years or not in our career-rating registry yet.</span>`;
+    return `<span class="block">No players with LLL career rating ≥ 9.0 in this window. Stars may be outside the selected years or not in our career-rating registry yet.</span>`;
   }
   const head =
-    '<div class="text-[10px] font-bold uppercase tracking-[0.15em] text-[#f3ede0]/90 mb-2 not-italic">Elite picks (LLL ≥ 8.0)</div>';
+    '<div class="text-[10px] font-bold uppercase tracking-[0.15em] text-[#f3ede0]/90 mb-2 not-italic">Elite picks (LLL ≥ 9.0)</div>';
   const items = names.map((n) => `<li class="text-[#f3ede0] leading-snug">${escapeHtml(n)}</li>`).join('');
   return `${head}<ul class="list-disc pl-4 m-0 space-y-1 not-italic text-left font-sans">${items}</ul>`;
 }
@@ -2161,7 +2161,7 @@ export function teamBreakdownModal(
               ${b.totalPicks} picks evaluated · ${b.hits} hits · ${b.eliteCount} elite · ${b.busts} busts.
               ${
                 b.eliteNames.length > 0
-                  ? `<span class="block mt-2 text-[11px] font-sans not-italic text-emerald-900 leading-snug">Elite picks (≥8.0 LLL): ${b.eliteNames.map((n) => escapeHtml(n)).join(' · ')}</span>`
+                  ? `<span class="block mt-2 text-[11px] font-sans not-italic text-emerald-900 leading-snug">Elite picks (≥9.0 LLL): ${b.eliteNames.map((n) => escapeHtml(n)).join(' · ')}</span>`
                   : ''
               }
               Years are flagged
