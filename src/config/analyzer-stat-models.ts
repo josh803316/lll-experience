@@ -86,6 +86,49 @@ export const STAT_MODELS: StatModelMeta[] = [
   },
 ];
 
+// ─── Grade formula (admin-only, applied on top of any lens) ──────────────────
+
+export const GRADE_FORMULA_IDS = ['none', 'elite_blend', 'elite_bonus', 'elite_discovery'] as const;
+export type GradeFormulaId = (typeof GRADE_FORMULA_IDS)[number];
+export const DEFAULT_GRADE_FORMULA: GradeFormulaId = 'none';
+
+export interface GradeFormulaMeta {
+  id: GradeFormulaId;
+  label: string;
+  description: string;
+}
+
+export const GRADE_FORMULAS: GradeFormulaMeta[] = [
+  {
+    id: 'none',
+    label: 'None (avg Δ only)',
+    description: 'Standard ranking: average delta vs round expectation. Elite count is display-only.',
+  },
+  {
+    id: 'elite_blend',
+    label: 'Option A — Elite rate blend',
+    description: '60% avg-Δ rank + 40% elite-player-rate rank. Rewards volume of elite production.',
+  },
+  {
+    id: 'elite_bonus',
+    label: 'Option B — Elite bonus',
+    description: 'avg Δ + (elite_count / total_picks) × 1.5. Direct per-pick bonus for elite density.',
+  },
+  {
+    id: 'elite_discovery',
+    label: 'Option C — Discovery credit',
+    description: 'avg Δ + half-credit for elite picks with Δ ≥ 2.0. Rewards finding elite players in late rounds.',
+  },
+];
+
+export function parseGradeFormula(query: Record<string, string | undefined>): GradeFormulaId {
+  const raw = query.grade;
+  if (!raw || !(GRADE_FORMULA_IDS as readonly string[]).includes(raw)) {
+    return DEFAULT_GRADE_FORMULA;
+  }
+  return raw as GradeFormulaId;
+}
+
 const MODEL_SET = new Set<string>(STAT_MODEL_IDS);
 
 export function parseStatModel(query: Record<string, string | undefined>): StatModelId {
@@ -113,6 +156,7 @@ export function buildAnalyzerQueryString(opts: {
   season?: number;
   window?: number;
   model?: StatModelId;
+  grade?: GradeFormulaId;
   debug?: boolean;
 }): string {
   const p = new URLSearchParams();
@@ -127,6 +171,9 @@ export function buildAnalyzerQueryString(opts: {
   }
   if (opts.model && opts.model !== DEFAULT_STAT_MODEL) {
     p.set('model', opts.model);
+  }
+  if (opts.grade && opts.grade !== DEFAULT_GRADE_FORMULA) {
+    p.set('grade', opts.grade);
   }
   if (opts.debug) {
     p.set('debug', '1');

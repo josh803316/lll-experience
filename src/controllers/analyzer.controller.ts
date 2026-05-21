@@ -35,7 +35,12 @@ import {
 import {getDB} from '../db/index.js';
 import {experts, officialDraftResults} from '../db/schema.js';
 import {sql, gte, lte, and} from 'drizzle-orm';
-import {buildAnalyzerQueryString, DEFAULT_STAT_MODEL, parseStatModel} from '../config/analyzer-stat-models.js';
+import {
+  buildAnalyzerQueryString,
+  DEFAULT_STAT_MODEL,
+  parseStatModel,
+  parseGradeFormula,
+} from '../config/analyzer-stat-models.js';
 
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
 
@@ -46,13 +51,14 @@ function parseScoutOpts(query: Record<string, string | undefined>): ScoutOptions
   const windowRaw = query.window ? Number(query.window) : NaN;
   const window = Number.isFinite(windowRaw) ? windowRaw : undefined;
   const statModel = parseStatModel(query);
+  const gradeFormula = parseGradeFormula(query);
   const wPffRaw = query.w_pff ? Number(query.w_pff) : NaN;
   const wContractRaw = query.w_contract ? Number(query.w_contract) : NaN;
   const marketWeights =
     Number.isFinite(wPffRaw) && Number.isFinite(wContractRaw) && wPffRaw + wContractRaw > 0
       ? {pff: wPffRaw, contract: wContractRaw}
       : undefined;
-  return {mode, season, window, statModel, marketWeights};
+  return {mode, season, window, statModel, gradeFormula, marketWeights};
 }
 
 type SeasonBounds = {min: number; max: number};
@@ -173,7 +179,11 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
 
   .get('/teams', async (ctx) => {
     const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
-    const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
+    const rawOpts = applySeasonBoundsToScoutOpts(
+      parseScoutOpts(ctx.query as Record<string, string | undefined>),
+      bounds,
+    );
+    const opts = admin.isAdmin ? rawOpts : {...rawOpts, gradeFormula: undefined};
     const [data, shrinkage] = await Promise.all([
       TeamScoutService.getTeamSuccessLeaderboard(opts),
       admin.debug ? TeamScoutService.getTeamYearShrinkagePrototype(opts) : Promise.resolve(undefined),
@@ -187,6 +197,7 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
         season: opts.season,
         window: opts.window,
         statModel: opts.statModel ?? 'baseline',
+        gradeFormula: admin.isAdmin ? (opts.gradeFormula ?? 'none') : undefined,
         seasonYearMin: bounds.min,
         seasonYearMax: bounds.max,
       },

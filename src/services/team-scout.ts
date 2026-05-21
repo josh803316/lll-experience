@@ -10,8 +10,8 @@ import {
   PlayerPerformanceRegistry,
 } from './lll-rating-engine.js';
 import {MarketTierService, type MarketTierWeights} from './market-tier.js';
-import type {StatModelId} from '../config/analyzer-stat-models.js';
-import {DEFAULT_STAT_MODEL} from '../config/analyzer-stat-models.js';
+import type {StatModelId, GradeFormulaId} from '../config/analyzer-stat-models.js';
+import {DEFAULT_STAT_MODEL, DEFAULT_GRADE_FORMULA} from '../config/analyzer-stat-models.js';
 import {DRAFT_SLOT_TRADE_VALUES} from '../config/draft-slot-trade-values.js';
 
 const LATEST_FAIR_DRAFT_YEAR = 2023;
@@ -144,6 +144,8 @@ export interface ScoutOptions {
    * Only consulted when statModel === 'contract_aware'.
    */
   marketWeights?: MarketTierWeights;
+  /** Admin-only grade formula applied on top of the lens. Default 'none' = avg Δ only. */
+  gradeFormula?: GradeFormulaId;
 }
 
 export function resolveScoutYearRange(opts: ScoutOptions & {draftYear?: number}): {startYear: number; endYear: number} {
@@ -337,6 +339,7 @@ export class TeamScoutService {
         busts: number;
         eliteCount: number;
         eliteNameSet: Set<string>;
+        discoverySum: number;
         deltaSum: number;
         premiumWeighted: number;
         premiumW: number;
@@ -378,6 +381,7 @@ export class TeamScoutService {
           busts: 0,
           eliteCount: 0,
           eliteNameSet: new Set<string>(),
+          discoverySum: 0,
           deltaSum: 0,
           premiumWeighted: 0,
           premiumW: 0,
@@ -403,6 +407,9 @@ export class TeamScoutService {
       if (rating >= 9.0) {
         agg.eliteCount++;
         agg.eliteNameSet.add(p.playerName);
+        if (delta >= 2.0) {
+          agg.discoverySum += delta;
+        }
       }
 
       const lm = pickLensMetric(delta, p.round, p.pickNumber, statModel);
@@ -442,14 +449,53 @@ export class TeamScoutService {
       return {abbr, a, avgDelta, premiumAvg, shrunkAvg, lensDelta, hitRate};
     });
 
+    // Sort by lensDelta first so normalization ranges are stable.
     interim.sort((x, y) => y.lensDelta - x.lensDelta);
 
     const lensDeltas = interim.map((i) => i.lensDelta);
     const maxD = Math.max(...lensDeltas);
     const minD = Math.min(...lensDeltas);
-    const span = Math.max(0.01, maxD - minD);
+    const deltaSpan = Math.max(0.01, maxD - minD);
 
-    return interim.map((i, idx) => ({
+    // ── Grade formula (admin-only) ──────────────────────────────────────────
+    const gradeFormula = opts.gradeFormula ?? DEFAULT_GRADE_FORMULA;
+
+    type InterimWithScore = (typeof interim)[number] & {compositeScore: number};
+    let scored: InterimWithScore[];
+
+    if (gradeFormula === 'elite_blend') {
+      const eliteRates = interim.map((i) => i.a.eliteCount / i.a.totalPicks);
+      const minE = Math.min(...eliteRates);
+      const maxE = Math.max(...eliteRates);
+      const eliteSpan = Math.max(0.001, maxE - minE);
+      scored = interim.map((i) => {
+        const normDelta = (i.lensDelta - minD) / deltaSpan;
+        const normElite = (i.a.eliteCount / i.a.totalPicks - minE) / eliteSpan;
+        return {...i, compositeScore: 0.6 * normDelta + 0.4 * normElite};
+      });
+      scored.sort((x, y) => y.compositeScore - x.compositeScore);
+    } else if (gradeFormula === 'elite_bonus') {
+      scored = interim.map((i) => ({
+        ...i,
+        compositeScore: i.lensDelta + (i.a.eliteCount / i.a.totalPicks) * 1.5,
+      }));
+      scored.sort((x, y) => y.compositeScore - x.compositeScore);
+    } else if (gradeFormula === 'elite_discovery') {
+      scored = interim.map((i) => ({
+        ...i,
+        compositeScore: i.lensDelta + (i.a.discoverySum / i.a.totalPicks) * 0.5,
+      }));
+      scored.sort((x, y) => y.compositeScore - x.compositeScore);
+    } else {
+      scored = interim.map((i) => ({...i, compositeScore: i.lensDelta}));
+    }
+
+    const scores = scored.map((i) => i.compositeScore);
+    const maxS = Math.max(...scores);
+    const minS = Math.min(...scores);
+    const scoreSpan = Math.max(0.01, maxS - minS);
+
+    return scored.map((i, idx) => ({
       teamKey: i.abbr,
       team: `${i.a.city} ${i.a.name}`,
       totalPicks: i.a.totalPicks,
@@ -459,8 +505,8 @@ export class TeamScoutService {
       eliteNames: Array.from(i.a.eliteNameSet).sort((a, b) => a.localeCompare(b)),
       hitRate: i.hitRate,
       avgDelta: i.lensDelta,
-      value: Math.round(((i.lensDelta - minD) / span) * 100),
-      grade: LLLRatingEngine.rankToLetterGrade(idx + 1, interim.length),
+      value: Math.round(((i.compositeScore - minS) / scoreSpan) * 100),
+      grade: LLLRatingEngine.rankToLetterGrade(idx + 1, scored.length),
       topPick: i.a.bestPick,
       worstPick: i.a.worstPick,
     }));

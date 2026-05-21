@@ -8,7 +8,10 @@ import {
   DEFAULT_STAT_MODEL,
   statModelMeta,
   buildAnalyzerQueryString,
+  GRADE_FORMULAS,
+  DEFAULT_GRADE_FORMULA,
   type StatModelId,
+  type GradeFormulaId,
 } from '../config/analyzer-stat-models.js';
 import type {TeamYearShrinkageResult} from '../services/team-scout.js';
 import {
@@ -361,6 +364,8 @@ export function renderViewControls(opts: {
   seasonYearMax: number;
   window: number;
   statModel?: StatModelId;
+  /** Admin-only grade formula selector. Undefined = hide the selector. */
+  gradeFormula?: GradeFormulaId;
   /** Hide the lens strip (e.g. colleges page keeps URL sync only). */
   hideLens?: boolean;
   /** Show admin-only (?) methodology modal next to the lens. */
@@ -370,6 +375,8 @@ export function renderViewControls(opts: {
   const seasonOptions = buildDescendingSeasonYears(opts.seasonYearMin, opts.seasonYearMax);
   const windowOptions = [3, 4, 5, 6, 7, 8, 9, 10];
   const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
+  const gradeFormula = opts.gradeFormula ?? DEFAULT_GRADE_FORMULA;
+  const showGradeFormula = opts.isAdmin === true && opts.gradeFormula !== undefined;
   const lensMeta = statModelMeta(statModel);
   const showLensHelp = opts.isAdmin === true && opts.hideLens !== true;
   const lensHelpBtn = showLensHelp
@@ -402,6 +409,21 @@ export function renderViewControls(opts: {
           <span class="font-bold text-black not-italic">${escapeHtml(lensMeta.shortLabel)}:</span>
           ${escapeHtml(lensMeta.description)}
         </p>
+        ${
+          showGradeFormula
+            ? `<div class="min-w-[240px]">
+          <label class="block text-[9px] font-bold uppercase tracking-[0.25em] text-black mb-1.5">Grade formula <span class="text-rose-600">(admin)</span></label>
+          <select
+            onchange="setView({grade:this.value})"
+            class="w-full px-3 py-2 text-[11px] font-bold border border-rose-400 bg-white rounded-md shadow-sm">
+            ${GRADE_FORMULAS.map(
+              (f) =>
+                `<option value="${f.id}" ${f.id === gradeFormula ? 'selected' : ''}>${escapeHtml(f.label)}</option>`,
+            ).join('')}
+          </select>
+        </div>`
+            : ''
+        }
       </div>
     </div>`;
 
@@ -465,6 +487,13 @@ export function renderViewControls(opts: {
               url.searchParams.delete('model');
             } else {
               url.searchParams.set('model', updates.model);
+            }
+          }
+          if (updates.grade !== undefined) {
+            if (updates.grade === 'none') {
+              url.searchParams.delete('grade');
+            } else {
+              url.searchParams.set('grade', updates.grade);
             }
           }
           window.location.href = url.toString();
@@ -1369,6 +1398,7 @@ export function teamLeaderboard(
     season?: number;
     window?: number;
     statModel?: StatModelId;
+    gradeFormula?: GradeFormulaId;
     seasonYearMin?: number;
     seasonYearMax?: number;
   } = {},
@@ -1381,6 +1411,7 @@ export function teamLeaderboard(
   const selectedSeason = opts.season ?? seasonYearMax;
   const selectedWindow = opts.window ?? 6;
   const statModel = opts.statModel ?? DEFAULT_STAT_MODEL;
+  const gradeFormula = opts.gradeFormula ?? DEFAULT_GRADE_FORMULA;
   const viewLabel = isSeason ? `${opts.season} NFL season` : 'Career';
   const totalPicks = teams.reduce((s, t) => s + t.totalPicks, 0);
   const controls = renderViewControls({
@@ -1390,6 +1421,7 @@ export function teamLeaderboard(
     seasonYearMax,
     window: selectedWindow,
     statModel,
+    gradeFormula: _admin.isAdmin ? gradeFormula : undefined,
     isAdmin: _admin.isAdmin,
   });
   const fullQs = buildAnalyzerQueryString({
@@ -1397,6 +1429,7 @@ export function teamLeaderboard(
     season: opts.season,
     window: selectedWindow,
     model: statModel,
+    grade: _admin.isAdmin ? gradeFormula : undefined,
     debug: extras.debug,
   });
   const cards = teams
