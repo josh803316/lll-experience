@@ -193,7 +193,7 @@ export interface TeamSuccessRow {
   worstPick?: {name: string; rating: number; delta: number; round: number; year: number};
 }
 
-export type PickOutcome = 'ELITE HIT' | 'HIT' | 'MET EXPECTATION' | 'UNDERPERFORMED' | 'BUST' | 'PENDING';
+export type PickOutcome = 'STEAL' | 'HIT' | 'MET EXPECTATION' | 'UNDERPERFORMED' | 'BUST' | 'PENDING';
 
 export interface BreakdownPick {
   name: string;
@@ -258,7 +258,7 @@ function colorForYear(picks: BreakdownPick[]): BreakdownYear['color'] {
   if (rated.length === 0) {
     return 'gray';
   }
-  const hits = rated.filter((p) => p.outcome === 'ELITE HIT' || p.outcome === 'HIT').length;
+  const hits = rated.filter((p) => p.outcome === 'STEAL' || p.outcome === 'HIT').length;
   const busts = rated.filter((p) => p.outcome === 'BUST').length;
   if (hits >= 1 && busts <= hits) {
     return 'green';
@@ -270,7 +270,7 @@ function colorForYear(picks: BreakdownPick[]): BreakdownYear['color'] {
 }
 
 function headlineForYear(picks: BreakdownPick[]): string {
-  const elite = picks.find((p) => p.outcome === 'ELITE HIT');
+  const elite = picks.find((p) => p.outcome === 'STEAL');
   if (elite) {
     return `${elite.name} broke the class open.`;
   }
@@ -669,7 +669,7 @@ export class TeamScoutService {
           }
           return a.round - b.round;
         });
-        const hits = sortedPicks.filter((p) => p.outcome === 'ELITE HIT' || p.outcome === 'HIT').length;
+        const hits = sortedPicks.filter((p) => p.outcome === 'STEAL' || p.outcome === 'HIT').length;
         const busts = sortedPicks.filter((p) => p.outcome === 'BUST').length;
         const pendingCount = sortedPicks.filter((p) => p.outcome === 'PENDING').length;
         return {

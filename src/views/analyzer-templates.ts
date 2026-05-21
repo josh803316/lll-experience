@@ -222,7 +222,7 @@ const TOOLTIPS = {
   hitRate:
     'Hit Rate = the share of a team\u2019s picks that beat the expected value for their round (LLL Delta > 0.5). The cleanest way to see who\u2019s consistently winning the draft.',
   elitePlayers:
-    'Elite Players = draft picks on this team whose raw LLL Career Rating (best-4 seasons) is ≥ 9.0 — not “media elite,” and separate from ELITE HIT (value vs round). Spelling must match our registry; common aliases are merged. A dominant late pick can grade off the charts vs expectation but still sit below the elite threshold on the career scale.',
+    'Elite Players = draft picks on this team whose raw LLL Career Rating (best-4 seasons) is ≥ 9.0 — not “media elite,” and separate from STEAL (value vs round). Spelling must match our registry; common aliases are merged. A dominant late pick can grade off the charts vs expectation but still sit below the elite threshold on the career scale.',
   collegeHitRate:
     'College Hit Rate = the share of players from this school whose NFL performance beat their draft slot expectation (LLL Delta > 0.5). Higher = the school consistently produces NFL-ready talent.',
   producedLike:
@@ -230,7 +230,7 @@ const TOOLTIPS = {
   eliteProb:
     'Elite Player Probability. The historical percentage of players drafted in this round who achieve an LLL Career Rating of 9.0 or higher (Top 5 at their position). Helps evaluate if trading down for more picks outweighs the drop in elite talent odds.',
   outcomes:
-    'Each pick is bucketed by its LLL Delta: ELITE HIT > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
+    'Each pick is bucketed by its LLL Delta: STEAL > +1.5 over expectation, HIT > +0.5, MET EXPECTATION within \u00b10.5, UNDERPERFORMED \u22120.5 to \u22121.5, BUST below that. PENDING = drafted in the last two cycles, not enough seasons to grade.',
 } as const;
 
 function franchiseDeltaBarLabel(statModel: StatModelId): string {
@@ -2153,7 +2153,7 @@ const COLOR_STYLE: Record<BreakdownYear['color'], {chip: string; bar: string; la
 };
 
 const OUTCOME_STYLE: Record<PickOutcome, string> = {
-  'ELITE HIT': 'bg-lime-400 text-black',
+  STEAL: 'bg-lime-400 text-black',
   HIT: 'bg-emerald-600 text-white',
   'MET EXPECTATION': 'bg-black/70 text-white',
   UNDERPERFORMED: 'bg-amber-500 text-black',
@@ -2403,7 +2403,7 @@ function renderTeamDebugPanel(
           <div><strong>Career rating:</strong> best-4 of all per-season ratings (with award floors applied per season). Falls back to (w_av / years) × 0.667 when no per-season data.</div>
           <div><strong>Contract bonus:</strong> TOP_OF_MARKET +2.0 · MARKET_OR_ABOVE +1.5 · OTHER_TEAM_PAID +1.0 · 5TH_YEAR +0.5 · WALKED 0 · CUT_END −1.0 · CUT_EARLY −2.0. Career view only — disabled in single-season view.</div>
           <div><strong>Round expected:</strong> R1 7.5 · R2 6.0 · R3 5.0 · R4 4.0 · R5 3.0 · R6 2.0 · R7 1.0</div>
-          <div><strong>Outcome buckets:</strong> Δ ≥ +1.5 ELITE HIT · &gt; +0.5 HIT · ±0.5 MET · ≥ −1.5 UNDERPERFORMED · &lt; −1.5 BUST</div>
+          <div><strong>Outcome buckets:</strong> Δ ≥ +1.5 STEAL · &gt; +0.5 HIT · ±0.5 MET · ≥ −1.5 UNDERPERFORMED · &lt; −1.5 BUST</div>
           <div><strong>Avg Δ for ${escapeHtml(b.team)}:</strong> ${ratedAvg.toFixed(3)} across ${picks.length} graded picks. Letter grade is rank-relative across the league.</div>
         </div>
         <div class="overflow-x-auto">
@@ -2645,7 +2645,7 @@ export interface PlayersGridOptions {
 }
 
 const OUTCOME_PILL: Record<string, string> = {
-  'ELITE HIT': 'bg-lime-400 text-black',
+  STEAL: 'bg-lime-400 text-black',
   HIT: 'bg-emerald-600 text-white',
   'MET EXPECTATION': 'bg-black/70 text-white',
   UNDERPERFORMED: 'bg-amber-500 text-black',

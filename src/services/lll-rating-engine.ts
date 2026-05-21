@@ -195,7 +195,7 @@ export class LLLRatingEngine {
    */
   static getGradeOutcomeLabel(delta: number): string {
     if (delta >= 1.5) {
-      return 'ELITE HIT';
+      return 'STEAL';
     }
     if (delta > 0.5) {
       return 'HIT';
