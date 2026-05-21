@@ -1509,6 +1509,85 @@ export function teamLeaderboard(
     })
     .join('');
 
+  const tableRows = teams
+    .map(
+      (t, i) => `
+    <tr class="border-b border-black/8 hover:bg-black/[0.03] cursor-pointer transition-colors group"
+        hx-get="/analyzer/fragment/team-breakdown/${encodeURIComponent(t.teamKey)}?${fullQs}"
+        hx-target="#team-modal-root"
+        hx-swap="innerHTML"
+        hx-trigger="click[!event.target.closest('a')&&!event.target.closest('.lll-tip')]">
+      <td class="py-2 px-3 text-[11px] font-bold text-muted w-8">${i + 1}</td>
+      <td class="py-2 px-3">
+        <div class="flex items-center gap-2">
+          ${teamLogo(t.teamKey, 'w-6 h-6 shrink-0')}
+          <span class="text-[12px] font-bold tracking-tight group-hover:text-accent transition-colors whitespace-nowrap">${escapeHtml(t.team)}</span>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-center">
+        <span class="text-[15px] font-bold serif italic">${t.grade}</span>
+      </td>
+      <td class="py-2 px-3 text-center text-[11px] font-bold">${t.hitRate}%
+        <span class="text-muted font-normal">(${t.hits}/${t.totalPicks})</span>
+      </td>
+      <td class="py-2 px-3 text-center">
+        <div class="lll-tip lll-elite-bar inline-block" tabindex="0">
+          <span class="text-[11px] font-bold ${t.eliteCount >= 5 ? 'text-emerald-700' : ''}">${t.eliteCount}</span>
+          <span role="tooltip" class="tip-body tip-body--elite">${renderElitePlayersTipBody(t.eliteNames)}</span>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-center text-[11px] font-bold mono text-accent">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
+      <td class="py-2 px-3 text-[11px] text-muted max-w-[160px]">
+        ${t.topPick ? `<a href="/analyzer/player/${encodeURIComponent(t.topPick.name)}?${fullQs}" class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(t.topPick.name)}</a> <span class="text-[10px]">R${t.topPick.round} · Δ${t.topPick.delta.toFixed(1)}</span>` : '—'}
+      </td>
+      <td class="py-2 px-3 text-[11px] text-muted max-w-[160px]">
+        ${t.worstPick ? `<a href="/analyzer/player/${encodeURIComponent(t.worstPick.name)}?${fullQs}" class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(t.worstPick.name)}</a> <span class="text-[10px]">R${t.worstPick.round} · Δ${t.worstPick.delta.toFixed(1)}</span>` : '—'}
+      </td>
+    </tr>`,
+    )
+    .join('');
+
+  const compactTable = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-black border-collapse">
+        <thead>
+          <tr class="border-b-2 border-black text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
+            <th class="py-2 px-3 text-left w-8">#</th>
+            <th class="py-2 px-3 text-left">Team</th>
+            <th class="py-2 px-3 text-center">Grade</th>
+            <th class="py-2 px-3 text-center">${tooltip('Hit Rate', TOOLTIPS.hitRate)}</th>
+            <th class="py-2 px-3 text-center">${tooltip('Elite', TOOLTIPS.elitePlayers)}</th>
+            <th class="py-2 px-3 text-center">${tooltip('Avg Δ', TOOLTIPS.lllDelta)}</th>
+            <th class="py-2 px-3 text-left">Best Pick</th>
+            <th class="py-2 px-3 text-left">Worst Pick</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
+
+  const viewToggle = `
+    <div class="flex items-center gap-1 bg-black/[0.05] rounded-md p-1 text-[10px] font-bold uppercase tracking-[0.2em]">
+      <button id="lll-view-card" type="button" onclick="lllSetTeamView('card')"
+        class="px-3 py-1.5 rounded-md transition-all">Cards</button>
+      <button id="lll-view-table" type="button" onclick="lllSetTeamView('table')"
+        class="px-3 py-1.5 rounded-md transition-all">Table</button>
+    </div>
+    <script>
+      (function(){
+        var PREF_KEY = 'lll-team-view';
+        function lllSetTeamView(v) {
+          localStorage.setItem(PREF_KEY, v);
+          document.getElementById('lll-team-cards').style.display = v === 'table' ? 'none' : '';
+          document.getElementById('lll-team-table').style.display = v === 'table' ? '' : 'none';
+          document.getElementById('lll-view-card').className = 'px-3 py-1.5 rounded-md transition-all ' + (v === 'card' ? 'bg-black text-white' : 'text-muted hover:text-black');
+          document.getElementById('lll-view-table').className = 'px-3 py-1.5 rounded-md transition-all ' + (v === 'table' ? 'bg-black text-white' : 'text-muted hover:text-black');
+        }
+        window.lllSetTeamView = lllSetTeamView;
+        lllSetTeamView(localStorage.getItem(PREF_KEY) || 'card');
+      })();
+    </script>`;
+
   const content = `
     ${header('teams', _admin)}
     <div class="max-w-6xl mx-auto py-6 px-4 text-black">
@@ -1518,9 +1597,12 @@ export function teamLeaderboard(
           <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">FRANCHISE INDEX</h2>
           <span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">${escapeHtml(viewLabel)}</span>
         </div>
-        <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
-           <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Picks scored</span>
-           <span class="text-xl font-bold tracking-tighter">${totalPicks.toLocaleString()}</span>
+        <div class="flex items-center gap-3">
+          ${viewToggle}
+          <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
+             <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Picks scored</span>
+             <span class="text-xl font-bold tracking-tighter">${totalPicks.toLocaleString()}</span>
+          </div>
         </div>
       </div>
       <p class="text-xs md:text-sm text-muted serif italic mb-4">
@@ -1529,8 +1611,11 @@ export function teamLeaderboard(
       </p>
       ${controls}
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
+      <div id="lll-team-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
         ${cards}
+      </div>
+      <div id="lll-team-table" class="text-black card-paper rounded-lg border border-black/10 overflow-hidden">
+        ${compactTable}
       </div>
       ${_admin.debug && extras.shrinkage ? renderTeamShrinkageDebug(extras.shrinkage) : ''}
     </div>
