@@ -4,6 +4,7 @@ import {isAdminUserId} from '../lib/clerk-email.js';
 import {
   analyzerDashboard,
   collegeLeaderboard,
+  collegePlayersFragment,
   expertLeaderboard,
   expertProfile,
   expertProfileNotFound,
@@ -215,7 +216,8 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
     ctx.set.headers['Content-Type'] = 'text/html';
     return collegeLeaderboard(data, CLERK_KEY, {
       ...admin,
-      statModel: opts.statModel ?? 'baseline',
+      statModel: opts.statModel ?? DEFAULT_STAT_MODEL,
+      gradeFormula: admin.isAdmin ? (opts.gradeFormula ?? 'none') : undefined,
       mode: opts.mode ?? 'career',
       season: opts.season,
       window: opts.window ?? TEAM_WINDOW_DEFAULT,
@@ -223,6 +225,15 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
       seasonYearMin: bounds.min,
       seasonYearMax: bounds.max,
     });
+  })
+
+  .get('/api/college/:college', async (ctx) => {
+    const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
+    const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
+    const college = decodeURIComponent(ctx.params.college);
+    const players = await CollegeScoutService.getCollegePlayers(college, opts);
+    ctx.set.headers['Content-Type'] = 'text/html';
+    return collegePlayersFragment(college, players);
   })
 
   .get('/player/:name', async (ctx) => {

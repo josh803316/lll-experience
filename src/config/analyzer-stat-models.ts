@@ -17,7 +17,7 @@ export const STAT_MODEL_IDS = [
 
 export type StatModelId = (typeof STAT_MODEL_IDS)[number];
 
-export const DEFAULT_STAT_MODEL: StatModelId = 'baseline';
+export const DEFAULT_STAT_MODEL: StatModelId = 'contract_aware';
 
 export interface StatModelMeta {
   id: StatModelId;

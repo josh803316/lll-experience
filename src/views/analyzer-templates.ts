@@ -1,6 +1,6 @@
 import {baseLayout, escapeHtml} from './templates.js';
 import type {TeamSuccessRow, TeamBreakdown, BreakdownYear, PickOutcome, ScoredPick} from '../services/team-scout.js';
-import type {CollegeSuccessRow} from '../services/college-scout.js';
+import type {CollegeSuccessRow, CollegePickRow} from '../services/college-scout.js';
 import type {ExpertOracleRow, ExpertScoutRow, ExpertProfile, Take, ExpertBlendRow} from '../services/expert-audit.js';
 import type {ExpertPairwiseRow} from '../services/expert-pairwise-rank.js';
 import {
@@ -1295,14 +1295,31 @@ export function expertLeaderboard(
 
   const orderedOs = statModel === 'scout' ? `${scoutSection}${oracleSection}` : `${oracleSection}${scoutSection}`;
 
+  const noExpertData = oracleSeenWithData === 0 && oracle.length === 0;
+
   const content = `
     ${header('experts', _admin)}
     <div class="max-w-5xl mx-auto py-12 px-4 text-black">
       <a href="/analyzer?${pageQs}" class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted hover:text-accent mb-6 inline-block transition-colors">← Back to Dashboard</a>
       <h2 class="text-6xl font-bold tracking-tighter mb-2 text-black">EXPERT AUDIT</h2>
       <p class="text-muted italic mb-6 border-b border-black/10 pb-4 serif text-lg">
-        Two scoreboards. Same talent universe. Switch <strong>Statistical lens</strong> on the dashboard too — URL stays in sync.
+        How accurate have the draft analysts been? Oracle scores mock-draft slot accuracy; Scout scores talent identification.
       </p>
+      ${
+        noExpertData
+          ? `
+      <div class="card-paper border-l-4 border-accent rounded-lg p-6 mb-8 text-black">
+        <div class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent mb-2">No Expert Rankings Ingested</div>
+        <p class="text-sm text-muted serif italic leading-relaxed">
+          The Expert Audit leaderboards require historical big-board rankings from analysts (Kiper, McShay, Daniel Jeremiah, etc.) to be loaded into the database.
+          Rankings are compared against actual draft slots and LLL career ratings to score each expert's accuracy.
+        </p>
+        <p class="text-[11px] text-muted mt-3 font-bold uppercase tracking-[0.15em]">
+          To populate: run <code class="bg-black/5 px-1 rounded">bun run scripts/ingest-expert-rankings-batch.ts</code> or the individual expert ingest scripts.
+        </p>
+      </div>`
+          : ''
+      }
       ${controls}
 
       ${
@@ -1706,6 +1723,7 @@ export function collegeLeaderboard(
     isAdmin?: boolean;
     debug?: boolean;
     statModel?: StatModelId;
+    gradeFormula?: GradeFormulaId;
     mode?: 'career' | 'season';
     season?: number;
     window?: number;
@@ -1733,55 +1751,108 @@ export function collegeLeaderboard(
     seasonYearMax,
     window: selectedWindow,
     statModel,
+    hideLens: true,
     isAdmin: _admin.isAdmin,
+    gradeFormula: extras.gradeFormula,
   });
   const totalPicks = colleges.reduce((s, c) => s + c.totalPicks, 0);
 
-  const rows = colleges
+  const outcomeColor = (delta: number) =>
+    delta >= 1.5
+      ? 'text-emerald-600'
+      : delta > 0.5
+        ? 'text-green-600'
+        : delta >= -0.5
+          ? 'text-gray-500'
+          : 'text-red-600';
+
+  // Card view
+  const cardRows = colleges
     .map((c, i) => {
       const accent = i < 8 ? 'border-accent' : 'border-black/20';
+      const playersUrl = `/analyzer/api/college/${encodeURIComponent(c.college)}?${fullQs}`;
       return `
-      <div class="card-paper p-6 rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group">
-        <div class="flex justify-between items-start mb-4 gap-3">
-          <div class="min-w-0">
-            <div class="text-[8px] font-bold text-muted uppercase tracking-[0.2em] mb-1">Rank #${i + 1}</div>
-            <h3 class="text-xl font-bold tracking-tighter text-black group-hover:text-accent transition-colors truncate">${escapeHtml(c.college)}</h3>
-            <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${c.totalPicks} pros evaluated</div>
+      <div class="card-paper rounded-lg border-t-4 ${accent} shadow-sm hover:shadow-md transition-all group">
+        <div class="p-6 pb-4">
+          <div class="flex justify-between items-start mb-3 gap-3">
+            <div class="min-w-0">
+              <div class="text-[8px] font-bold text-muted uppercase tracking-[0.2em] mb-1">Rank #${i + 1}</div>
+              <h3 class="text-xl font-bold tracking-tighter text-black group-hover:text-accent transition-colors truncate">${escapeHtml(c.college)}</h3>
+              <div class="text-[9px] text-muted font-bold uppercase tracking-widest">${c.totalPicks} pros · ${c.eliteCount ?? 0} elite</div>
+            </div>
+            <span class="text-2xl font-bold text-black serif italic shrink-0">${c.value}</span>
           </div>
-          <span class="text-2xl font-bold text-black serif italic shrink-0">${c.value}</span>
-        </div>
-        <div class="space-y-4">
-          <div>
-            <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-              <span>${tooltip('Hit Rate', TOOLTIPS.collegeHitRate)}</span>
-              <span class="text-black font-bold">${c.hitRate}%</span>
+          <div class="space-y-3">
+            <div>
+              <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1 text-muted">
+                <span>${tooltip('Hit Rate', TOOLTIPS.collegeHitRate)}</span>
+                <span class="text-black font-bold">${c.hitRate}%</span>
+              </div>
+              <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+                <div class="h-full bg-black" style="width: ${c.hitRate}%"></div>
+              </div>
             </div>
-            <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
-              <div class="h-full bg-black" style="width: ${c.hitRate}%"></div>
+            <div>
+              <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1 text-muted">
+                <span>${franchiseTableDeltaHeader(statModel)}</span>
+                <span class="text-accent font-bold mono">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</span>
+              </div>
+              <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+                <div class="h-full bg-accent" style="width: ${c.value}%"></div>
+              </div>
             </div>
-          </div>
-          <div>
-            <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest mb-1.5 text-muted">
-              <span>${franchiseTableDeltaHeader(statModel)}</span>
-              <span class="text-accent font-bold mono">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</span>
-            </div>
-            <div class="h-1 w-full bg-black/5 rounded-full overflow-hidden">
-              <div class="h-full bg-accent" style="width: ${c.value}%"></div>
-            </div>
-          </div>
-          ${
-            c.topPro
-              ? `
-            <div class="pt-3 border-t border-black/5 text-[10px]">
-              <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pro in Window</div>
+            ${
+              c.topPro
+                ? `<div class="pt-2 border-t border-black/5 text-[10px]">
+              <div class="text-muted font-bold uppercase tracking-widest mb-0.5">Best Pro</div>
               <a href="/analyzer/player/${encodeURIComponent(c.topPro.name)}?${fullQs}" class="font-bold hover:text-accent transition-colors">${escapeHtml(c.topPro.name)}</a>
               <span class="text-muted">· R${c.topPro.round} ${c.topPro.year} · Δ ${c.topPro.delta.toFixed(2)}</span>
-            </div>
-          `
-              : ''
-          }
+            </div>`
+                : ''
+            }
+          </div>
+        </div>
+        <div class="border-t border-black/5 px-6 py-3">
+          <button
+            class="text-[10px] font-bold uppercase tracking-[0.2em] text-accent hover:text-black transition-colors w-full text-left"
+            hx-get="${escapeHtml(playersUrl)}"
+            hx-target="#college-players-${i}"
+            hx-swap="innerHTML"
+            onclick="this.textContent=this.textContent==='▼ View Players'?'▲ Hide Players':'▼ View Players'"
+          >▼ View Players</button>
+          <div id="college-players-${i}" class="mt-3"></div>
         </div>
       </div>
+    `;
+    })
+    .join('');
+
+  // Table view
+  const tableRows = colleges
+    .map((c, i) => {
+      const playersUrl = `/analyzer/api/college/${encodeURIComponent(c.college)}?${fullQs}`;
+      const deltaColor = outcomeColor(c.avgDelta);
+      return `
+      <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
+        <td class="py-3 px-4 font-bold text-muted text-sm">${i + 1}</td>
+        <td class="py-3 font-bold text-black">${escapeHtml(c.college)}</td>
+        <td class="py-3 text-center text-sm text-muted">${c.totalPicks}</td>
+        <td class="py-3 text-center text-sm text-muted">${c.eliteCount ?? 0}</td>
+        <td class="py-3 text-center text-sm">${c.hits} / ${c.busts}</td>
+        <td class="py-3 text-center font-bold text-sm">${c.hitRate}%</td>
+        <td class="py-3 text-center font-mono font-bold text-sm ${deltaColor}">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</td>
+        <td class="py-3 text-center text-sm text-muted">${c.topPro ? `<a href="/analyzer/player/${encodeURIComponent(c.topPro.name)}?${fullQs}" class="hover:text-accent transition-colors font-bold">${escapeHtml(c.topPro.name)}</a>` : '—'}</td>
+        <td class="py-3 px-4 text-center">
+          <button
+            class="text-[9px] font-bold uppercase tracking-[0.15em] text-accent hover:text-black border border-accent hover:border-black px-2 py-1 rounded transition-colors"
+            hx-get="${escapeHtml(playersUrl)}"
+            hx-target="#college-tbl-players-${i}"
+            hx-swap="innerHTML"
+            onclick="var el=document.getElementById('college-tbl-players-${i}');el.style.display=el.style.display==='none'?'':'none'"
+          >Players</button>
+          <div id="college-tbl-players-${i}" class="mt-2 text-left" style="display:none"></div>
+        </td>
+      </tr>
     `;
     })
     .join('');
@@ -1795,19 +1866,48 @@ export function collegeLeaderboard(
           <h2 class="text-3xl md:text-4xl font-bold tracking-tighter text-black leading-tight">COLLEGE SCOUT INDEX</h2>
           <span class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">Historical Value Added</span>
         </div>
-        <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
-           <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Pros evaluated</span>
-           <span class="text-xl font-bold tracking-tighter">${totalPicks.toLocaleString()}</span>
+        <div class="flex items-center gap-3">
+          <div class="flex rounded-md overflow-hidden border border-black/20 text-[10px] font-bold uppercase tracking-[0.15em]">
+            <button id="college-view-cards" onclick="document.getElementById('college-cards').classList.remove('hidden');document.getElementById('college-table').classList.add('hidden');this.classList.add('bg-black','text-white');document.getElementById('college-view-table').classList.remove('bg-black','text-white')" class="px-3 py-1.5 bg-black text-white transition-colors">Cards</button>
+            <button id="college-view-table" onclick="document.getElementById('college-table').classList.remove('hidden');document.getElementById('college-cards').classList.add('hidden');this.classList.add('bg-black','text-white');document.getElementById('college-view-cards').classList.remove('bg-black','text-white')" class="px-3 py-1.5 transition-colors">Table</button>
+          </div>
+          <div class="bg-black text-white px-4 py-2 rounded-md shadow shrink-0">
+            <span class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mr-2">Pros evaluated</span>
+            <span class="text-xl font-bold tracking-tighter">${totalPicks.toLocaleString()}</span>
+          </div>
         </div>
       </div>
       <p class="text-xs md:text-sm text-muted serif italic mb-4">
-        Which schools consistently out-produce their draft slot? Ranked by the same lens-averaged Δ per pick as Franchise Index (window controls above).
-        Only schools with 5+ drafted pros in the selected window are included.
+        Which schools consistently out-produce their draft slot? Ranked by PFF+Contract blended talent vs round expectation.
+        Only schools with 5+ drafted pros in the selected window are included. Click <strong>Players</strong> to see every draft pick from that school with their grade.
       </p>
       ${controls}
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
-        ${rows}
+      <div id="college-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-black">
+        ${cardRows}
+      </div>
+
+      <div id="college-table" class="hidden">
+        <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black shadow-xl">
+          <table class="w-full text-left border-collapse text-black">
+            <thead>
+              <tr class="bg-black text-white text-[9px] uppercase tracking-[0.2em]">
+                <th class="py-3 px-4">#</th>
+                <th class="py-3">School</th>
+                <th class="py-3 text-center">Pros</th>
+                <th class="py-3 text-center">${tooltip('Elite', TOOLTIPS.elitePlayers)}</th>
+                <th class="py-3 text-center">Hits / Busts</th>
+                <th class="py-3 text-center">${tooltip('Hit %', TOOLTIPS.hitRate)}</th>
+                <th class="py-3 text-center">Avg Δ</th>
+                <th class="py-3 text-center">Best Pro</th>
+                <th class="py-3 px-4 text-center">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
@@ -1816,6 +1916,61 @@ export function collegeLeaderboard(
 
 export function topExpertsMini(experts: ExpertOracleRow[]): string {
   return renderOracleMini(experts);
+}
+
+export function collegePlayersFragment(college: string, players: CollegePickRow[]): string {
+  if (!players.length) {
+    return `<p class="text-[11px] text-muted italic py-2">No graded players found for ${escapeHtml(college)} in this window.</p>`;
+  }
+
+  const outcomeStyle = (outcome: string) => {
+    if (outcome === 'STEAL') {return 'bg-emerald-100 text-emerald-800';}
+    if (outcome === 'HIT') {return 'bg-green-100 text-green-800';}
+    if (outcome === 'MET EXPECTATION') {return 'bg-gray-100 text-gray-600';}
+    if (outcome === 'UNDERPERFORMED') {return 'bg-orange-100 text-orange-700';}
+    return 'bg-red-100 text-red-700';
+  };
+
+  const deltaColor = (delta: number) =>
+    delta >= 1.5
+      ? 'text-emerald-600'
+      : delta > 0.5
+        ? 'text-green-600'
+        : delta >= -0.5
+          ? 'text-gray-500'
+          : 'text-red-600';
+
+  const rows = players
+    .map(
+      (p) => `
+    <tr class="border-b border-black/5 hover:bg-black/[0.02] text-[11px]">
+      <td class="py-2 pr-3">
+        <a href="/analyzer/player/${encodeURIComponent(p.playerName)}" class="font-bold hover:text-accent transition-colors">${escapeHtml(p.playerName)}</a>
+        <div class="text-muted text-[9px] uppercase tracking-widest">${p.position ?? '?'}</div>
+      </td>
+      <td class="py-2 text-center text-muted">R${p.round}${p.pickNumber ? ` P${p.pickNumber}` : ''}</td>
+      <td class="py-2 text-center text-muted">${p.year}</td>
+      <td class="py-2 text-center font-mono font-bold ${deltaColor(p.delta)}">${p.delta >= 0 ? '+' : ''}${p.delta.toFixed(2)}</td>
+      <td class="py-2 text-center"><span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${outcomeStyle(p.outcome)}">${escapeHtml(p.outcome)}</span></td>
+    </tr>
+  `,
+    )
+    .join('');
+
+  return `
+    <table class="w-full border-collapse mt-1">
+      <thead>
+        <tr class="text-[9px] font-bold uppercase tracking-[0.15em] text-muted border-b border-black/10">
+          <th class="pb-1 text-left">Player</th>
+          <th class="pb-1 text-center">Slot</th>
+          <th class="pb-1 text-center">Year</th>
+          <th class="pb-1 text-center">Avg Δ</th>
+          <th class="pb-1 text-center">Outcome</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 export function playerProfile(
