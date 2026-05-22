@@ -1827,20 +1827,22 @@ export function collegeLeaderboard(
     })
     .join('');
 
-  // Table view
+  // Table view — rows carry data-val on each sortable cell so the client-side
+  // sort function never needs to re-parse formatted text.
   const tableRows = colleges
     .map((c, i) => {
       const playersUrl = `/analyzer/api/college/${encodeURIComponent(c.college)}?${fullQs}`;
       const deltaColor = outcomeColor(c.avgDelta);
+      const netHits = c.hits - c.busts;
       return `
       <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
-        <td class="py-3 px-4 font-bold text-muted text-sm">${i + 1}</td>
-        <td class="py-3 font-bold text-black">${escapeHtml(c.college)}</td>
-        <td class="py-3 text-center text-sm text-muted">${c.totalPicks}</td>
-        <td class="py-3 text-center text-sm text-muted">${c.eliteCount ?? 0}</td>
-        <td class="py-3 text-center text-sm">${c.hits} / ${c.busts}</td>
-        <td class="py-3 text-center font-bold text-sm">${c.hitRate}%</td>
-        <td class="py-3 text-center font-mono font-bold text-sm ${deltaColor}">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</td>
+        <td class="py-3 px-4 font-bold text-muted text-sm college-rank">${i + 1}</td>
+        <td class="py-3 font-bold text-black" data-val="${escapeHtml(c.college)}">${escapeHtml(c.college)}</td>
+        <td class="py-3 text-center text-sm text-muted" data-val="${c.totalPicks}">${c.totalPicks}</td>
+        <td class="py-3 text-center text-sm text-muted" data-val="${c.eliteCount ?? 0}">${c.eliteCount ?? 0}</td>
+        <td class="py-3 text-center text-sm" data-val="${netHits}">${c.hits} / ${c.busts}</td>
+        <td class="py-3 text-center font-bold text-sm" data-val="${c.hitRate}">${c.hitRate}%</td>
+        <td class="py-3 text-center font-mono font-bold text-sm ${deltaColor}" data-val="${c.avgDelta}">${c.avgDelta > 0 ? '+' : ''}${c.avgDelta.toFixed(2)}</td>
         <td class="py-3 text-center text-sm text-muted">${c.topPro ? `<a href="/analyzer/player/${encodeURIComponent(c.topPro.name)}?${fullQs}" class="hover:text-accent transition-colors font-bold">${escapeHtml(c.topPro.name)}</a>` : '—'}</td>
         <td class="py-3 px-4 text-center">
           <button
@@ -1889,16 +1891,16 @@ export function collegeLeaderboard(
 
       <div id="college-table" class="hidden">
         <div class="card-paper rounded-lg overflow-hidden border-t-8 border-black shadow-xl">
-          <table class="w-full text-left border-collapse text-black">
+          <table id="college-sort-table" class="w-full text-left border-collapse text-black">
             <thead>
-              <tr class="bg-black text-white text-[9px] uppercase tracking-[0.2em]">
+              <tr class="bg-black text-white text-[9px] uppercase tracking-[0.2em] select-none">
                 <th class="py-3 px-4">#</th>
-                <th class="py-3">School</th>
-                <th class="py-3 text-center">Pros</th>
-                <th class="py-3 text-center">${tooltip('Elite', TOOLTIPS.elitePlayers)}</th>
-                <th class="py-3 text-center">Hits / Busts</th>
-                <th class="py-3 text-center">${tooltip('Hit %', TOOLTIPS.hitRate)}</th>
-                <th class="py-3 text-center">Avg Δ</th>
+                <th class="py-3 cursor-pointer hover:text-accent/80 transition-colors" data-col="1" data-type="str" onclick="sortCollegeTable(this)">School <span class="sort-ind opacity-50">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="2" data-type="num" onclick="sortCollegeTable(this)">Pros <span class="sort-ind opacity-50">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="3" data-type="num" onclick="sortCollegeTable(this)">${tooltip('Elite', TOOLTIPS.elitePlayers)} <span class="sort-ind opacity-50">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="4" data-type="num" onclick="sortCollegeTable(this)">Hits−Busts <span class="sort-ind opacity-50">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="5" data-type="num" onclick="sortCollegeTable(this)">${tooltip('Hit %', TOOLTIPS.hitRate)} <span class="sort-ind opacity-50">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent transition-colors font-extrabold" data-col="6" data-type="num" data-dir="desc" onclick="sortCollegeTable(this)">Avg Δ <span class="sort-ind">↓</span></th>
                 <th class="py-3 text-center">Best Pro</th>
                 <th class="py-3 px-4 text-center">Details</th>
               </tr>
@@ -1910,6 +1912,50 @@ export function collegeLeaderboard(
         </div>
       </div>
     </div>
+    <script>
+    (function() {
+      function sortCollegeTable(th) {
+        var table = document.getElementById('college-sort-table');
+        var tbody = table.querySelector('tbody');
+        var colIdx = parseInt(th.dataset.col, 10);
+        var type = th.dataset.type;
+        var currentDir = th.dataset.dir || '';
+        var dir = currentDir === 'desc' ? 'asc' : 'desc';
+
+        // Reset all headers
+        table.querySelectorAll('thead th[data-col]').forEach(function(h) {
+          h.dataset.dir = '';
+          h.classList.remove('text-accent', 'font-extrabold');
+          h.classList.add('hover:text-accent/80');
+          var ind = h.querySelector('.sort-ind');
+          if (ind) { ind.textContent = '↕'; ind.classList.add('opacity-50'); }
+        });
+
+        // Mark active header
+        th.dataset.dir = dir;
+        th.classList.add('text-accent', 'font-extrabold');
+        th.classList.remove('hover:text-accent/80');
+        var activeInd = th.querySelector('.sort-ind');
+        if (activeInd) { activeInd.textContent = dir === 'asc' ? '↑' : '↓'; activeInd.classList.remove('opacity-50'); }
+
+        // Sort rows
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort(function(a, b) {
+          var av = (a.querySelectorAll('td')[colIdx] || {}).dataset && a.querySelectorAll('td')[colIdx].dataset.val || '';
+          var bv = (b.querySelectorAll('td')[colIdx] || {}).dataset && b.querySelectorAll('td')[colIdx].dataset.val || '';
+          var cmp = type === 'num' ? (parseFloat(av) - parseFloat(bv)) : av.localeCompare(bv);
+          return dir === 'asc' ? cmp : -cmp;
+        });
+
+        rows.forEach(function(r, i) {
+          var rankCell = r.querySelector('.college-rank');
+          if (rankCell) rankCell.textContent = String(i + 1);
+          tbody.appendChild(r);
+        });
+      }
+      window.sortCollegeTable = sortCollegeTable;
+    })();
+    </script>
   `;
   return analyzerLayout(content, 'College Scout Index — LLL Draft Analyzer', clerkKey);
 }
@@ -1924,10 +1970,18 @@ export function collegePlayersFragment(college: string, players: CollegePickRow[
   }
 
   const outcomeStyle = (outcome: string) => {
-    if (outcome === 'STEAL') {return 'bg-emerald-100 text-emerald-800';}
-    if (outcome === 'HIT') {return 'bg-green-100 text-green-800';}
-    if (outcome === 'MET EXPECTATION') {return 'bg-gray-100 text-gray-600';}
-    if (outcome === 'UNDERPERFORMED') {return 'bg-orange-100 text-orange-700';}
+    if (outcome === 'STEAL') {
+      return 'bg-emerald-100 text-emerald-800';
+    }
+    if (outcome === 'HIT') {
+      return 'bg-green-100 text-green-800';
+    }
+    if (outcome === 'MET EXPECTATION') {
+      return 'bg-gray-100 text-gray-600';
+    }
+    if (outcome === 'UNDERPERFORMED') {
+      return 'bg-orange-100 text-orange-700';
+    }
     return 'bg-red-100 text-red-700';
   };
 
