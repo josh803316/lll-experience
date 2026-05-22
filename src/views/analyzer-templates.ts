@@ -180,6 +180,42 @@ export function analyzerLayout(content: string, title = 'LLL Draft Analyzer', cl
           }
         });
       })();
+      // Shared table sort — used by all analyzer tables.
+      // th must have: data-col (0-based cell index), data-type ('num'|'str').
+      // Sortable <td>s carry data-val. Rank <td>s carry class="tbl-rank".
+      (function () {
+        function lllSort(th) {
+          var table = th.closest('table');
+          var tbody = table.querySelector('tbody');
+          var col = parseInt(th.dataset.col, 10);
+          var type = th.dataset.type || 'num';
+          var dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
+          table.querySelectorAll('thead th[data-col]').forEach(function (h) {
+            h.dataset.dir = '';
+            h.classList.remove('text-accent');
+            var ind = h.querySelector('.si');
+            if (ind) { ind.textContent = '\\u2195'; ind.style.opacity = '0.4'; }
+          });
+          th.dataset.dir = dir;
+          th.classList.add('text-accent');
+          var ind = th.querySelector('.si');
+          if (ind) { ind.textContent = dir === 'asc' ? '\\u2191' : '\\u2193'; ind.style.opacity = '1'; }
+          var rows = Array.from(tbody.querySelectorAll('tr'));
+          rows.sort(function (a, b) {
+            var av = a.cells[col] ? (a.cells[col].dataset.val || '') : '';
+            var bv = b.cells[col] ? (b.cells[col].dataset.val || '') : '';
+            var cmp = type === 'num' ? (parseFloat(av) - parseFloat(bv)) : av.localeCompare(bv);
+            return dir === 'asc' ? cmp : -cmp;
+          });
+          var rank = 1;
+          rows.forEach(function (r) {
+            var rc = r.querySelector('.tbl-rank');
+            if (rc) rc.textContent = String(rank++);
+            tbody.appendChild(r);
+          });
+        }
+        window.lllSort = lllSort;
+      })();
     </script>
   `;
   return baseLayout(
@@ -1059,16 +1095,16 @@ function renderBlendFull(blend: ExpertBlendRow[]): string {
     .map(
       (e, i) => `
     <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
-      <td class="py-3 px-4 font-bold">${i + 1}</td>
-      <td class="py-3">
+      <td class="py-3 px-4 font-bold tbl-rank">${i + 1}</td>
+      <td class="py-3" data-val="${escapeHtml(e.expertName)}">
         <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black hover:text-accent">${escapeHtml(e.expertName)}</a>
         <div class="text-[9px] text-muted uppercase tracking-widest">${escapeHtml(e.org || 'Independent')}</div>
       </td>
-      <td class="py-3 text-center font-mono font-bold text-accent">${e.avgRank.toFixed(2)}</td>
-      <td class="py-3 text-center text-muted text-sm">${e.oracleRank ?? '—'}</td>
-      <td class="py-3 text-center text-muted text-sm">${e.scoutRank ?? '—'}</td>
-      <td class="py-3 text-center text-muted text-sm">${e.pairwiseRank ?? '—'}</td>
-      <td class="py-3 text-center">${e.nComponents}/3</td>
+      <td class="py-3 text-center font-mono font-bold text-accent" data-val="${e.avgRank}">${e.avgRank.toFixed(2)}</td>
+      <td class="py-3 text-center text-muted text-sm" data-val="${e.oracleRank ?? 9999}">${e.oracleRank ?? '—'}</td>
+      <td class="py-3 text-center text-muted text-sm" data-val="${e.scoutRank ?? 9999}">${e.scoutRank ?? '—'}</td>
+      <td class="py-3 text-center text-muted text-sm" data-val="${e.pairwiseRank ?? 9999}">${e.pairwiseRank ?? '—'}</td>
+      <td class="py-3 text-center" data-val="${e.nComponents}">${e.nComponents}/3</td>
     </tr>`,
     )
     .join('');
@@ -1083,12 +1119,12 @@ function renderBlendFull(blend: ExpertBlendRow[]): string {
             <thead>
               <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
                 <th class="py-3 px-4">#</th>
-                <th class="py-3">Expert</th>
-                <th class="py-3 text-center">Avg rank</th>
-                <th class="py-3 text-center">O</th>
-                <th class="py-3 text-center">S</th>
-                <th class="py-3 text-center">P</th>
-                <th class="py-3 text-center">Boards</th>
+                <th class="py-3 cursor-pointer select-none hover:opacity-80" data-col="1" data-type="str" onclick="lllSort(this)">Expert <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80 text-accent" data-col="2" data-type="num" data-dir="asc" onclick="lllSort(this)">Avg rank <span class="si">↑</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80" data-col="3" data-type="num" onclick="lllSort(this)">O <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80" data-col="4" data-type="num" onclick="lllSort(this)">S <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80" data-col="5" data-type="num" onclick="lllSort(this)">P <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80" data-col="6" data-type="num" onclick="lllSort(this)">Boards <span class="si" style="opacity:0.4">↕</span></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -1103,13 +1139,13 @@ function renderPairwiseFull(pairwise: ExpertPairwiseRow[]): string {
     .map(
       (e, i) => `
     <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
-      <td class="py-3 px-4 font-bold">${i + 1}</td>
-      <td class="py-3">
+      <td class="py-3 px-4 font-bold tbl-rank">${i + 1}</td>
+      <td class="py-3" data-val="${escapeHtml(e.expertName)}">
         <a href="/analyzer/expert/${encodeURIComponent(e.expertSlug)}" class="font-bold text-black hover:text-accent">${escapeHtml(e.expertName)}</a>
         <div class="text-[9px] text-muted uppercase tracking-widest">${escapeHtml(e.org || 'Independent')}</div>
       </td>
-      <td class="py-3 text-center font-mono font-bold text-accent">${(e.pairAccuracy * 100).toFixed(2)}%</td>
-      <td class="py-3 text-center">${e.pairCount}</td>
+      <td class="py-3 text-center font-mono font-bold text-accent" data-val="${e.pairAccuracy}">${(e.pairAccuracy * 100).toFixed(2)}%</td>
+      <td class="py-3 text-center" data-val="${e.pairCount}">${e.pairCount}</td>
       <td class="py-3 text-center text-[11px] text-muted">${e.yearsCovered.join(', ')}</td>
     </tr>`,
     )
@@ -1128,9 +1164,9 @@ function renderPairwiseFull(pairwise: ExpertPairwiseRow[]): string {
             <thead>
               <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
                 <th class="py-3 px-4">#</th>
-                <th class="py-3">Expert</th>
-                <th class="py-3 text-center">Pair %</th>
-                <th class="py-3 text-center">Pairs</th>
+                <th class="py-3 cursor-pointer select-none hover:opacity-80" data-col="1" data-type="str" onclick="lllSort(this)">Expert <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80 text-accent" data-col="2" data-type="num" data-dir="desc" onclick="lllSort(this)">Pair % <span class="si">↓</span></th>
+                <th class="py-3 text-center cursor-pointer select-none hover:opacity-80" data-col="3" data-type="num" onclick="lllSort(this)">Pairs <span class="si" style="opacity:0.4">↕</span></th>
                 <th class="py-3 text-center">Years</th>
               </tr>
             </thead>
@@ -1196,13 +1232,13 @@ export function expertLeaderboard(
         : `<span class="font-bold text-black/50">${escapeHtml(e.expertName)}</span>`;
       return `
     <tr class="border-b border-black/5 ${hasData ? 'hover:bg-black/[0.02]' : 'bg-black/[0.02]'} transition-colors group" ${interactive}>
-      <td class="py-4 px-4 font-bold text-lg ${hasData ? 'text-black' : 'text-black/40'}">${rankCell}</td>
-      <td class="py-4">
+      <td class="py-4 px-4 font-bold text-lg ${hasData ? 'text-black' : 'text-black/40'} tbl-rank">${rankCell}</td>
+      <td class="py-4" data-val="${escapeHtml(e.expertName)}">
         ${nameCell}
         <div class="text-[10px] text-muted uppercase tracking-widest font-bold">${escapeHtml(e.org || 'Independent')}</div>
       </td>
-      <td class="py-4 text-center font-mono font-bold ${hasData ? 'text-accent' : 'text-black/30'} text-lg">${hasData ? e.rmse.toFixed(1) : '—'}</td>
-      <td class="py-4 text-center ${hasData ? 'text-muted' : 'text-black/30'} font-bold">${hasData ? e.sampleSize : 'No data yet'}</td>
+      <td class="py-4 text-center font-mono font-bold ${hasData ? 'text-accent' : 'text-black/30'} text-lg" data-val="${hasData ? e.rmse : 9999}">${hasData ? e.rmse.toFixed(1) : '—'}</td>
+      <td class="py-4 text-center ${hasData ? 'text-muted' : 'text-black/30'} font-bold" data-val="${hasData ? e.sampleSize : -1}">${hasData ? e.sampleSize : 'No data yet'}</td>
       <td class="py-4 text-center text-[11px] ${hasData ? 'text-muted' : 'text-black/30 italic'}">${hasData ? e.yearsCovered.join(', ') : 'awaiting ingestion'}</td>
     </tr>
   `;
@@ -1225,14 +1261,14 @@ export function expertLeaderboard(
         : `<span class="font-bold text-black/50">${escapeHtml(e.expertName)}</span>`;
       return `
     <tr class="border-b border-black/5 ${hasData ? 'hover:bg-black/[0.02]' : 'bg-black/[0.02]'} transition-colors group" ${interactive}>
-      <td class="py-4 px-4 font-bold text-lg ${hasData ? 'text-black' : 'text-black/40'}">${rankCell}</td>
-      <td class="py-4">
+      <td class="py-4 px-4 font-bold text-lg ${hasData ? 'text-black' : 'text-black/40'} tbl-rank">${rankCell}</td>
+      <td class="py-4" data-val="${escapeHtml(e.expertName)}">
         ${nameCell}
         <div class="text-[10px] text-muted uppercase tracking-widest font-bold">${escapeHtml(e.org || 'Independent')}</div>
       </td>
-      <td class="py-4 text-center font-mono font-bold ${hasData ? 'text-accent' : 'text-black/30'} text-lg">${hasData ? e.talentDelta.toFixed(2) : '—'}</td>
-      <td class="py-4 text-center ${hasData ? 'text-muted' : 'text-black/30'} font-bold">${hasData ? e.sampleSize : 'No data yet'}</td>
-      <td class="py-4 text-center font-bold serif italic text-xl ${hasData ? '' : 'text-black/30'}">${escapeHtml(e.letter)}</td>
+      <td class="py-4 text-center font-mono font-bold ${hasData ? 'text-accent' : 'text-black/30'} text-lg" data-val="${hasData ? e.talentDelta : 9999}">${hasData ? e.talentDelta.toFixed(2) : '—'}</td>
+      <td class="py-4 text-center ${hasData ? 'text-muted' : 'text-black/30'} font-bold" data-val="${hasData ? e.sampleSize : -1}">${hasData ? e.sampleSize : 'No data yet'}</td>
+      <td class="py-4 text-center font-bold serif italic text-xl ${hasData ? '' : 'text-black/30'}" data-val="${escapeHtml(e.letter)}">${escapeHtml(e.letter)}</td>
     </tr>
   `;
     })
@@ -1249,9 +1285,9 @@ export function expertLeaderboard(
             <thead>
               <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
                 <th class="py-4 px-4">Rank</th>
-                <th class="py-4">Expert / Source</th>
-                <th class="py-4 text-center">RMSE</th>
-                <th class="py-4 text-center">Sample</th>
+                <th class="py-4 cursor-pointer select-none hover:opacity-80" data-col="1" data-type="str" onclick="lllSort(this)">Expert / Source <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-4 text-center cursor-pointer select-none hover:opacity-80 text-accent" data-col="2" data-type="num" data-dir="asc" onclick="lllSort(this)">RMSE <span class="si">↑</span></th>
+                <th class="py-4 text-center cursor-pointer select-none hover:opacity-80" data-col="3" data-type="num" onclick="lllSort(this)">Sample <span class="si" style="opacity:0.4">↕</span></th>
                 <th class="py-4 text-center">Years</th>
               </tr>
             </thead>
@@ -1273,9 +1309,9 @@ export function expertLeaderboard(
             <thead>
               <tr class="bg-black text-white text-[10px] uppercase tracking-[0.2em]">
                 <th class="py-4 px-4">Rank</th>
-                <th class="py-4">Expert / Source</th>
-                <th class="py-4 text-center">Talent Δ</th>
-                <th class="py-4 text-center">Sample</th>
+                <th class="py-4 cursor-pointer select-none hover:opacity-80" data-col="1" data-type="str" onclick="lllSort(this)">Expert / Source <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-4 text-center cursor-pointer select-none hover:opacity-80 text-accent" data-col="2" data-type="num" data-dir="asc" onclick="lllSort(this)">Talent Δ <span class="si">↑</span></th>
+                <th class="py-4 text-center cursor-pointer select-none hover:opacity-80" data-col="3" data-type="num" onclick="lllSort(this)">Sample <span class="si" style="opacity:0.4">↕</span></th>
                 <th class="py-4 text-center">Letter</th>
               </tr>
             </thead>
@@ -1534,8 +1570,8 @@ export function teamLeaderboard(
         hx-target="#team-modal-root"
         hx-swap="innerHTML"
         hx-trigger="click[!event.target.closest('a')&&!event.target.closest('.lll-tip')]">
-      <td class="py-2 px-3 text-[11px] font-bold text-muted w-8">${i + 1}</td>
-      <td class="py-2 px-3">
+      <td class="py-2 px-3 text-[11px] font-bold text-muted w-8 tbl-rank">${i + 1}</td>
+      <td class="py-2 px-3" data-val="${escapeHtml(t.team)}">
         <div class="flex items-center gap-2">
           ${teamLogo(t.teamKey, 'w-6 h-6 shrink-0')}
           <span class="text-[12px] font-bold tracking-tight group-hover:text-accent transition-colors whitespace-nowrap">${escapeHtml(t.team)}</span>
@@ -1544,16 +1580,16 @@ export function teamLeaderboard(
       <td class="py-2 px-3 text-center">
         <span class="text-[15px] font-bold serif italic">${t.grade}</span>
       </td>
-      <td class="py-2 px-3 text-center text-[11px] font-bold">${t.hitRate}%
+      <td class="py-2 px-3 text-center text-[11px] font-bold" data-val="${t.hitRate}">${t.hitRate}%
         <span class="text-muted font-normal">(${t.hits}/${t.totalPicks})</span>
       </td>
-      <td class="py-2 px-3 text-center">
+      <td class="py-2 px-3 text-center" data-val="${t.eliteCount}">
         <div class="lll-tip lll-elite-bar inline-block" tabindex="0">
           <span class="text-[11px] font-bold ${t.eliteCount >= 5 ? 'text-emerald-700' : ''}">${t.eliteCount}</span>
           <span role="tooltip" class="tip-body tip-body--elite">${renderElitePlayersTipBody(t.eliteNames)}</span>
         </div>
       </td>
-      <td class="py-2 px-3 text-center text-[11px] font-bold mono text-accent">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
+      <td class="py-2 px-3 text-center text-[11px] font-bold mono text-accent" data-val="${t.avgDelta}">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
       <td class="py-2 px-3 text-[11px] text-muted max-w-[160px]">
         ${t.topPick ? `<a href="/analyzer/player/${encodeURIComponent(t.topPick.name)}?${fullQs}" class="font-bold text-black hover:text-accent transition-colors">${escapeHtml(t.topPick.name)}</a> <span class="text-[10px]">R${t.topPick.round} · Δ${t.topPick.delta.toFixed(1)}</span>` : '—'}
       </td>
@@ -1570,11 +1606,11 @@ export function teamLeaderboard(
         <thead>
           <tr class="border-b-2 border-black text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
             <th class="py-2 px-3 text-left w-8">#</th>
-            <th class="py-2 px-3 text-left">Team</th>
+            <th class="py-2 px-3 text-left cursor-pointer select-none hover:text-black" data-col="1" data-type="str" onclick="lllSort(this)">Team <span class="si" style="opacity:0.4">↕</span></th>
             <th class="py-2 px-3 text-center">Grade</th>
-            <th class="py-2 px-3 text-center">${tooltip('Hit Rate', TOOLTIPS.hitRate)}</th>
-            <th class="py-2 px-3 text-center">${tooltip('Elite', TOOLTIPS.elitePlayers)}</th>
-            <th class="py-2 px-3 text-center">${tooltip('Avg Δ', TOOLTIPS.lllDelta)}</th>
+            <th class="py-2 px-3 text-center cursor-pointer select-none hover:text-black" data-col="3" data-type="num" onclick="lllSort(this)">${tooltip('Hit Rate', TOOLTIPS.hitRate)} <span class="si" style="opacity:0.4">↕</span></th>
+            <th class="py-2 px-3 text-center cursor-pointer select-none hover:text-black" data-col="4" data-type="num" onclick="lllSort(this)">${tooltip('Elite', TOOLTIPS.elitePlayers)} <span class="si" style="opacity:0.4">↕</span></th>
+            <th class="py-2 px-3 text-center cursor-pointer select-none hover:text-black text-black" data-col="5" data-type="num" data-dir="desc" onclick="lllSort(this)">${tooltip('Avg Δ', TOOLTIPS.lllDelta)} <span class="si">↓</span></th>
             <th class="py-2 px-3 text-left">Best Pick</th>
             <th class="py-2 px-3 text-left">Worst Pick</th>
           </tr>
@@ -1667,8 +1703,8 @@ export function successLeaderboard(
         hx-swap="innerHTML"
         hx-trigger="click[!event.target.closest('.lll-tip')]"
         title="Why this grade? Click for the breakdown.">
-      <td class="py-4 px-4 font-bold text-black text-xl serif italic">#${i + 1}</td>
-      <td class="py-4 text-black">
+      <td class="py-4 px-4 font-bold text-black text-xl serif italic tbl-rank">${i + 1}</td>
+      <td class="py-4 text-black" data-val="${escapeHtml(t.team)}">
         <div class="flex items-center gap-3">
           ${teamLogo(t.teamKey, 'w-9 h-9')}
           <div>
@@ -1677,7 +1713,7 @@ export function successLeaderboard(
           </div>
         </div>
       </td>
-      <td class="py-4 text-center text-black relative align-top">
+      <td class="py-4 text-center text-black relative align-top" data-val="${t.hitRate}">
         <div class="lll-tip lll-elite-bar inline-block max-w-full text-left" tabindex="0">
           <div>
             <div class="inline-block px-3 py-1 bg-black text-white text-xs font-bold rounded-sm">${t.hitRate}%</div>
@@ -1686,7 +1722,7 @@ export function successLeaderboard(
           <span role="tooltip" class="tip-body tip-body--elite">${renderElitePlayersTipBody(t.eliteNames)}</span>
         </div>
       </td>
-      <td class="py-4 text-center font-mono font-bold text-accent text-lg">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
+      <td class="py-4 text-center font-mono font-bold text-accent text-lg" data-val="${t.avgDelta}">${t.avgDelta > 0 ? '+' : ''}${t.avgDelta.toFixed(2)}</td>
       <td class="py-4 pr-4 text-right text-black">
         <div class="text-2xl font-bold text-black serif italic leading-none group-hover:text-accent transition-colors">${t.grade}</div>
         <div class="text-[8px] text-muted font-bold uppercase tracking-widest mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Tap →</div>
@@ -1702,9 +1738,9 @@ export function successLeaderboard(
         <thead>
           <tr class="bg-black/5 text-[9px] font-bold uppercase tracking-[0.2em] text-muted">
             <th class="py-3 px-4 w-16">Rank</th>
-            <th class="py-3">Franchise</th>
-            <th class="py-3 text-center">${tooltip('Hit Rate', TOOLTIPS.hitRate)}</th>
-            <th class="py-3 text-center">${deltaHeader}</th>
+            <th class="py-3 cursor-pointer select-none hover:text-black" data-col="1" data-type="str" onclick="lllSort(this)">Franchise <span class="si" style="opacity:0.4">↕</span></th>
+            <th class="py-3 text-center cursor-pointer select-none hover:text-black" data-col="2" data-type="num" onclick="lllSort(this)">${tooltip('Hit Rate', TOOLTIPS.hitRate)} <span class="si" style="opacity:0.4">↕</span></th>
+            <th class="py-3 text-center cursor-pointer select-none hover:text-black text-black" data-col="3" data-type="num" data-dir="desc" onclick="lllSort(this)">${deltaHeader} <span class="si">↓</span></th>
             <th class="py-3 pr-4 text-right">LLL Grade</th>
           </tr>
         </thead>
@@ -1836,7 +1872,7 @@ export function collegeLeaderboard(
       const netHits = c.hits - c.busts;
       return `
       <tr class="border-b border-black/5 hover:bg-black/[0.02] transition-colors">
-        <td class="py-3 px-4 font-bold text-muted text-sm college-rank">${i + 1}</td>
+        <td class="py-3 px-4 font-bold text-muted text-sm tbl-rank">${i + 1}</td>
         <td class="py-3 font-bold text-black" data-val="${escapeHtml(c.college)}">${escapeHtml(c.college)}</td>
         <td class="py-3 text-center text-sm text-muted" data-val="${c.totalPicks}">${c.totalPicks}</td>
         <td class="py-3 text-center text-sm text-muted" data-val="${c.eliteCount ?? 0}">${c.eliteCount ?? 0}</td>
@@ -1895,12 +1931,12 @@ export function collegeLeaderboard(
             <thead>
               <tr class="bg-black text-white text-[9px] uppercase tracking-[0.2em] select-none">
                 <th class="py-3 px-4">#</th>
-                <th class="py-3 cursor-pointer hover:text-accent/80 transition-colors" data-col="1" data-type="str" onclick="sortCollegeTable(this)">School <span class="sort-ind opacity-50">↕</span></th>
-                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="2" data-type="num" onclick="sortCollegeTable(this)">Pros <span class="sort-ind opacity-50">↕</span></th>
-                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="3" data-type="num" onclick="sortCollegeTable(this)">${tooltip('Elite', TOOLTIPS.elitePlayers)} <span class="sort-ind opacity-50">↕</span></th>
-                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="4" data-type="num" onclick="sortCollegeTable(this)">Hits−Busts <span class="sort-ind opacity-50">↕</span></th>
-                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="5" data-type="num" onclick="sortCollegeTable(this)">${tooltip('Hit %', TOOLTIPS.hitRate)} <span class="sort-ind opacity-50">↕</span></th>
-                <th class="py-3 text-center cursor-pointer hover:text-accent transition-colors font-extrabold" data-col="6" data-type="num" data-dir="desc" onclick="sortCollegeTable(this)">Avg Δ <span class="sort-ind">↓</span></th>
+                <th class="py-3 cursor-pointer hover:text-accent/80 transition-colors" data-col="1" data-type="str" onclick="lllSort(this)">School <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="2" data-type="num" onclick="lllSort(this)">Pros <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="3" data-type="num" onclick="lllSort(this)">${tooltip('Elite', TOOLTIPS.elitePlayers)} <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="4" data-type="num" onclick="lllSort(this)">Hits−Busts <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent/80 transition-colors" data-col="5" data-type="num" onclick="lllSort(this)">${tooltip('Hit %', TOOLTIPS.hitRate)} <span class="si" style="opacity:0.4">↕</span></th>
+                <th class="py-3 text-center cursor-pointer hover:text-accent transition-colors font-extrabold" data-col="6" data-type="num" data-dir="desc" onclick="lllSort(this)">Avg Δ <span class="si">↓</span></th>
                 <th class="py-3 text-center">Best Pro</th>
                 <th class="py-3 px-4 text-center">Details</th>
               </tr>
@@ -1912,50 +1948,6 @@ export function collegeLeaderboard(
         </div>
       </div>
     </div>
-    <script>
-    (function() {
-      function sortCollegeTable(th) {
-        var table = document.getElementById('college-sort-table');
-        var tbody = table.querySelector('tbody');
-        var colIdx = parseInt(th.dataset.col, 10);
-        var type = th.dataset.type;
-        var currentDir = th.dataset.dir || '';
-        var dir = currentDir === 'desc' ? 'asc' : 'desc';
-
-        // Reset all headers
-        table.querySelectorAll('thead th[data-col]').forEach(function(h) {
-          h.dataset.dir = '';
-          h.classList.remove('text-accent', 'font-extrabold');
-          h.classList.add('hover:text-accent/80');
-          var ind = h.querySelector('.sort-ind');
-          if (ind) { ind.textContent = '↕'; ind.classList.add('opacity-50'); }
-        });
-
-        // Mark active header
-        th.dataset.dir = dir;
-        th.classList.add('text-accent', 'font-extrabold');
-        th.classList.remove('hover:text-accent/80');
-        var activeInd = th.querySelector('.sort-ind');
-        if (activeInd) { activeInd.textContent = dir === 'asc' ? '↑' : '↓'; activeInd.classList.remove('opacity-50'); }
-
-        // Sort rows
-        var rows = Array.from(tbody.querySelectorAll('tr'));
-        rows.sort(function(a, b) {
-          var av = (a.querySelectorAll('td')[colIdx] || {}).dataset && a.querySelectorAll('td')[colIdx].dataset.val || '';
-          var bv = (b.querySelectorAll('td')[colIdx] || {}).dataset && b.querySelectorAll('td')[colIdx].dataset.val || '';
-          var cmp = type === 'num' ? (parseFloat(av) - parseFloat(bv)) : av.localeCompare(bv);
-          return dir === 'asc' ? cmp : -cmp;
-        });
-
-        rows.forEach(function(r, i) {
-          var rankCell = r.querySelector('.college-rank');
-          if (rankCell) rankCell.textContent = String(i + 1);
-          tbody.appendChild(r);
-        });
-      }
-      window.sortCollegeTable = sortCollegeTable;
-    })();
-    </script>
   `;
   return analyzerLayout(content, 'College Scout Index — LLL Draft Analyzer', clerkKey);
 }
