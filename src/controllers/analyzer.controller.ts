@@ -157,15 +157,19 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   .get('/experts', async (ctx) => {
     const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
     const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
-    const [oracle, scout, takes, pairwise] = await Promise.all([
-      ExpertAuditService.getOracleLeaderboard(),
-      ExpertAuditService.getScoutLeaderboard(),
-      ExpertAuditService.getBestWorstTakes(10),
-      ExpertPairwiseRankService.getPairwiseLeaderboard(),
-    ]);
+    // Run the leaderboards SEQUENTIALLY, not via Promise.all. Each leaderboard
+    // fires several queries; fanning all four out at once (≈13 concurrent
+    // queries, including the ~6s cold career-rating-map build) starves the
+    // postgres-js connection pool against the Supabase pooler and the route
+    // runs past Vercel's 300s function limit -> 504. Sequentially the same work
+    // completes in ~12s (and far less once the career map is warm). The data is
+    // tiny, so the lost parallelism costs little.
+    const oracle = await ExpertAuditService.getOracleLeaderboard();
+    const scout = await ExpertAuditService.getScoutLeaderboard();
+    const takes = await ExpertAuditService.getBestWorstTakes(10);
+    const pairwise = await ExpertPairwiseRankService.getPairwiseLeaderboard();
     // blend is a pure recombination of the three leaderboards above — compute it
-    // here instead of getBlendLeaderboard(), which would re-run oracle/scout/
-    // pairwise a second time (the cause of the /experts gateway timeout).
+    // here instead of getBlendLeaderboard(), which would re-run them a second time.
     const blend = ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
     ctx.set.headers['Content-Type'] = 'text/html';
     return expertLeaderboard(oracle, scout, takes, CLERK_KEY, {
