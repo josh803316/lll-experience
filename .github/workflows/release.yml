@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -36,9 +36,9 @@ jobs:
 
       # semantic-release requires Node >=22.14.0 (Bun reports ~v20 for process.version)
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
       # Install release tooling — not in package.json to avoid Vercel needing GitHub Packages auth
       # GITHUB_TOKEN must be set here so Bun can expand ${GITHUB_TOKEN} in .npmrc
