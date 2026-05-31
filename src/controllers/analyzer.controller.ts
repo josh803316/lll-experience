@@ -157,13 +157,16 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   .get('/experts', async (ctx) => {
     const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
     const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
-    const [oracle, scout, takes, pairwise, blend] = await Promise.all([
+    const [oracle, scout, takes, pairwise] = await Promise.all([
       ExpertAuditService.getOracleLeaderboard(),
       ExpertAuditService.getScoutLeaderboard(),
       ExpertAuditService.getBestWorstTakes(10),
       ExpertPairwiseRankService.getPairwiseLeaderboard(),
-      ExpertAuditService.getBlendLeaderboard(),
     ]);
+    // blend is a pure recombination of the three leaderboards above — compute it
+    // here instead of getBlendLeaderboard(), which would re-run oracle/scout/
+    // pairwise a second time (the cause of the /experts gateway timeout).
+    const blend = ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
     ctx.set.headers['Content-Type'] = 'text/html';
     return expertLeaderboard(oracle, scout, takes, CLERK_KEY, {
       ...admin,
