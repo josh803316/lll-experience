@@ -18,6 +18,7 @@ import {landingPage, appsPage} from './views/templates.js';
 import {CURRENT_DRAFT_YEAR} from './config/draft-data.js';
 import {runDraftAutoTick} from './services/draft-auto.js';
 import {generatePendingPickWriteups} from './services/pick-writeup-cron.js';
+import {warmAnalyzerCache} from './services/analyzer-cache.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
@@ -101,9 +102,39 @@ const app = baseApp
     }
     try {
       await runDraftAutoTick(CURRENT_DRAFT_YEAR);
+      // Draft results feed the oracle leaderboard, so a sync may have bumped the
+      // data version. Eagerly re-warm the analyzer cache (best-effort: never let
+      // a warm failure fail the sync) so the next page load is a pure cache hit.
+      try {
+        const warm = await warmAnalyzerCache();
+        if (warm.warmed) {console.log(`[CRON] analyzer cache warmed → v${warm.version}`);}
+      } catch (warmErr: any) {
+        console.error('[CRON] analyzer cache warm failed:', warmErr?.message ?? warmErr);
+      }
       return {ok: true, year: CURRENT_DRAFT_YEAR};
     } catch (err: any) {
       console.error('[CRON] sync-draft-picks error:', err?.message ?? err);
+      set.status = 500;
+      return {error: err?.message ?? 'Unknown error'};
+    }
+  })
+
+  // Cron: warm the analyzer result cache. Hit this after a PFF/nflverse ingest
+  // (or on a schedule) so users never eat the recompute. No-ops when already
+  // fresh; pass ?force=1 to rebuild regardless.
+  .get('/api/cron/warm-analyzer-cache', async ({request, set, query}) => {
+    const authHeader = request.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      set.status = 401;
+      return {error: 'Unauthorized'};
+    }
+    const force = query?.force === '1' || query?.force === 'true';
+    try {
+      const result = await warmAnalyzerCache({force});
+      return {ok: true, ...result};
+    } catch (err: any) {
+      console.error('[CRON] warm-analyzer-cache error:', err?.message ?? err);
       set.status = 500;
       return {error: err?.message ?? 'Unknown error'};
     }

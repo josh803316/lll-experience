@@ -22,6 +22,7 @@ import {
 import {DraftScoutService, type SeasonRow} from '../services/draft-scout.js';
 import {ExpertAuditService, getExpertProfile} from '../services/expert-audit.js';
 import {ExpertPairwiseRankService} from '../services/expert-pairwise-rank.js';
+import {getExpertBundle} from '../services/analyzer-cache.js';
 import {CollegeScoutService} from '../services/college-scout.js';
 import {
   TeamScoutService,
@@ -103,15 +104,12 @@ async function buildDashboardSnapshot(
     .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)));
   const [expertRow] = await db.select({c: sql<number>`COUNT(*)::int`}).from(experts);
 
-  // Sequential, not Promise.all — see /experts handler: fanning these heavy
-  // leaderboards out concurrently starves the DB connection pool (the cold
-  // career-rating-map build competes with ~13 in-flight queries) and can run
-  // past Vercel's function limit. The data is tiny, so serial costs little.
+  // The expert leaderboards are parameter-free and cached as one bundle (served
+  // from a single indexed read when fresh; recomputed only when source data
+  // changes). movers is opts-dependent, so it's computed live — but it no longer
+  // competes with the heavy expert queries + cold career-map build.
   const movers = await TeamScoutService.getTopMovers({...opts, limit: 10});
-  const oracle = await ExpertAuditService.getOracleLeaderboard();
-  const scout = await ExpertAuditService.getScoutLeaderboard();
-  const pairwise = await ExpertPairwiseRankService.getPairwiseLeaderboard();
-  const blend = ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
+  const {oracle, scout, pairwise, blend} = await getExpertBundle();
 
   return {
     totalPicks: pickRow?.c ?? 0,
@@ -159,20 +157,10 @@ export const analyzerController = new Elysia({prefix: '/analyzer'})
   .get('/experts', async (ctx) => {
     const [admin, bounds] = await Promise.all([resolveAdminContext(ctx), getOfficialDraftYearBounds()]);
     const opts = applySeasonBoundsToScoutOpts(parseScoutOpts(ctx.query as Record<string, string | undefined>), bounds);
-    // Run the leaderboards SEQUENTIALLY, not via Promise.all. Each leaderboard
-    // fires several queries; fanning all four out at once (≈13 concurrent
-    // queries, including the ~6s cold career-rating-map build) starves the
-    // postgres-js connection pool against the Supabase pooler and the route
-    // runs past Vercel's 300s function limit -> 504. Sequentially the same work
-    // completes in ~12s (and far less once the career map is warm). The data is
-    // tiny, so the lost parallelism costs little.
-    const oracle = await ExpertAuditService.getOracleLeaderboard();
-    const scout = await ExpertAuditService.getScoutLeaderboard();
-    const takes = await ExpertAuditService.getBestWorstTakes(10);
-    const pairwise = await ExpertPairwiseRankService.getPairwiseLeaderboard();
-    // blend is a pure recombination of the three leaderboards above — compute it
-    // here instead of getBlendLeaderboard(), which would re-run them a second time.
-    const blend = ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
+    // Served from the cached bundle (single indexed read when fresh). Recomputed
+    // only when source data changes — see services/analyzer-cache.ts. This is
+    // what resolved the gateway timeout for good.
+    const {oracle, scout, takes, pairwise, blend} = await getExpertBundle();
     ctx.set.headers['Content-Type'] = 'text/html';
     return expertLeaderboard(oracle, scout, takes, CLERK_KEY, {
       ...admin,

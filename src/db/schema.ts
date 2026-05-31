@@ -399,3 +399,23 @@ export const playerContracts = pgTable(
     uniqPlayerYearSource: unique().on(t.playerName, t.yearSigned, t.source),
   }),
 );
+
+// ── Analyzer result cache ───────────────────────────────────────────────────
+// Computed leaderboard payloads stored as JSON so routes serve a single indexed
+// read instead of re-running the heavy expert leaderboards. Invalidated by
+// data_version (bumped by DB triggers whenever a source table changes), so the
+// cache is correct without any TTL guessing. See services/analyzer-cache.ts.
+export const analyzerCache = pgTable('analyzer_cache', {
+  key: text('key').primaryKey(), // e.g. 'experts-bundle'
+  payload: jsonb('payload').notNull(),
+  dataVersion: bigint('data_version', {mode: 'number'}).notNull(),
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+});
+
+// Single-row counter bumped by triggers on every write to a source table.
+// The cache row is fresh iff its data_version equals the current version.
+export const analyzerDataVersion = pgTable('analyzer_data_version', {
+  id: integer('id').primaryKey().default(1),
+  version: bigint('version', {mode: 'number'}).notNull().default(1),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
