@@ -103,12 +103,14 @@ async function buildDashboardSnapshot(
     .where(and(gte(officialDraftResults.year, startYear), lte(officialDraftResults.year, endYear)));
   const [expertRow] = await db.select({c: sql<number>`COUNT(*)::int`}).from(experts);
 
-  const [movers, oracle, scout, pairwise] = await Promise.all([
-    TeamScoutService.getTopMovers({...opts, limit: 10}),
-    ExpertAuditService.getOracleLeaderboard(),
-    ExpertAuditService.getScoutLeaderboard(),
-    ExpertPairwiseRankService.getPairwiseLeaderboard(),
-  ]);
+  // Sequential, not Promise.all — see /experts handler: fanning these heavy
+  // leaderboards out concurrently starves the DB connection pool (the cold
+  // career-rating-map build competes with ~13 in-flight queries) and can run
+  // past Vercel's function limit. The data is tiny, so serial costs little.
+  const movers = await TeamScoutService.getTopMovers({...opts, limit: 10});
+  const oracle = await ExpertAuditService.getOracleLeaderboard();
+  const scout = await ExpertAuditService.getScoutLeaderboard();
+  const pairwise = await ExpertPairwiseRankService.getPairwiseLeaderboard();
   const blend = ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
 
   return {

@@ -286,11 +286,14 @@ export class ExpertAuditService {
   }
 
   static async getBlendLeaderboard(): Promise<ExpertBlendRow[]> {
-    const [oracle, scout, pairwise] = await Promise.all([
-      ExpertAuditService.getOracleLeaderboard(),
-      ExpertAuditService.getScoutLeaderboard(),
-      ExpertPairwiseRankService.getPairwiseLeaderboard(),
-    ]);
+    // Sequential, not Promise.all: fanning these out concurrently starves the
+    // DB connection pool (the cold career-rating-map build competes with the
+    // other leaderboards' queries) and can run past Vercel's function limit.
+    // Tiny data, so serial costs little. Callers that already have these three
+    // leaderboards should use blendLeaderboardFrom() directly instead.
+    const oracle = await ExpertAuditService.getOracleLeaderboard();
+    const scout = await ExpertAuditService.getScoutLeaderboard();
+    const pairwise = await ExpertPairwiseRankService.getPairwiseLeaderboard();
     return ExpertAuditService.blendLeaderboardFrom(oracle, scout, pairwise);
   }
 
