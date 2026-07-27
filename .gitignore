@@ -18,6 +18,7 @@ playwright/.cache/
 # PFF ingestion artifacts (local browser session + raw CSV downloads)
 .pff_user_data/
 pff_downloads/
+scripts/elite-players-by-team.csv
 
 # Local-only screenshots used in conversation
 image*.png
