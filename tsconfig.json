@@ -1,9 +1,12 @@
 {
-  "extends": "@josh803316/shared-config/tsconfig.json",
+  "extends": "@josh803316/shared-config/tsconfig/bun.json",
   "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
     "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["bun-types"],
+    "types": ["bun"],
     "noUncheckedIndexedAccess": false
   },
   "exclude": ["dist/", "node_modules/", "tests/", "playwright.config.ts"]
