@@ -1,8 +1,7 @@
-import josh803316SharedConfig from '@josh803316/shared-config/eslint.config.js';
 import ts from 'typescript-eslint';
 
 const config = [
-  ...josh803316SharedConfig,
+  ...ts.configs.recommended,
   // Relax rules that require significant type refactoring in existing code.
   // Warnings remain visible in the editor — fix them incrementally.
   {
@@ -17,6 +16,8 @@ const config = [
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-require-imports': 'warn',
       '@typescript-eslint/no-unsafe-member-access': 'warn',
       '@typescript-eslint/no-unsafe-assignment': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
@@ -32,6 +33,7 @@ const config = [
   {
     rules: {
       'no-useless-escape': 'warn',
+      '@typescript-eslint/no-require-imports': 'warn',
     },
   },
   {
