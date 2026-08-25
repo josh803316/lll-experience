@@ -1,12 +1,11 @@
 name: Keep Alive
 
 on:
-  # Twice weekly (Sun + Wed at noon UTC / 8 AM ET) — keeps Supabase DB from
-  # pausing. Supabase pauses free projects after 7 days of inactivity, and
-  # GitHub Actions cron is best-effort, so two runs/week gives headroom if
-  # one is skipped.
+  # Daily at noon UTC — keeps Supabase free-tier DB from pausing after 7 days
+  # of inactivity. GitHub Actions cron is best-effort (can skip), so daily
+  # gives plenty of headroom vs twice-weekly.
   schedule:
-    - cron: '0 12 * * 0,3'
+    - cron: '0 12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -14,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Ping health endpoint
+      - name: Ping health + DB keep-alive
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -26,20 +25,22 @@ jobs:
           fi
           SITE_URL="${SITE_URL%/}"
           echo "=== Keep-alive ping at $(date -u) ==="
-          # Hit health check (wakes up the serverless function + DB connection)
+
+          # Wake the serverless function
           curl -fsS --max-time 30 "$SITE_URL/health"
           echo
-          # Hit the cron endpoint to trigger a DB query
+
+          # Explicit DB SELECT so Supabase registers activity even post-draft
           if ! STATUS=$(curl -sS -o /tmp/response.json -w "%{http_code}" --max-time 60 \
               -H "Authorization: Bearer $CRON_SECRET" \
-              "$SITE_URL/api/cron/sync-draft-picks"); then
-            echo "::error::Cron request failed"
+              "$SITE_URL/api/cron/keepalive"); then
+            echo "::error::Keep-alive request failed"
             exit 1
           fi
           echo "HTTP $STATUS"
           cat /tmp/response.json
           echo
           if [ "$STATUS" != "200" ]; then
-            echo "::error::Cron endpoint returned HTTP $STATUS"
+            echo "::error::Keep-alive endpoint returned HTTP $STATUS"
             exit 1
           fi

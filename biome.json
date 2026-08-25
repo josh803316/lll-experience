@@ -1,3 +1,14 @@
 {
-  "extends": ["@josh803316/shared-config/biome.json"]
+  "extends": ["@josh803316/shared-config/biome.json"],
+  "linter": {
+    "rules": {
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noConsole": "off"
+      },
+      "correctness": {
+        "useHookAtTopLevel": "off"
+      }
+    }
+  }
 }
