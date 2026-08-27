@@ -14,7 +14,8 @@
     "db:studio": "drizzle-kit studio --dialect=postgresql",
     "db:migrate": "bun run src/db/migrate.ts",
     "db:seed": "bun run src/db/seed.ts",
-    "sleeper:ingest": "bun run scripts/ingest-sleeper.ts"
+    "sleeper:ingest": "bun run scripts/ingest-sleeper.ts",
+    "test:smoke": "playwright test tests/smoke.ts --reporter=line --retries=2"
   },
   "dependencies": {
     "@bogeychan/elysia-logger": "^0.1.10",

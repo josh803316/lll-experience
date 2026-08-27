@@ -19,9 +19,38 @@ jobs:
       build-command: 'bun run build'
     secrets: inherit
 
+  smoke:
+    name: Smoke
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.BUN_AUTH_TOKEN }}
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      - name: Smoke production
+        run: bun run test:smoke
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+
   release:
     name: Release
-    needs: deploy
+    needs: [deploy, smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
