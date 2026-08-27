@@ -1,5 +1,5 @@
 import {asc, eq, inArray} from 'drizzle-orm';
-import {managerForSleeperUser, normPlayerName, surplusLetter} from '../config/fantasy-managers.js';
+import {managerForSleeperUser, normPlayerName} from '../config/fantasy-managers.js';
 import {getDB} from '../db/index.js';
 import {
   fantasyDraftPicks,
@@ -15,6 +15,7 @@ import {
 } from '../db/schema.js';
 import {
   allPlayFromMatchups,
+  applyDraftLetters,
   dollarOneReplacement,
   finishRanks,
   scoreDraftPicks,
@@ -338,14 +339,15 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
         .map((w) => ({week: w.week, rosterId: w.rosterId, playerId: w.playerId, points: w.points})),
       maxWeek(ctx, league.sleeperLeagueId),
     );
+    const seasonRows: GmSeasonRow[] = [];
     for (const r of ranked) {
       const id = ident(ctx, r.sleeperUserId, r.teamName);
       const games = r.wins + r.losses + r.ties;
       const gmPicks = scored.filter((p) => p.rosterId === r.rosterId);
-      const meanSurplus = gmPicks.length ? gmPicks.reduce((s, p) => s + p.surplus, 0) / gmPicks.length : 0;
+      const totalSurplus = gmPicks.reduce((s, p) => s + p.surplus, 0);
       const wireFpts = stints.filter((s) => s.rosterId === r.rosterId).reduce((s, x) => s + x.fpts, 0);
       const lateFpts = gmPicks.filter((p) => p.late).reduce((s, p) => s + p.fpts, 0);
-      rows.push({
+      seasonRows.push({
         slug: id.slug,
         displayName: id.displayName,
         sleeperUserId: r.sleeperUserId,
@@ -364,12 +366,13 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
         pfPerWeek: r.weeksPlayed ? r.fpts / r.weeksPlayed : 0,
         finish: r.finish,
         waiverBudgetUsed: r.waiverBudgetUsed,
-        draftSurplus: meanSurplus,
-        draftGrade: gmPicks.length ? surplusLetter(meanSurplus) : '—',
+        draftSurplus: totalSurplus,
+        draftGrade: gmPicks.length ? '' : '—',
         wireFpts,
         lateFpts,
       });
     }
+    rows.push(...applyDraftLetters(seasonRows));
   }
   return rows;
 }
@@ -390,8 +393,10 @@ function rollupAllTime(seasonRows: GmSeasonRow[], seasons: number[]): GmAllTimeR
     const fpts = years.reduce((s, y) => s + y.fpts, 0);
     const fptsAgainst = years.reduce((s, y) => s + y.fptsAgainst, 0);
     const weeksPlayed = years.reduce((s, y) => s + y.weeksPlayed, 0);
-    const draftSurplus =
-      years.reduce((s, y) => s + y.draftSurplus, 0) / Math.max(1, years.filter((y) => y.draftGrade !== '—').length);
+    const gradedYears = years.filter((y) => y.draftGrade !== '—');
+    const draftSurplus = gradedYears.length
+      ? gradedYears.reduce((s, y) => s + y.draftSurplus, 0) / gradedYears.length
+      : 0;
     const sparkline = seasons.map((season) => years.find((y) => y.season === season)?.finish ?? 0);
     out.push({
       slug,
@@ -408,14 +413,15 @@ function rollupAllTime(seasonRows: GmSeasonRow[], seasons: number[]): GmAllTimeR
       avgFinish: years.reduce((s, y) => s + y.finish, 0) / years.length,
       sparkline,
       draftSurplus,
-      draftGrade: years.some((y) => y.draftGrade !== '—') ? surplusLetter(draftSurplus) : '—',
+      draftGrade: gradedYears.length ? '' : '—',
       wireFpts: years.reduce((s, y) => s + y.wireFpts, 0),
       lateFpts: years.reduce((s, y) => s + y.lateFpts, 0),
       years,
     });
   }
-  out.sort((a, b) => b.winPct - a.winPct || b.fpts - a.fpts);
-  return out;
+  const graded = applyDraftLetters(out);
+  graded.sort((a, b) => b.winPct - a.winPct || b.fpts - a.fpts);
+  return graded;
 }
 
 let pffCache: Map<string, number> | null = null;

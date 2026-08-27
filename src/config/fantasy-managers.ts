@@ -78,22 +78,6 @@ export function isLatePick(round: number, amount: number, totalRounds: number): 
   return round >= Math.max(1, totalRounds - 2) || amount <= 2;
 }
 
-export function surplusLetter(meanSurplus: number): string {
-  if (meanSurplus > 30) {
-    return 'A';
-  }
-  if (meanSurplus > 15) {
-    return 'B';
-  }
-  if (meanSurplus > 0) {
-    return 'C';
-  }
-  if (meanSurplus > -15) {
-    return 'D';
-  }
-  return 'F';
-}
-
 /** Normalize player names for PFF joins (Jr/II/punctuation). */
 export function normPlayerName(name: string): string {
   let s = name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\./g, '');

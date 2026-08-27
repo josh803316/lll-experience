@@ -224,7 +224,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         <td class="px-3 py-2" data-val="${g.fpts}">${fmt(g.fpts, 0)}</td>
         <td class="px-3 py-2" data-val="${g.pfPerWeek}">${fmt(g.pfPerWeek)}</td>
         <td class="px-3 py-2" data-val="${g.avgFinish}">${fmt(g.avgFinish)}</td>
-        <td class="px-3 py-2" data-val="${g.draftSurplus}">${escapeHtml(g.draftGrade)} <span class="text-muted">${fmt(g.draftSurplus)}</span></td>
+        <td class="px-3 py-2" data-val="${g.draftSurplus}">${escapeHtml(g.draftGrade)} <span class="text-muted">${fmt(g.draftSurplus, 0)}</span></td>
         <td class="px-3 py-2" data-val="${g.lateFpts}">${fmt(g.lateFpts, 0)}</td>
         <td class="px-3 py-2" data-val="${g.wireFpts}">${fmt(g.wireFpts, 0)}</td>
       </tr>`;
@@ -238,7 +238,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         gms.length === 0
           ? emptyIngest()
           : `
-      <p class="text-sm text-muted max-w-3xl">Each week every GM’s best-ball score plays every other GM. Finish is all-play wins, then points — no playoffs. PF/W is <em>not</em> era-adjusted (2023 was 2QB / 6 teams).</p>
+      <p class="text-sm text-muted max-w-3xl">Each week every GM’s best-ball score plays every other GM. Finish is all-play wins, then points — no playoffs. PF/W is <em>not</em> era-adjusted (2023 was 2QB / 6 teams). Draft letter is rank among GMs on auction surplus, not a shared curve that can fail everyone.</p>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
@@ -283,7 +283,7 @@ export function fantasySeasonPage(
         <td class="px-3 py-2" data-val="${r.wins}">${record(r.wins, r.losses, r.ties)}</td>
         <td class="px-3 py-2" data-val="${r.fpts}">${fmt(r.fpts)}</td>
         <td class="px-3 py-2" data-val="${r.pfPerWeek}">${fmt(r.pfPerWeek)}</td>
-        <td class="px-3 py-2" data-val="${r.draftSurplus}">${escapeHtml(r.draftGrade)}</td>
+        <td class="px-3 py-2" data-val="${r.draftSurplus}">${escapeHtml(r.draftGrade)} <span class="text-muted">${fmt(r.draftSurplus, 0)}</span></td>
         <td class="px-3 py-2" data-val="${r.wireFpts}">${fmt(r.wireFpts, 0)}</td>
       </tr>`,
     )
@@ -318,7 +318,7 @@ export function fantasySeasonPage(
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs.</p>`
+      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs. Draft letter is rank among this season’s GMs on total auction surplus (A–F quintiles).</p>`
       }`
       }
     </main>`;
@@ -364,7 +364,7 @@ export function fantasyDraftPage(
             ? `<h2 class="text-3xl font-bold tracking-tighter">${year} auction</h2>
                <div class="card-paper rounded-lg p-6 text-muted italic">Draft opens on Sleeper — this page fills after ingest.</div>`
             : `<h2 class="text-3xl font-bold tracking-tighter">${year} auction</h2>
-               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). Surplus vs in-league positional $ bucket. PFF is overlay, not the sort.</p>
+               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). Surplus = FPTS minus $ × that position’s in-league pts/$. Team grade is rank among GMs on total surplus (A–F quintiles), not an absolute cutoff. Ungraded until drafts differ. PFF is overlay, not the sort.</p>
                <div class="card-paper rounded-lg overflow-x-auto">
                  <table class="w-min min-w-full text-sm">
                    <thead class="bg-black/[0.03]"><tr>
@@ -576,7 +576,7 @@ export function fantasyManagerPage(
         <td class="px-3 py-2">${y.finish}</td>
         <td class="px-3 py-2">${record(y.wins, y.losses, y.ties)}</td>
         <td class="px-3 py-2">${fmt(y.fpts)}</td>
-        <td class="px-3 py-2">${escapeHtml(y.draftGrade)}</td>
+        <td class="px-3 py-2">${escapeHtml(y.draftGrade)} <span class="text-muted">${fmt(y.draftSurplus, 0)}</span></td>
         <td class="px-3 py-2">${fmt(y.wireFpts, 0)}</td>
         <td class="px-3 py-2 text-muted">${escapeHtml(y.teamName || '')}</td>
       </tr>`,

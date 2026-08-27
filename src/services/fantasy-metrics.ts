@@ -134,31 +134,84 @@ export function scoreDraftPicks(
     };
   });
 
-  const expected = new Map<string, number>();
-  const groups = new Map<string, number[]>();
+  const posFpts = new Map<string, number>();
+  const posDollars = new Map<string, number>();
   for (const p of prelim) {
-    const key = `${p.position}|${p.bucket}`;
-    const list = groups.get(key) ?? [];
-    list.push(p.fpts);
-    groups.set(key, list);
-  }
-  for (const [key, vals] of groups) {
-    expected.set(key, median(vals));
+    posFpts.set(p.position, (posFpts.get(p.position) ?? 0) + p.fpts);
+    posDollars.set(p.position, (posDollars.get(p.position) ?? 0) + p.amount);
   }
 
-  return prelim.map((p) => ({
-    playerId: p.playerId,
-    rosterId: p.rosterId,
-    sleeperUserId: p.sleeperUserId,
-    amount: p.amount,
-    round: p.round,
-    position: p.position,
-    fpts: p.fpts,
-    value: p.value,
-    surplus: p.fpts - (expected.get(`${p.position}|${p.bucket}`) ?? 0),
-    late: p.late,
-    bucket: p.bucket,
-  }));
+  return prelim.map((p) => {
+    const dollars = posDollars.get(p.position) ?? 0;
+    const rate = dollars > 0 ? (posFpts.get(p.position) ?? 0) / dollars : 0;
+    return {
+      playerId: p.playerId,
+      rosterId: p.rosterId,
+      sleeperUserId: p.sleeperUserId,
+      amount: p.amount,
+      round: p.round,
+      position: p.position,
+      fpts: p.fpts,
+      value: p.value,
+      surplus: p.fpts - p.amount * rate,
+      late: p.late,
+      bucket: p.bucket,
+    };
+  });
+}
+
+const LETTER_BANDS = ['A', 'B', 'C', 'D', 'F'] as const;
+
+/**
+ * Grade GMs against each other, not against an absolute surplus cutoff.
+ * Quintiles of rank (1=best): A B C D F. Ties share a letter. All-equal → ungraded.
+ */
+export function lettersForScores(scores: number[]): string[] {
+  if (scores.length === 0) {
+    return [];
+  }
+  const first = scores[0];
+  if (scores.every((s) => s === first)) {
+    return scores.map(() => '—');
+  }
+  const indexed = scores.map((value, index) => ({value, index}));
+  indexed.sort((a, b) => b.value - a.value);
+  const out = new Array<string>(scores.length);
+  let i = 0;
+  while (i < indexed.length) {
+    let j = i + 1;
+    while (j < indexed.length && indexed[j].value === indexed[i].value) {
+      j++;
+    }
+    const rank = i + 1;
+    const band = Math.min(
+      LETTER_BANDS.length - 1,
+      Math.floor(((rank - 1) / (indexed.length - 1)) * LETTER_BANDS.length),
+    );
+    const letter = LETTER_BANDS[band];
+    for (let k = i; k < j; k++) {
+      out[indexed[k].index] = letter;
+    }
+    i = j;
+  }
+  return out;
+}
+
+export function applyDraftLetters<T extends {draftSurplus: number; draftGrade: string}>(rows: T[]): T[] {
+  const eligible: number[] = [];
+  const scores: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].draftGrade !== '—') {
+      eligible.push(i);
+      scores.push(rows[i].draftSurplus);
+    }
+  }
+  const letters = lettersForScores(scores);
+  const byIndex = new Map(eligible.map((rowIndex, slot) => [rowIndex, letters[slot]]));
+  return rows.map((row, i) => {
+    const letter = byIndex.get(i);
+    return letter == null ? row : {...row, draftGrade: letter};
+  });
 }
 
 export interface TxEvent {

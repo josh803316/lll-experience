@@ -1,8 +1,10 @@
 import {describe, expect, test} from 'bun:test';
-import {dollarBucket, isLatePick, surplusLetter} from '../config/fantasy-managers.js';
+import {dollarBucket, isLatePick} from '../config/fantasy-managers.js';
 import {
   allPlayFromMatchups,
+  applyDraftLetters,
   finishRanks,
+  lettersForScores,
   median,
   scoreDraftPicks,
   winPct,
@@ -46,32 +48,35 @@ describe('all-play from weekly scores', () => {
 });
 
 describe('auction surplus', () => {
-  test('surplus is fpts minus median of same position+$ bucket', () => {
+  test('star in a unique $ bucket still scores vs positional pts-per-dollar', () => {
     const scored = scoreDraftPicks(
       [
-        {playerId: 'a', rosterId: 1, sleeperUserId: 'u1', amount: 50, round: 1, position: 'RB'},
-        {playerId: 'b', rosterId: 2, sleeperUserId: 'u2', amount: 55, round: 1, position: 'RB'},
-        {playerId: 'c', rosterId: 1, sleeperUserId: 'u1', amount: 1, round: 13, position: 'WR'},
+        {playerId: 'star', rosterId: 1, sleeperUserId: 'u1', amount: 55, round: 1, position: 'RB'},
+        {playerId: 'mid', rosterId: 2, sleeperUserId: 'u2', amount: 20, round: 1, position: 'RB'},
+        {playerId: 'wr', rosterId: 1, sleeperUserId: 'u1', amount: 1, round: 13, position: 'WR'},
       ],
       [
-        {playerId: 'a', fpts: 200},
-        {playerId: 'b', fpts: 100},
-        {playerId: 'c', fpts: 80},
+        {playerId: 'star', fpts: 300},
+        {playerId: 'mid', fpts: 80},
+        {playerId: 'wr', fpts: 80},
       ],
       13,
     );
-    const a = scored.find((p) => p.playerId === 'a')!;
-    const b = scored.find((p) => p.playerId === 'b')!;
-    const c = scored.find((p) => p.playerId === 'c')!;
-    expect(a.bucket).toBe('31-50');
-    expect(b.bucket).toBe('51+');
-    expect(c.late).toBe(true);
-    expect(a.surplus).toBe(0); // only RB in 31-50
-    expect(b.surplus).toBe(0);
-    expect(c.fpts).toBe(80);
-    expect(c.value).toBe(80);
+    const star = scored.find((p) => p.playerId === 'star')!;
+    const mid = scored.find((p) => p.playerId === 'mid')!;
+    const wr = scored.find((p) => p.playerId === 'wr')!;
+    expect(star.bucket).toBe('51+');
+    expect(mid.bucket).toBe('16-30');
+    expect(wr.late).toBe(true);
+    // RB par = (300+80) / (55+20) = 5.066… pts/$. Unique $ buckets must not zero the star.
+    expect(star.surplus).toBeCloseTo(300 - 55 * (380 / 75));
+    expect(mid.surplus).toBeCloseTo(80 - 20 * (380 / 75));
+    expect(star.surplus).toBeGreaterThan(0);
+    expect(mid.surplus).toBeLessThan(0);
+    expect(wr.surplus).toBeCloseTo(0);
+    expect(wr.value).toBe(80);
   });
-  test('two RBs in same bucket: surplus vs median', () => {
+  test('same-position picks share one pts/$ rate, not a bucket median', () => {
     const scored = scoreDraftPicks(
       [
         {playerId: 'a', rosterId: 1, sleeperUserId: 'u1', amount: 40, round: 1, position: 'RB'},
@@ -84,8 +89,9 @@ describe('auction surplus', () => {
       13,
     );
     expect(dollarBucket(40)).toBe('31-50');
-    expect(scored[0].surplus).toBe(100);
-    expect(scored[1].surplus).toBe(-100);
+    const rate = 400 / 82;
+    expect(scored[0].surplus).toBeCloseTo(300 - 40 * rate);
+    expect(scored[1].surplus).toBeCloseTo(100 - 42 * rate);
   });
 });
 
@@ -138,10 +144,34 @@ describe('finish ranks', () => {
   });
 });
 
-describe('letter grade', () => {
-  test('thresholds', () => {
-    expect(surplusLetter(31)).toBe('A');
-    expect(surplusLetter(1)).toBe('C');
-    expect(surplusLetter(-20)).toBe('F');
+describe('draft letters among GMs', () => {
+  test('ten distinct scores spread A through F by quintile, best first', () => {
+    expect(lettersForScores([90, 80, 70, 60, 50, 40, 30, 20, 10, 0])).toEqual([
+      'A',
+      'A',
+      'B',
+      'B',
+      'C',
+      'C',
+      'D',
+      'D',
+      'F',
+      'F',
+    ]);
+  });
+  test('all equal (or no season yet) is ungraded, not a mass F', () => {
+    expect(lettersForScores([0, 0, 0, 0])).toEqual(['—', '—', '—', '—']);
+    expect(lettersForScores([12, 12])).toEqual(['—', '—']);
+  });
+  test('ties share a letter; original order is preserved', () => {
+    expect(lettersForScores([20, 50, 50, 10, 0])).toEqual(['C', 'A', 'A', 'D', 'F']);
+  });
+  test('applyDraftLetters only grades GMs who drafted', () => {
+    const rows = applyDraftLetters([
+      {draftSurplus: 80, draftGrade: ''},
+      {draftSurplus: 0, draftGrade: '—'},
+      {draftSurplus: -20, draftGrade: ''},
+    ]);
+    expect(rows.map((r) => r.draftGrade)).toEqual(['A', '—', 'F']);
   });
 });
