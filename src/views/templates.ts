@@ -47,6 +47,9 @@ export function appPublicHref(slug: string): string {
   if (slug === 'nfl-draft') {
     return '/draft';
   }
+  if (slug === 'ucsb-legacy') {
+    return '/fantasy';
+  }
   return `/${encodeURIComponent(slug)}`;
 }
 
@@ -167,7 +170,7 @@ export function baseLayout(content: string, title = 'LLL Experience', clerkPubli
       // Inject Bearer token into all protected HTMX requests (must be synchronous)
       document.body.addEventListener('htmx:configRequest', function(evt) {
         const path = new URL(evt.detail.path, window.location.origin).pathname;
-        if (path.startsWith('/draft') || path.startsWith('/apps') || path.startsWith('/analyzer')) {
+        if (path.startsWith('/draft') || path.startsWith('/apps') || path.startsWith('/analyzer') || path.startsWith('/fantasy')) {
           if (window.__clerkToken) {
             evt.detail.headers['Authorization'] = 'Bearer ' + window.__clerkToken;
           }

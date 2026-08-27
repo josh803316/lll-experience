@@ -35,6 +35,20 @@ if (!app) {
   console.log('Already exists: nfl-draft app — skipping');
 }
 
+const fantasyApp = (await db.select().from(apps).where(eq(apps.slug, 'ucsb-legacy')).limit(1))[0];
+if (!fantasyApp) {
+  await db.insert(apps).values({
+    slug: 'ucsb-legacy',
+    name: 'UCSB Legacy',
+    description: 'Auction / best-ball GM lab — records, draft value, waivers.',
+    isActive: true,
+    createdAt: new Date(),
+  });
+  console.log('Inserted: ucsb-legacy app');
+} else {
+  console.log('Already exists: ucsb-legacy app — skipping');
+}
+
 const existingPlayers = await db
   .select()
   .from(draftablePlayers)

@@ -1,0 +1,77 @@
+import {Elysia} from 'elysia';
+import {authGuard} from '../guards/auth-guard.js';
+import {FantasyScout} from '../services/fantasy-scout.js';
+import {
+  fantasyBargainsPage,
+  fantasyDashboard,
+  fantasyDraftPage,
+  fantasyManagerNotFound,
+  fantasyManagerPage,
+  fantasyPlayerNotFound,
+  fantasyPlayerPage,
+  fantasyRankingsPage,
+  fantasySeasonPage,
+  fantasyWirePage,
+} from '../views/fantasy-templates.js';
+
+const CLERK_KEY = process.env.CLERK_PUBLISHABLE_KEY;
+
+export const fantasyController = new Elysia({prefix: '/fantasy'})
+  .onBeforeHandle((ctx) => authGuard(ctx))
+  .get('/', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const {seasons, gms} = await FantasyScout.allTime();
+    return fantasyDashboard(gms, seasons, CLERK_KEY);
+  })
+  .get('/season/:year', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const year = Number(ctx.params.year);
+    const seasons = await FantasyScout.listSeasons();
+    const {summary, standings} = await FantasyScout.season(year);
+    return fantasySeasonPage(summary, standings, seasons, CLERK_KEY);
+  })
+  .get('/draft/:year', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const year = Number(ctx.params.year);
+    const seasons = await FantasyScout.listSeasons();
+    const {summary, picks} = await FantasyScout.draft(year);
+    return fantasyDraftPage(summary, picks, seasons, CLERK_KEY);
+  })
+  .get('/wire/:year', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const year = Number(ctx.params.year);
+    const seasons = await FantasyScout.listSeasons();
+    const {summary, rows, missed} = await FantasyScout.wire(year);
+    const showMissed = ctx.query.missed === '1' || ctx.query.missed === 'true';
+    return fantasyWirePage(summary, rows, missed, seasons, showMissed, CLERK_KEY);
+  })
+  .get('/bargains', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const {seasons, rows, byGm} = await FantasyScout.bargains();
+    return fantasyBargainsPage(byGm, rows, seasons, CLERK_KEY);
+  })
+  .get('/rankings', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const {seasons, gms} = await FantasyScout.rankings();
+    const meta = await FantasyScout.listSeasons();
+    return fantasyRankingsPage(seasons, gms, meta, CLERK_KEY);
+  })
+  .get('/manager/:slug', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const seasons = await FantasyScout.listSeasons();
+    const {gm, draftPicks, wire, missed} = await FantasyScout.manager(ctx.params.slug);
+    if (!gm) {
+      return fantasyManagerNotFound(ctx.params.slug, CLERK_KEY);
+    }
+    const showMissed = ctx.query.missed === '1' || ctx.query.missed === 'true';
+    return fantasyManagerPage(gm, draftPicks, wire, missed, seasons, showMissed, CLERK_KEY);
+  })
+  .get('/player/:id', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html';
+    const seasons = await FantasyScout.listSeasons();
+    const data = await FantasyScout.player(ctx.params.id);
+    if (!data) {
+      return fantasyPlayerNotFound(ctx.params.id, CLERK_KEY);
+    }
+    return fantasyPlayerPage(data, seasons, CLERK_KEY);
+  });
