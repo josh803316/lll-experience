@@ -72,7 +72,7 @@ Copy `.env.example` → `.env` and fill in:
 
 ## UCSB Legacy (`/fantasy`)
 
-Sleeper league **UCSB LEGACY** (current id `1386100455410528256`, walks `previous_league_id` back to 2023). Auction $200, FAAB $100, PPR best-ball, weekly median match. No playoff trophy — standings show W-L **and** points, never an invented champion.
+Sleeper league **UCSB LEGACY** (current id `1386100455410528256`, walks `previous_league_id` back to 2023). Auction $200, FAAB $100, PPR best-ball. Each week every team plays every other team (all-play W-L from weekly best-ball scores). No playoffs — standings show all-play W-L **and** points, never an invented champion.
 
 ```bash
 bun run sleeper:ingest          # pull history + player cache

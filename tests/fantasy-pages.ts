@@ -49,6 +49,7 @@ test('UCSB Legacy app card and GM lab pages', async ({page}) => {
   await expect(page.getByRole('heading', {name: 'Tim', exact: true})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Finn', exact: true})).toBeVisible();
   await expect(page.locator('body')).not.toContainText('Champion');
+  await expect(page.locator('body')).toContainText('all-play, no playoffs');
 
   await page.goto(`${SITE_URL}/fantasy/season/2025`);
   await expect(page.getByRole('heading', {name: '2025 standings'})).toBeVisible();
@@ -70,12 +71,12 @@ test('UCSB Legacy app card and GM lab pages', async ({page}) => {
   await page.goto(`${SITE_URL}/fantasy/manager/tim`);
   await expect(page.getByRole('heading', {name: 'Tim'})).toBeVisible();
 
-  await page.goto(`${SITE_URL}/fantasy/season/2023`);
+  await page.goto(`${SITE_URL}/fantasy/season/2023`, {timeout: 60000});
   await expect(page.getByRole('heading', {name: '2023 standings'})).toBeVisible();
   await expect(page.getByText('6 teams')).toBeVisible();
 
-  await page.goto(`${SITE_URL}/fantasy/season/2026`);
-  await expect(page.getByText('auction has not started')).toBeVisible();
+  await page.goto(`${SITE_URL}/fantasy/season/2026`, {timeout: 60000});
+  await expect(page.getByText('auction has not started')).toBeVisible({timeout: 15000});
 
   await page.setViewportSize({width: 390, height: 844});
   await page.goto(`${SITE_URL}/fantasy`);

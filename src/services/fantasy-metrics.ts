@@ -24,20 +24,25 @@ export interface WeekMatchupRow {
   points: number;
 }
 
-export interface H2hRecord {
+export interface AllPlayRecord {
   rosterId: number;
-  h2hWins: number;
-  h2hLosses: number;
-  h2hTies: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  weeksPlayed: number;
+  fpts: number;
 }
 
-/** Reconstruct human-vs-human W-L from weekly pairings (same matchup_id). */
-export function h2hFromMatchups(rows: WeekMatchupRow[]): Map<number, H2hRecord> {
-  const byRoster = new Map<number, H2hRecord>();
-  const ensure = (rosterId: number): H2hRecord => {
+/**
+ * Each week every roster plays every other roster (best-ball points).
+ * Weeks where every team scored 0 are skipped (season not started).
+ */
+export function allPlayFromMatchups(rows: WeekMatchupRow[]): Map<number, AllPlayRecord> {
+  const byRoster = new Map<number, AllPlayRecord>();
+  const ensure = (rosterId: number): AllPlayRecord => {
     let rec = byRoster.get(rosterId);
     if (!rec) {
-      rec = {rosterId, h2hWins: 0, h2hLosses: 0, h2hTies: 0};
+      rec = {rosterId, wins: 0, losses: 0, ties: 0, weeksPlayed: 0, fpts: 0};
       byRoster.set(rosterId, rec);
     }
     return rec;
@@ -52,31 +57,30 @@ export function h2hFromMatchups(rows: WeekMatchupRow[]): Map<number, H2hRecord> 
   }
 
   for (const weekRows of byWeek.values()) {
-    const groups = new Map<number, WeekMatchupRow[]>();
-    for (const row of weekRows) {
-      if (row.matchupId == null) {
-        continue;
-      }
-      const list = groups.get(row.matchupId) ?? [];
-      list.push(row);
-      groups.set(row.matchupId, list);
+    if (weekRows.length < 2 || weekRows.every((r) => r.points === 0)) {
+      continue;
     }
-    for (const pair of groups.values()) {
-      if (pair.length !== 2) {
-        continue;
-      }
-      const [a, b] = pair;
-      const left = ensure(a.rosterId);
-      const right = ensure(b.rosterId);
-      if (a.points > b.points) {
-        left.h2hWins += 1;
-        right.h2hLosses += 1;
-      } else if (b.points > a.points) {
-        right.h2hWins += 1;
-        left.h2hLosses += 1;
-      } else {
-        left.h2hTies += 1;
-        right.h2hTies += 1;
+    for (const row of weekRows) {
+      const rec = ensure(row.rosterId);
+      rec.weeksPlayed += 1;
+      rec.fpts += row.points;
+    }
+    for (let i = 0; i < weekRows.length; i++) {
+      for (let j = i + 1; j < weekRows.length; j++) {
+        const a = weekRows[i];
+        const b = weekRows[j];
+        const left = ensure(a.rosterId);
+        const right = ensure(b.rosterId);
+        if (a.points > b.points) {
+          left.wins += 1;
+          right.losses += 1;
+        } else if (b.points > a.points) {
+          right.wins += 1;
+          left.losses += 1;
+        } else {
+          left.ties += 1;
+          right.ties += 1;
+        }
       }
     }
   }

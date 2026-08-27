@@ -14,9 +14,9 @@ import {
   pffPlayerStats,
 } from '../db/schema.js';
 import {
+  allPlayFromMatchups,
   dollarOneReplacement,
   finishRanks,
-  h2hFromMatchups,
   scoreDraftPicks,
   winPct,
   wireStints,
@@ -48,12 +48,9 @@ export interface GmSeasonRow {
   fpts: number;
   fptsAgainst: number;
   games: number;
-  pfPerGame: number;
+  weeksPlayed: number;
+  pfPerWeek: number;
   finish: number;
-  h2hWins: number;
-  h2hLosses: number;
-  h2hTies: number;
-  medianWins: number;
   waiverBudgetUsed: number;
   draftSurplus: number;
   draftGrade: string;
@@ -72,7 +69,7 @@ export interface GmAllTimeRow {
   winPct: number;
   fpts: number;
   fptsAgainst: number;
-  pfPerGame: number;
+  pfPerWeek: number;
   avgFinish: number;
   sparkline: number[]; // finish by season ascending, 0 = DNP
   draftSurplus: number;
@@ -314,11 +311,23 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
   const rows: GmSeasonRow[] = [];
   for (const league of ctx.leagues) {
     const leagueRosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId);
-    const finished = finishRanks(leagueRosters.map((r) => ({...r, wins: r.wins, fpts: r.fpts})));
-    const h2h = h2hFromMatchups(
+    const allPlay = allPlayFromMatchups(
       ctx.matchups
         .filter((m) => m.sleeperLeagueId === league.sleeperLeagueId)
         .map((m) => ({week: m.week, rosterId: m.rosterId, matchupId: m.matchupId, points: m.points})),
+    );
+    const ranked = finishRanks(
+      leagueRosters.map((r) => {
+        const rec = allPlay.get(r.rosterId);
+        return {
+          ...r,
+          wins: rec?.wins ?? 0,
+          losses: rec?.losses ?? 0,
+          ties: rec?.ties ?? 0,
+          fpts: rec?.fpts ?? r.fpts,
+          weeksPlayed: rec?.weeksPlayed ?? 0,
+        };
+      }),
     );
     const scored = scoredPicksForLeague(ctx, league.sleeperLeagueId);
     const stints = wireStints(
@@ -328,10 +337,8 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
         .map((w) => ({week: w.week, rosterId: w.rosterId, playerId: w.playerId, points: w.points})),
       maxWeek(ctx, league.sleeperLeagueId),
     );
-    for (const r of finished) {
+    for (const r of ranked) {
       const id = ident(ctx, r.sleeperUserId, r.teamName);
-      const rec = h2h.get(r.rosterId);
-      const h2hWins = rec?.h2hWins ?? 0;
       const games = r.wins + r.losses + r.ties;
       const gmPicks = scored.filter((p) => p.rosterId === r.rosterId);
       const meanSurplus = gmPicks.length ? gmPicks.reduce((s, p) => s + p.surplus, 0) / gmPicks.length : 0;
@@ -352,12 +359,9 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
         fpts: r.fpts,
         fptsAgainst: r.fptsAgainst,
         games,
-        pfPerGame: games ? r.fpts / games : 0,
+        weeksPlayed: r.weeksPlayed,
+        pfPerWeek: r.weeksPlayed ? r.fpts / r.weeksPlayed : 0,
         finish: r.finish,
-        h2hWins,
-        h2hLosses: rec?.h2hLosses ?? 0,
-        h2hTies: rec?.h2hTies ?? 0,
-        medianWins: Math.max(0, r.wins - h2hWins),
         waiverBudgetUsed: r.waiverBudgetUsed,
         draftSurplus: meanSurplus,
         draftGrade: gmPicks.length ? surplusLetter(meanSurplus) : '—',
@@ -384,7 +388,7 @@ function rollupAllTime(seasonRows: GmSeasonRow[], seasons: number[]): GmAllTimeR
     const ties = years.reduce((s, y) => s + y.ties, 0);
     const fpts = years.reduce((s, y) => s + y.fpts, 0);
     const fptsAgainst = years.reduce((s, y) => s + y.fptsAgainst, 0);
-    const games = years.reduce((s, y) => s + y.games, 0);
+    const weeksPlayed = years.reduce((s, y) => s + y.weeksPlayed, 0);
     const draftSurplus =
       years.reduce((s, y) => s + y.draftSurplus, 0) / Math.max(1, years.filter((y) => y.draftGrade !== '—').length);
     const sparkline = seasons.map((season) => years.find((y) => y.season === season)?.finish ?? 0);
@@ -399,7 +403,7 @@ function rollupAllTime(seasonRows: GmSeasonRow[], seasons: number[]): GmAllTimeR
       winPct: winPct(wins, losses, ties),
       fpts,
       fptsAgainst,
-      pfPerGame: games ? fpts / games : 0,
+      pfPerWeek: weeksPlayed ? fpts / weeksPlayed : 0,
       avgFinish: years.reduce((s, y) => s + y.finish, 0) / years.length,
       sparkline,
       draftSurplus,

@@ -1,8 +1,8 @@
 import {describe, expect, test} from 'bun:test';
 import {dollarBucket, isLatePick, surplusLetter} from '../config/fantasy-managers.js';
 import {
+  allPlayFromMatchups,
   finishRanks,
-  h2hFromMatchups,
   median,
   scoreDraftPicks,
   winPct,
@@ -21,18 +21,27 @@ describe('winPct / median', () => {
   });
 });
 
-describe('h2h from matchups', () => {
-  test('pairs same matchup_id and ignores median-only rows', () => {
-    const rec = h2hFromMatchups([
+describe('all-play from weekly scores', () => {
+  test('each roster plays every other roster that week', () => {
+    const rec = allPlayFromMatchups([
       {week: 1, rosterId: 1, matchupId: 1, points: 120},
       {week: 1, rosterId: 2, matchupId: 1, points: 100},
       {week: 1, rosterId: 3, matchupId: 2, points: 90},
-      {week: 1, rosterId: 4, matchupId: 2, points: 90},
     ]);
-    expect(rec.get(1)?.h2hWins).toBe(1);
-    expect(rec.get(2)?.h2hLosses).toBe(1);
-    expect(rec.get(3)?.h2hTies).toBe(1);
-    expect(rec.get(4)?.h2hTies).toBe(1);
+    // 120 beats 100 and 90 → 2-0; 100 beats 90 → 1-1; 90 loses both → 0-2
+    expect(rec.get(1)).toMatchObject({wins: 2, losses: 0, ties: 0, weeksPlayed: 1, fpts: 120});
+    expect(rec.get(2)).toMatchObject({wins: 1, losses: 1, ties: 0, weeksPlayed: 1, fpts: 100});
+    expect(rec.get(3)).toMatchObject({wins: 0, losses: 2, ties: 0, weeksPlayed: 1, fpts: 90});
+  });
+  test('ties count both ways; all-zero weeks are skipped', () => {
+    const rec = allPlayFromMatchups([
+      {week: 1, rosterId: 1, matchupId: 1, points: 0},
+      {week: 1, rosterId: 2, matchupId: 2, points: 0},
+      {week: 2, rosterId: 1, matchupId: 1, points: 80},
+      {week: 2, rosterId: 2, matchupId: 2, points: 80},
+    ]);
+    expect(rec.get(1)).toMatchObject({wins: 0, losses: 0, ties: 1, weeksPlayed: 1, fpts: 80});
+    expect(rec.get(2)).toMatchObject({wins: 0, losses: 0, ties: 1, weeksPlayed: 1, fpts: 80});
   });
 });
 

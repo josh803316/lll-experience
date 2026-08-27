@@ -230,7 +230,8 @@ const app = baseApp
 
 // Only start a local HTTP server when not running on Vercel.
 if (process.env.VERCEL !== '1') {
-  app.listen(PORT)
+  const idleTimeout = Number(process.env.SERVE_IDLE_TIMEOUT ?? 255)
+  app.listen({port: PORT, idleTimeout})
   console.log(`LLL Experience running at http://localhost:${PORT}`)
   const { startDraftAutoPolling } = await import('./services/draft-auto.js')
   startDraftAutoPolling() // local only — on Vercel, the cron at /api/cron/sync-draft-picks handles this

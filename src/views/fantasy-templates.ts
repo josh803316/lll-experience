@@ -124,7 +124,7 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
         <div>
           <a href="/apps" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← Apps</a>
           <h1 class="text-3xl font-bold tracking-tighter mt-1">UCSB Legacy</h1>
-          <p class="text-sm text-muted italic">Auction best-ball GM lab · $200 / $100 FAAB · median weeks count</p>
+          <p class="text-sm text-muted italic">Auction best-ball · $200 / $100 FAAB · all-play, no playoffs</p>
         </div>
         <div class="flex gap-1 flex-wrap">${yearLinks}</div>
       </div>
@@ -166,7 +166,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         </div>
         <div class="mt-4 flex items-end justify-between gap-3">
           <div class="grid grid-cols-3 gap-3 text-[10px] uppercase tracking-widest text-muted">
-            <div>PF/G <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.pfPerGame)}</span></div>
+            <div>PF/W <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.pfPerWeek)}</span></div>
             <div>Draft <span class="block text-black font-bold normal-case tracking-normal text-sm">${escapeHtml(g.draftGrade)}</span></div>
             <div>Wire <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.wireFpts, 0)}</span></div>
           </div>
@@ -185,7 +185,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         <td class="px-3 py-2" data-val="${g.winPct}">${pct(g.winPct)}</td>
         <td class="px-3 py-2" data-val="${g.wins}">${record(g.wins, g.losses, g.ties)}</td>
         <td class="px-3 py-2" data-val="${g.fpts}">${fmt(g.fpts, 0)}</td>
-        <td class="px-3 py-2" data-val="${g.pfPerGame}">${fmt(g.pfPerGame)}</td>
+        <td class="px-3 py-2" data-val="${g.pfPerWeek}">${fmt(g.pfPerWeek)}</td>
         <td class="px-3 py-2" data-val="${g.avgFinish}">${fmt(g.avgFinish)}</td>
         <td class="px-3 py-2" data-val="${g.draftSurplus}">${escapeHtml(g.draftGrade)} <span class="text-muted">${fmt(g.draftSurplus)}</span></td>
         <td class="px-3 py-2" data-val="${g.lateFpts}">${fmt(g.lateFpts, 0)}</td>
@@ -201,7 +201,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         gms.length === 0
           ? emptyIngest()
           : `
-      <p class="text-sm text-muted max-w-3xl">Official W-L includes the weekly median game. No playoff trophy is stored in Sleeper — finish is wins, then points. PF/G is <em>not</em> era-adjusted (2023 was 2QB / 6 teams).</p>
+      <p class="text-sm text-muted max-w-3xl">Each week every GM’s best-ball score plays every other GM. Finish is all-play wins, then points — no playoffs. PF/W is <em>not</em> era-adjusted (2023 was 2QB / 6 teams).</p>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
@@ -213,7 +213,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
               ${sortTh('Win%', 3)}
               ${sortTh('W-L', 4)}
               ${sortTh('PF', 5)}
-              ${sortTh('PF/G', 6)}
+              ${sortTh('PF/W', 6)}
               ${sortTh('Avg fin.', 7)}
               ${sortTh('Draft', 8)}
               ${sortTh('Late', 9)}
@@ -244,10 +244,8 @@ export function fantasySeasonPage(
           <div class="text-[11px] text-muted font-normal">${escapeHtml(r.teamName || '')}</div></td>
         <td class="px-3 py-2" data-val="${r.winPct}">${pct(r.winPct)}</td>
         <td class="px-3 py-2" data-val="${r.wins}">${record(r.wins, r.losses, r.ties)}</td>
-        <td class="px-3 py-2 text-muted" data-val="${r.h2hWins}">${record(r.h2hWins, r.h2hLosses, r.h2hTies)}</td>
-        <td class="px-3 py-2" data-val="${r.medianWins}">${r.medianWins}</td>
         <td class="px-3 py-2" data-val="${r.fpts}">${fmt(r.fpts)}</td>
-        <td class="px-3 py-2" data-val="${r.pfPerGame}">${fmt(r.pfPerGame)}</td>
+        <td class="px-3 py-2" data-val="${r.pfPerWeek}">${fmt(r.pfPerWeek)}</td>
         <td class="px-3 py-2" data-val="${r.draftSurplus}">${escapeHtml(r.draftGrade)}</td>
         <td class="px-3 py-2" data-val="${r.wireFpts}">${fmt(r.wireFpts, 0)}</td>
       </tr>`,
@@ -277,13 +275,13 @@ export function fantasySeasonPage(
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
             ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Win%', 2)}${sortTh('W-L', 3)}
-            ${sortTh('H2H', 4)}${sortTh('vs med.', 5)}${sortTh('PF', 6)}${sortTh('PF/G', 7)}
-            ${sortTh('Draft', 8)}${sortTh('Wire', 9)}
+            ${sortTh('PF', 4)}${sortTh('PF/W', 5)}
+            ${sortTh('Draft', 6)}${sortTh('Wire', 7)}
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="text-xs text-muted">H2H is reconstructed from weekly pairings. vs median = official wins minus H2H wins.</p>`
+      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs.</p>`
       }`
       }
     </main>`;
@@ -512,7 +510,7 @@ export function fantasyRankingsPage(seasons: number[], gms: GmAllTimeRow[], seas
     ${nav('rankings', seasonMeta)}
     <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
       <h2 class="text-3xl font-bold tracking-tighter">Finish over time</h2>
-      <p class="text-sm text-muted">Season finish = rank by official wins, then points. Blank = did not play that year.</p>
+      <p class="text-sm text-muted">Season finish = all-play wins, then points. Blank = did not play that year. No playoffs.</p>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
@@ -540,7 +538,6 @@ export function fantasyManagerPage(
         <td class="px-3 py-2 font-bold">${y.season}</td>
         <td class="px-3 py-2">${y.finish}</td>
         <td class="px-3 py-2">${record(y.wins, y.losses, y.ties)}</td>
-        <td class="px-3 py-2 text-muted">${record(y.h2hWins, y.h2hLosses, y.h2hTies)}</td>
         <td class="px-3 py-2">${fmt(y.fpts)}</td>
         <td class="px-3 py-2">${escapeHtml(y.draftGrade)}</td>
         <td class="px-3 py-2">${fmt(y.wireFpts, 0)}</td>
@@ -560,7 +557,7 @@ export function fantasyManagerPage(
         ${sparkSvg(gm.sparkline)}
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">PF/G</div><div class="text-2xl font-bold">${fmt(gm.pfPerGame)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">PF/W</div><div class="text-2xl font-bold">${fmt(gm.pfPerWeek)}</div></div>
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Avg finish</div><div class="text-2xl font-bold">${fmt(gm.avgFinish)}</div></div>
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Draft</div><div class="text-2xl font-bold">${escapeHtml(gm.draftGrade)}</div></div>
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Wire FPTS</div><div class="text-2xl font-bold">${fmt(gm.wireFpts, 0)}</div></div>
@@ -571,7 +568,6 @@ export function fantasyManagerPage(
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Year</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Fin</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">W-L</th>
-            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">H2H</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">PF</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Draft</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Wire</th>
