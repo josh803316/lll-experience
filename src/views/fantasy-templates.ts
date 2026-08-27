@@ -42,7 +42,7 @@ function sparkSvg(finishes: number[]): string {
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .filter(Boolean);
-  return `<svg viewBox="0 0 ${w} ${h}" class="w-[72px] h-[22px]" aria-hidden="true"><polyline fill="none" stroke="#c9341d" stroke-width="1.6" points="${pts.join(' ')}"/></svg>`;
+  return `<svg viewBox="0 0 ${w} ${h}" class="w-[72px] h-[22px]" aria-hidden="true"><polyline fill="none" stroke="#3fe1a8" stroke-width="1.6" points="${pts.join(' ')}"/></svg>`;
 }
 
 function sortTh(label: string, col: number, type: 'num' | 'str' = 'num', extra = ''): string {
@@ -52,11 +52,48 @@ function sortTh(label: string, col: number, type: 'num' | 'str' = 'num', extra =
 export function fantasyLayout(content: string, title = 'UCSB Legacy', clerkPublishableKey?: string): string {
   const styles = `
     <style>
-      :root { --paper:#f3ede0; --ink:#14110b; --accent:#c9341d; --muted:#6b5e44; }
-      .theme-paper { background-color: var(--paper); color: var(--ink); font-family: 'Source Serif 4', Georgia, serif; }
-      .card-paper { background: white; border: 1px solid rgba(20,17,11,0.1); box-shadow: 0 4px 12px rgba(20,17,11,0.05); }
-      .tab-active { border-bottom: 3px solid var(--accent); color: var(--accent); }
-      .serif { font-family: 'Source Serif 4', Georgia, serif; }
+      /* Sleeper-inspired dark lab — distinct from draft (light gray) and analyzer (cream/crimson). */
+      .theme-sleeper {
+        --sl-bg: #0e1116;
+        --sl-surface: #171c24;
+        --sl-elevated: #1e2530;
+        --sl-border: rgba(255,255,255,0.08);
+        --sl-text: #f4f7fb;
+        --sl-muted: #8b95a8;
+        --sl-accent: #3fe1a8;
+        --sl-accent-2: #7c6bff;
+        --sl-loss: #ff7a8a;
+        background: var(--sl-bg);
+        color: var(--sl-text);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      body:has(.theme-sleeper) { background: #0e1116; }
+      .theme-sleeper .card-paper {
+        background: var(--sl-surface);
+        border: 1px solid var(--sl-border);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+      }
+      .theme-sleeper .tab-active { border-bottom: 2px solid var(--sl-accent); color: var(--sl-accent); }
+      .theme-sleeper .text-muted { color: var(--sl-muted); }
+      .theme-sleeper .text-accent { color: var(--sl-accent); }
+      .theme-sleeper .text-black { color: var(--sl-text); }
+      .theme-sleeper .hover\\:text-accent:hover { color: var(--sl-accent); }
+      .theme-sleeper .hover\\:text-black:hover { color: #fff; }
+      .theme-sleeper .border-accent { border-color: var(--sl-accent); }
+      .theme-sleeper .border-black\\/10 { border-color: var(--sl-border); }
+      .theme-sleeper .border-black\\/5 { border-color: rgba(255,255,255,0.05); }
+      .theme-sleeper .border-black\\/20 { border-color: rgba(255,255,255,0.14); }
+      .theme-sleeper .bg-black\\/5 { background: rgba(255,255,255,0.06); }
+      .theme-sleeper .bg-black\\/\\[0\\.03\\] { background: rgba(255,255,255,0.03); }
+      .theme-sleeper .hover\\:bg-black\\/\\[0\\.03\\]:hover { background: rgba(63,225,168,0.08); }
+      .theme-sleeper .text-emerald-800 { color: var(--sl-accent); }
+      .theme-sleeper .bg-emerald-200 { background: rgba(63,225,168,0.45); color: #04140e; }
+      .theme-sleeper .bg-emerald-50 { background: rgba(63,225,168,0.16); }
+      .theme-sleeper .bg-red-50 { background: rgba(255,122,138,0.16); }
+      .theme-sleeper a { color: inherit; }
+      .theme-sleeper code { color: var(--sl-accent); }
+      .theme-sleeper thead { background: var(--sl-elevated); }
+      .theme-sleeper table { color: var(--sl-text); }
     </style>
     <script>
       (function () {
@@ -96,9 +133,9 @@ export function fantasyLayout(content: string, title = 'UCSB Legacy', clerkPubli
     </script>
   `;
   return baseLayout(
-    `<div class="theme-paper min-h-screen text-black">
+    `<div class="theme-sleeper min-h-screen">
       <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
       ${styles}
       ${content}
     </div>`,
@@ -115,16 +152,16 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
   const yearLinks = seasons
     .map(
       (s) =>
-        `<a href="/fantasy/season/${s.season}" class="px-2 py-1 text-[10px] font-bold ${year !== undefined && s.season === year ? 'text-accent' : 'text-muted hover:text-black'}">${s.season}</a>`,
+        `<a href="/fantasy/season/${s.season}" class="px-2 py-1 text-[10px] font-bold rounded ${year !== undefined && s.season === year ? 'text-accent bg-black/5' : 'text-muted hover:text-black'}">${s.season}</a>`,
     )
     .join('');
   return `
-    <header class="border-b border-black/10 bg-[#f3ede0]/80 backdrop-blur sticky top-0 z-30">
+    <header class="border-b border-black/10 bg-[#0e1116]/90 backdrop-blur sticky top-0 z-30">
       <div class="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <a href="/apps" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← Apps</a>
-          <h1 class="text-3xl font-bold tracking-tighter mt-1">UCSB Legacy</h1>
-          <p class="text-sm text-muted italic">Auction best-ball · $200 / $100 FAAB · all-play, no playoffs</p>
+          <h1 class="text-3xl font-extrabold tracking-tight mt-1">UCSB Legacy</h1>
+          <p class="text-sm text-muted">Auction best-ball · $200 / $100 FAAB · all-play, no playoffs</p>
         </div>
         <div class="flex gap-1 flex-wrap">${yearLinks}</div>
       </div>
@@ -160,7 +197,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
             <div class="text-[11px] text-muted">${g.seasons} season${g.seasons === 1 ? '' : 's'} · avg finish ${fmt(g.avgFinish)}</div>
           </div>
           <div class="text-right">
-            <div class="text-2xl font-bold italic serif">${pct(g.winPct)}</div>
+            <div class="text-2xl font-extrabold text-accent tabular-nums">${pct(g.winPct)}</div>
             <div class="text-[11px] text-muted">${record(g.wins, g.losses, g.ties)}</div>
           </div>
         </div>
@@ -303,7 +340,7 @@ function pickRowsHtml(picks: (DraftPickRow & {season?: number})[], withSeason = 
         <td class="px-3 py-2" data-val="${p.amount}">$${p.amount}</td>
         <td class="px-3 py-2" data-val="${p.fpts}">${fmt(p.fpts)}</td>
         <td class="px-3 py-2" data-val="${p.value}">${fmt(p.value)}</td>
-        <td class="px-3 py-2 ${p.surplus >= 0 ? 'text-emerald-800' : 'text-accent'}" data-val="${p.surplus}">${p.surplus >= 0 ? '+' : ''}${fmt(p.surplus)}</td>
+        <td class="px-3 py-2 ${p.surplus >= 0 ? 'text-emerald-800' : 'text-rose-400'}" data-val="${p.surplus}">${p.surplus >= 0 ? '+' : ''}${fmt(p.surplus)}</td>
         <td class="px-3 py-2" data-val="${p.pffGrade ?? -1}">${p.pffGrade == null ? '—' : fmt(p.pffGrade)}</td>
       </tr>`;
     })
@@ -495,7 +532,7 @@ export function fantasyRankingsPage(seasons: number[], gms: GmAllTimeRow[], seas
         .map((y, i) => {
           const fin = g.sparkline[i] ?? 0;
           const bg =
-            fin === 0 ? '' : fin === 1 ? 'bg-emerald-200' : fin <= 3 ? 'bg-emerald-50' : fin >= 10 ? 'bg-red-50' : '';
+            fin === 0 ? '' : fin === 1 ? 'bg-emerald-200' : fin <= 3 ? 'bg-emerald-50' : fin >= 10 ? 'bg-red-50' : 'bg-black/5';
           return `<td class="px-3 py-2 text-center ${bg}" data-val="${fin === 0 ? 99 : fin}">${fin === 0 ? '—' : fin}</td>`;
         })
         .join('');

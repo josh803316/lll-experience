@@ -78,7 +78,11 @@ test('UCSB Legacy app card and GM lab pages', async ({page}) => {
   await page.goto(`${SITE_URL}/fantasy/season/2026`, {timeout: 60000});
   await expect(page.getByText('auction has not started')).toBeVisible({timeout: 15000});
 
+  await page.goto(`${SITE_URL}/fantasy`, {timeout: 60000});
+  await page.screenshot({path: 'test-results/fantasy-desktop.png', fullPage: false});
+
   await page.setViewportSize({width: 390, height: 844});
-  await page.goto(`${SITE_URL}/fantasy`);
+  await page.goto(`${SITE_URL}/fantasy`, {timeout: 60000});
   await expect(page.getByText('All-time')).toBeVisible();
+  await page.screenshot({path: 'test-results/fantasy-mobile.png', fullPage: false});
 });
