@@ -1,0 +1,35 @@
+name: Sleeper Sync
+
+on:
+  schedule:
+    # 15:00 UTC daily — after typical morning waiver processing
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ingest UCSB LEGACY from Sleeper
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::SITE_URL or CRON_SECRET secret is not set"
+            exit 1
+          fi
+          SITE_URL="${SITE_URL%/}"
+          # Player map is skipped by default; ?players=1 for a full refresh.
+          STATUS=$(curl -sS -o /tmp/sleeper.json -w "%{http_code}" --max-time 480 \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "$SITE_URL/api/cron/sync-sleeper")
+          echo "HTTP $STATUS"
+          cat /tmp/sleeper.json
+          echo
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::sync-sleeper returned HTTP $STATUS"
+            exit 1
+          fi

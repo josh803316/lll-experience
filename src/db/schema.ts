@@ -419,3 +419,163 @@ export const analyzerDataVersion = pgTable('analyzer_data_version', {
   version: bigint('version', {mode: 'number'}).notNull().default(1),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// ── UCSB Legacy (Sleeper fantasy GM lab) ─────────────────────────────────────
+
+export const fantasyLeagues = pgTable(
+  'fantasy_leagues',
+  {
+    sleeperLeagueId: text('sleeper_league_id').primaryKey(),
+    season: integer('season').notNull(),
+    name: text('name').notNull(),
+    status: text('status').notNull(),
+    previousLeagueId: text('previous_league_id'),
+    draftId: text('draft_id'),
+    settings: jsonb('settings').$type<Record<string, unknown>>().notNull(),
+    scoringSettings: jsonb('scoring_settings').$type<Record<string, unknown>>(),
+    rosterPositions: jsonb('roster_positions').$type<string[]>(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    idxFantasyLeaguesSeason: index('idx_fantasy_leagues_season').on(t.season),
+  }),
+);
+
+export const fantasyManagers = pgTable('fantasy_managers', {
+  id: serial('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  displayName: text('display_name').notNull(),
+  sleeperUserId: text('sleeper_user_id').notNull().unique(),
+});
+
+export const fantasyRosters = pgTable(
+  'fantasy_rosters',
+  {
+    id: serial('id').primaryKey(),
+    sleeperLeagueId: text('sleeper_league_id')
+      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .notNull(),
+    rosterId: integer('roster_id').notNull(),
+    sleeperUserId: text('sleeper_user_id'),
+    teamName: text('team_name'),
+    wins: integer('wins').notNull().default(0),
+    losses: integer('losses').notNull().default(0),
+    ties: integer('ties').notNull().default(0),
+    fpts: doublePrecision('fpts').notNull().default(0),
+    fptsAgainst: doublePrecision('fpts_against').notNull().default(0),
+    waiverBudgetUsed: integer('waiver_budget_used').notNull().default(0),
+    waiverPosition: integer('waiver_position'),
+  },
+  (t) => ({
+    uniqFantasyRoster: unique().on(t.sleeperLeagueId, t.rosterId),
+    idxFantasyRostersUser: index('idx_fantasy_rosters_user').on(t.sleeperUserId),
+  }),
+);
+
+export const fantasyDrafts = pgTable('fantasy_drafts', {
+  draftId: text('draft_id').primaryKey(),
+  sleeperLeagueId: text('sleeper_league_id')
+    .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+    .notNull(),
+  type: text('type').notNull(),
+  status: text('status').notNull(),
+  budget: integer('budget'),
+  rounds: integer('rounds'),
+  settings: jsonb('settings').$type<Record<string, unknown>>(),
+});
+
+export const fantasyDraftPicks = pgTable(
+  'fantasy_draft_picks',
+  {
+    id: serial('id').primaryKey(),
+    draftId: text('draft_id')
+      .references(() => fantasyDrafts.draftId, {onDelete: 'cascade'})
+      .notNull(),
+    pickNo: integer('pick_no').notNull(),
+    round: integer('round').notNull(),
+    rosterId: integer('roster_id').notNull(),
+    sleeperUserId: text('sleeper_user_id'),
+    playerId: text('player_id').notNull(),
+    amount: integer('amount').notNull().default(0),
+    position: text('position'),
+    isKeeper: boolean('is_keeper').notNull().default(false),
+  },
+  (t) => ({
+    uniqFantasyDraftPick: unique().on(t.draftId, t.pickNo),
+    idxFantasyDraftPicksPlayer: index('idx_fantasy_draft_picks_player').on(t.playerId),
+  }),
+);
+
+export const fantasyMatchups = pgTable(
+  'fantasy_matchups',
+  {
+    id: serial('id').primaryKey(),
+    sleeperLeagueId: text('sleeper_league_id')
+      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .notNull(),
+    week: integer('week').notNull(),
+    rosterId: integer('roster_id').notNull(),
+    matchupId: integer('matchup_id'),
+    points: doublePrecision('points').notNull().default(0),
+    starters: jsonb('starters').$type<string[]>(),
+  },
+  (t) => ({
+    uniqFantasyMatchup: unique().on(t.sleeperLeagueId, t.week, t.rosterId),
+    idxFantasyMatchupsWeek: index('idx_fantasy_matchups_week').on(t.sleeperLeagueId, t.week),
+  }),
+);
+
+export const fantasyPlayerWeeks = pgTable(
+  'fantasy_player_weeks',
+  {
+    id: serial('id').primaryKey(),
+    sleeperLeagueId: text('sleeper_league_id')
+      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .notNull(),
+    week: integer('week').notNull(),
+    rosterId: integer('roster_id').notNull(),
+    playerId: text('player_id').notNull(),
+    points: doublePrecision('points').notNull().default(0),
+  },
+  (t) => ({
+    uniqFantasyPlayerWeek: unique().on(t.sleeperLeagueId, t.week, t.rosterId, t.playerId),
+    idxFantasyPlayerWeeksPlayer: index('idx_fantasy_player_weeks_player').on(t.playerId, t.sleeperLeagueId),
+  }),
+);
+
+export const fantasyTransactions = pgTable(
+  'fantasy_transactions',
+  {
+    transactionId: text('transaction_id').primaryKey(),
+    sleeperLeagueId: text('sleeper_league_id')
+      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .notNull(),
+    week: integer('week').notNull(),
+    type: text('type').notNull(),
+    status: text('status').notNull(),
+    rosterIds: jsonb('roster_ids').$type<number[]>().notNull(),
+    adds: jsonb('adds').$type<Record<string, number> | null>(),
+    drops: jsonb('drops').$type<Record<string, number> | null>(),
+    waiverBid: integer('waiver_bid'),
+    createdAtMs: bigint('created_at_ms', {mode: 'number'}),
+  },
+  (t) => ({
+    idxFantasyTxLeagueWeek: index('idx_fantasy_tx_league_week').on(t.sleeperLeagueId, t.week),
+    idxFantasyTxType: index('idx_fantasy_tx_type').on(t.type, t.status),
+  }),
+);
+
+export const fantasyPlayers = pgTable(
+  'fantasy_players',
+  {
+    playerId: text('player_id').primaryKey(),
+    fullName: text('full_name').notNull(),
+    position: text('position'),
+    team: text('team'),
+    fantasyPositions: jsonb('fantasy_positions').$type<string[]>(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    idxFantasyPlayersName: index('idx_fantasy_players_name').on(t.fullName),
+  }),
+);

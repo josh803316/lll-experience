@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate --schema=./src/db/schema.ts --dialect=postgresql",
     "db:studio": "drizzle-kit studio --dialect=postgresql",
     "db:migrate": "bun run src/db/migrate.ts",
-    "db:seed": "bun run src/db/seed.ts"
+    "db:seed": "bun run src/db/seed.ts",
+    "sleeper:ingest": "bun run scripts/ingest-sleeper.ts"
   },
   "dependencies": {
     "@bogeychan/elysia-logger": "^0.1.10",

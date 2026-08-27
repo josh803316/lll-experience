@@ -9,6 +9,8 @@ import { adminController } from './controllers/admin.controller.js'
 import { analyzerController } from './controllers/analyzer.controller.js'
 import { chatController } from './controllers/chat.controller.js'
 import { draftController } from './controllers/draft.controller.js'
+import { fantasyController } from './controllers/fantasy.controller.js'
+import { ingestSleeperLeague } from './services/fantasy-ingest.js'
 import { tickerController } from './controllers/ticker.controller.js'
 import { getDB } from './db/index.js'
 import { apps } from './db/schema.js'
@@ -90,6 +92,7 @@ const app = baseApp
   })
 
   .get('/nfl-draft', ({ redirect }) => redirect('/draft'))
+  .get('/ucsb-legacy', ({ redirect }) => redirect('/fantasy'))
 
   // Lightweight keep-alive: always runs a real DB query so Supabase free-tier
   // inactivity pause doesn't trip between draft seasons. Prefer this over
@@ -184,11 +187,32 @@ const app = baseApp
     }
   })
 
+  .get('/api/cron/sync-sleeper', async ({ request, set, query }) => {
+    const authHeader = request.headers.get('authorization')
+    const cronSecret = process.env.CRON_SECRET
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      set.status = 401
+      return { error: 'Unauthorized' }
+    }
+    try {
+      // Default skip the 5MB player map so Vercel cron stays under timeout.
+      // Pass ?players=1 for a full refresh.
+      const skipPlayers = query?.players !== '1'
+      const result = await ingestSleeperLeague(undefined, { refreshPlayers: !skipPlayers })
+      return { ok: true, ...result }
+    } catch (err: unknown) {
+      console.error('[CRON] sync-sleeper error:', getErrorMessage(err))
+      set.status = 500
+      return { error: getErrorMessage(err) }
+    }
+  })
+
   .use(draftController)
   .use(chatController)
   .use(tickerController)
   .use(adminController)
   .use(analyzerController)
+  .use(fantasyController)
 
   .onError(({ error, code, request }) => {
     const url = new URL(request.url)
@@ -208,7 +232,8 @@ const app = baseApp
 
 // Only start a local HTTP server when not running on Vercel.
 if (process.env.VERCEL !== '1') {
-  app.listen(PORT)
+  const idleTimeout = Number(process.env.SERVE_IDLE_TIMEOUT ?? 255)
+  app.listen({port: PORT, idleTimeout})
   console.log(`LLL Experience running at http://localhost:${PORT}`)
   const { startDraftAutoPolling } = await import('./services/draft-auto.js')
   startDraftAutoPolling() // local only — on Vercel, the cron at /api/cron/sync-draft-picks handles this

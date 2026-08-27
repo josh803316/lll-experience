@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-**lll-experience** — a multi-app friend platform. Currently contains the **NFL Draft Predictor** game.
+**lll-experience** — a multi-app friend platform. Apps: **NFL Draft Predictor** and **UCSB Legacy** (Sleeper fantasy GM lab).
 
 ## Stack
 
@@ -66,8 +66,20 @@ Copy `.env.example` → `.env` and fill in:
 ## Database Schema
 
 - `users` — Clerk-linked users
-- `apps` — platform apps (seed: `nfl-draft`)
+- `apps` — platform apps (seed: `nfl-draft`, `ucsb-legacy`)
 - `draft_picks` — per-user pick list with pick order, player, team, position
+- `fantasy_*` — Sleeper UCSB LEGACY history (leagues, managers, rosters, drafts, matchups, player weeks, transactions)
+
+## UCSB Legacy (`/fantasy`)
+
+Sleeper league **UCSB LEGACY** (current id `1386100455410528256`, walks `previous_league_id` back to 2023). Auction $200, FAAB $100, PPR best-ball. Each week every team plays every other team (all-play W-L from weekly best-ball scores). No playoffs — standings show all-play W-L **and** points, never an invented champion.
+
+```bash
+bun run sleeper:ingest          # pull history + player cache
+bun run sleeper:ingest -- --skip-players
+```
+
+Cron: `GET /api/cron/sync-sleeper` (Bearer `CRON_SECRET`). `?players=0` skips the 5MB player map.
 
 ## Adding New Apps
 
