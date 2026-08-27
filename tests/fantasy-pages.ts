@@ -50,6 +50,14 @@ test('UCSB Legacy app card and GM lab pages', async ({page}) => {
   await expect(page.getByRole('heading', {name: 'Finn', exact: true})).toBeVisible();
   await expect(page.locator('body')).not.toContainText('Champion');
   await expect(page.locator('body')).toContainText('all-play, no playoffs');
+  await expect(page.getByRole('heading', {name: 'How we score'})).toBeVisible();
+  await expect(page.getByText('PF/week').first()).toBeVisible();
+  await expect(page.locator('body')).toContainText('Are cheap picks bargains if they score?');
+  await expect(page.locator('body')).toContainText('not a bargain');
+  await page.getByRole('button', {name: 'What PF/week means'}).first().click();
+  await expect(page.getByRole('tooltip')).toContainText('average best-ball score');
+  await page.getByRole('button', {name: 'What Grade means'}).first().click();
+  await expect(page.getByRole('tooltip')).toContainText('Top fifth get A');
 
   await page.goto(`${SITE_URL}/fantasy/season/2025`);
   await expect(page.getByRole('heading', {name: '2025 standings'})).toBeVisible();
