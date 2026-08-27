@@ -22,10 +22,10 @@ jobs:
             exit 1
           fi
           SITE_URL="${SITE_URL%/}"
-          # Skip the 5MB player map on the daily tick; ingest locally with players when names look stale.
+          # Player map is skipped by default; ?players=1 for a full refresh.
           STATUS=$(curl -sS -o /tmp/sleeper.json -w "%{http_code}" --max-time 480 \
               -H "Authorization: Bearer $CRON_SECRET" \
-              "$SITE_URL/api/cron/sync-sleeper?players=0")
+              "$SITE_URL/api/cron/sync-sleeper")
           echo "HTTP $STATUS"
           cat /tmp/sleeper.json
           echo

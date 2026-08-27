@@ -195,7 +195,9 @@ const app = baseApp
       return { error: 'Unauthorized' }
     }
     try {
-      const skipPlayers = query?.players === '0'
+      // Default skip the 5MB player map so Vercel cron stays under timeout.
+      // Pass ?players=1 for a full refresh.
+      const skipPlayers = query?.players !== '1'
       const result = await ingestSleeperLeague(undefined, { refreshPlayers: !skipPlayers })
       return { ok: true, ...result }
     } catch (err: unknown) {

@@ -22,6 +22,11 @@ async function sleeperGet<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function sleeperGetArray<T>(path: string): Promise<T[]> {
+  const data = await sleeperGet<T[] | null>(path);
+  return Array.isArray(data) ? data : [];
+}
+
 export interface SleeperLeague {
   league_id: string;
   name: string;
@@ -130,13 +135,16 @@ export function combineFpts(whole?: number, decimal?: number): number {
 
 export const sleeperClient = {
   getLeague: (leagueId: string) => sleeperGet<SleeperLeague | null>(`/league/${leagueId}`),
-  getUsers: (leagueId: string) => sleeperGet<SleeperUser[]>(`/league/${leagueId}/users`),
-  getRosters: (leagueId: string) => sleeperGet<SleeperRoster[]>(`/league/${leagueId}/rosters`),
-  getDrafts: (leagueId: string) => sleeperGet<SleeperDraft[]>(`/league/${leagueId}/drafts`),
-  getDraftPicks: (draftId: string) => sleeperGet<SleeperDraftPick[]>(`/draft/${draftId}/picks`),
+  getUsers: (leagueId: string) => sleeperGetArray<SleeperUser>(`/league/${leagueId}/users`),
+  getRosters: (leagueId: string) => sleeperGetArray<SleeperRoster>(`/league/${leagueId}/rosters`),
+  getDrafts: (leagueId: string) => sleeperGetArray<SleeperDraft>(`/league/${leagueId}/drafts`),
+  getDraftPicks: (draftId: string) => sleeperGetArray<SleeperDraftPick>(`/draft/${draftId}/picks`),
   getMatchups: (leagueId: string, week: number) =>
-    sleeperGet<SleeperMatchup[]>(`/league/${leagueId}/matchups/${week}`),
+    sleeperGetArray<SleeperMatchup>(`/league/${leagueId}/matchups/${week}`),
   getTransactions: (leagueId: string, week: number) =>
-    sleeperGet<SleeperTransaction[]>(`/league/${leagueId}/transactions/${week}`),
-  getPlayers: () => sleeperGet<Record<string, SleeperNflPlayer>>('/players/nfl'),
+    sleeperGetArray<SleeperTransaction>(`/league/${leagueId}/transactions/${week}`),
+  getPlayers: async () => {
+    const data = await sleeperGet<Record<string, SleeperNflPlayer> | null>('/players/nfl');
+    return data && typeof data === 'object' ? data : {};
+  },
 };
