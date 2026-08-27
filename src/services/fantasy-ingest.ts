@@ -244,7 +244,7 @@ async function ingestLeague(
           week,
           rosterId: m.roster_id,
           playerId,
-          points: pointsVal ?? 0,
+          points: typeof pointsVal === 'number' ? pointsVal : Number(pointsVal) || 0,
         });
       }
     }

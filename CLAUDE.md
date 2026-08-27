@@ -54,6 +54,7 @@ bun run dev          # dev server with --watch
 bun run lint         # tsc --noEmit
 bun run db:generate  # generate Drizzle migrations
 bun run db:studio    # open Drizzle Studio
+bun run test:smoke   # Playwright smoke (SITE_URL, optional TEST_EMAIL/TEST_PASSWORD)
 ```
 
 ## Environment Variables
@@ -79,7 +80,7 @@ bun run sleeper:ingest          # pull history + player cache
 bun run sleeper:ingest -- --skip-players
 ```
 
-Cron: `GET /api/cron/sync-sleeper` (Bearer `CRON_SECRET`). `?players=0` skips the 5MB player map.
+Cron: `GET /api/cron/sync-sleeper` (Bearer `CRON_SECRET`). Skips the 5MB player map unless `?players=1`.
 
 ## Adding New Apps
 

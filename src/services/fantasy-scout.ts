@@ -256,7 +256,8 @@ function wireForLeague(ctx: Ctx, leagueId: string): {rows: WireRow[]; missed: Wi
     if (tx.type !== 'waiver' && tx.type !== 'free_agent') {
       continue;
     }
-    for (const [playerId, rosterId] of Object.entries(tx.adds ?? {})) {
+    for (const [playerId, rawRosterId] of Object.entries(tx.adds ?? {})) {
+      const rosterId = Number(rawRosterId);
       const id = ident(ctx, rosterOwner.get(rosterId) ?? null);
       missed.push({
         slug: id.slug,
@@ -281,23 +282,23 @@ function txEventsForLeague(ctx: Ctx, leagueId: string): TxEvent[] {
     if (tx.sleeperLeagueId !== leagueId) {
       continue;
     }
-    for (const [playerId, rosterId] of Object.entries(tx.adds ?? {})) {
+    for (const [playerId, rawRosterId] of Object.entries(tx.adds ?? {})) {
       events.push({
         week: tx.week,
         type: tx.type,
         status: tx.status,
-        rosterId,
+        rosterId: Number(rawRosterId),
         playerId,
         kind: 'add',
         waiverBid: tx.waiverBid,
       });
     }
-    for (const [playerId, rosterId] of Object.entries(tx.drops ?? {})) {
+    for (const [playerId, rawRosterId] of Object.entries(tx.drops ?? {})) {
       events.push({
         week: tx.week,
         type: tx.type,
         status: tx.status,
-        rosterId,
+        rosterId: Number(rawRosterId),
         playerId,
         kind: 'drop',
         waiverBid: tx.waiverBid,
