@@ -45,8 +45,54 @@ function sparkSvg(finishes: number[]): string {
   return `<svg viewBox="0 0 ${w} ${h}" class="w-[72px] h-[22px]" aria-hidden="true"><polyline fill="none" stroke="#3fe1a8" stroke-width="1.6" points="${pts.join(' ')}"/></svg>`;
 }
 
-function sortTh(label: string, col: number, type: 'num' | 'str' = 'num', extra = ''): string {
-  return `<th class="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-muted cursor-pointer select-none ${extra}" data-col="${col}" data-type="${type}" onclick="lllSort(this)">${label} <span class="si opacity-40">↕</span></th>`;
+const TIPS = {
+  pfWeek:
+    'Points for per week: your average best-ball score. Total points divided by weeks you actually played. Not adjusted for 2023 (2QB, 6 teams).',
+  draftGrade:
+    'We add every pick’s surplus, then rank GMs against each other. Top fifth get A, then B, C, D, F. The number is extra (or missing) fantasy points vs what those dollars usually returned at that position. A dash means nobody to rank against yet.',
+  surplus:
+    'Season FPTS minus (auction $ × that position’s pts per dollar in this league). A cheap pick is only a bargain if he beats the going rate — putting up a few points is not enough.',
+  ptsPerDollar: 'Season FPTS divided by auction dollars paid.',
+  late: 'Points from auction picks in the last three rounds, or that cost $2 or less.',
+  wire: 'Points scored for you by waiver/FA adds, from add week through drop (or season end). Trades do not count.',
+  pf: 'Total best-ball fantasy points (season or career).',
+  winPct: 'All-play winning percentage. Each week your score is a win or loss against every other team. No playoffs.',
+  hits: 'Late picks that scored more than a typical $1 player that year.',
+  wl: 'All-play record: each week your best-ball score is a win or loss against every other team. No playoffs.',
+} as const;
+
+function tipBtn(text: string, label: string): string {
+  return `<button type="button" class="lll-tip" data-tip="${escapeHtml(text)}" aria-label="What ${escapeHtml(label)} means" onclick="lllTip(event)">?</button>`;
+}
+
+function withTip(label: string, text: string): string {
+  return `${escapeHtml(label)}${tipBtn(text, label)}`;
+}
+
+function howWeScore(): string {
+  return `
+    <section class="card-paper rounded-lg p-5 space-y-3" id="how-we-score">
+      <h2 class="text-sm font-bold uppercase tracking-widest text-accent">How we score</h2>
+      <dl class="grid gap-4 md:grid-cols-3 text-sm">
+        <div>
+          <dt class="font-bold">PF/week</dt>
+          <dd class="text-muted mt-1">Points for per week — your average best-ball score. We add the points you put up each week and divide by weeks played. 2023 is not adjusted for 2QB / 6 teams.</dd>
+        </div>
+        <div>
+          <dt class="font-bold">Draft grade</dt>
+          <dd class="text-muted mt-1">Each pick’s surplus is added up, then GMs are ranked. Top fifth A, then B, C, D, F. Career grade ranks your average yearly surplus. The number next to the letter is extra fantasy points vs the going rate, not a PFF score. A dash means the season has not differentiated yet.</dd>
+        </div>
+        <div>
+          <dt class="font-bold">Are cheap picks bargains if they score?</dt>
+          <dd class="text-muted mt-1">No. Surplus = season FPTS minus (what you paid × that position’s pts per dollar). A $1 RB who scores 80 when RBs returned 5 pts/$ is +75. A $1 RB who scores 4 is not a bargain. They have to beat the going rate, not merely put up points.</dd>
+        </div>
+      </dl>
+    </section>`;
+}
+
+function sortTh(label: string, col: number, type: 'num' | 'str' = 'num', tipText?: string): string {
+  const help = tipText ? tipBtn(tipText, label) : '';
+  return `<th class="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-muted cursor-pointer select-none" data-col="${col}" data-type="${type}" onclick="lllSort(this)">${escapeHtml(label)}${help} <span class="si opacity-40">↕</span></th>`;
 }
 
 export function fantasyLayout(content: string, title = 'UCSB Legacy', clerkPublishableKey?: string): string {
@@ -94,9 +140,92 @@ export function fantasyLayout(content: string, title = 'UCSB Legacy', clerkPubli
       .theme-sleeper code { color: var(--sl-accent); }
       .theme-sleeper thead { background: var(--sl-elevated); }
       .theme-sleeper table { color: var(--sl-text); }
+      .theme-sleeper .lll-tip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.05rem;
+        height: 1.05rem;
+        margin-left: 0.25rem;
+        border-radius: 999px;
+        border: 1px solid var(--sl-border);
+        background: var(--sl-elevated);
+        color: var(--sl-muted);
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: 0;
+        text-transform: none;
+        cursor: help;
+        vertical-align: middle;
+      }
+      .theme-sleeper .lll-tip:hover,
+      .theme-sleeper .lll-tip[aria-expanded="true"] {
+        color: var(--sl-accent);
+        border-color: var(--sl-accent);
+      }
+      .lll-tip-pop {
+        position: fixed;
+        z-index: 80;
+        max-width: 20rem;
+        padding: 0.7rem 0.85rem;
+        background: #1e2530;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 8px;
+        color: #f4f7fb;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 400;
+        letter-spacing: 0;
+        text-transform: none;
+        line-height: 1.45;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+      }
     </style>
     <script>
       (function () {
+        if (window.lllTip) return;
+        var openBtn = null;
+        window.lllTip = function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var btn = ev.currentTarget;
+          var old = document.getElementById('lll-tip-pop');
+          if (old) old.remove();
+          document.querySelectorAll('.lll-tip[aria-expanded="true"]').forEach(function (b) {
+            b.setAttribute('aria-expanded', 'false');
+          });
+          if (openBtn === btn) {
+            openBtn = null;
+            return;
+          }
+          var pop = document.createElement('div');
+          pop.id = 'lll-tip-pop';
+          pop.className = 'lll-tip-pop';
+          pop.setAttribute('role', 'tooltip');
+          pop.textContent = btn.getAttribute('data-tip') || '';
+          document.body.appendChild(pop);
+          btn.setAttribute('aria-expanded', 'true');
+          openBtn = btn;
+          var r = btn.getBoundingClientRect();
+          var left = Math.min(r.left, window.innerWidth - pop.offsetWidth - 12);
+          left = Math.max(8, left);
+          var top = r.bottom + 8;
+          if (top + pop.offsetHeight > window.innerHeight - 8) {
+            top = r.top - pop.offsetHeight - 8;
+          }
+          pop.style.left = left + 'px';
+          pop.style.top = Math.max(8, top) + 'px';
+        };
+        document.addEventListener('click', function (e) {
+          if (e.target.closest('.lll-tip') || e.target.closest('#lll-tip-pop')) return;
+          var t = document.getElementById('lll-tip-pop');
+          if (t) t.remove();
+          document.querySelectorAll('.lll-tip[aria-expanded="true"]').forEach(function (b) {
+            b.setAttribute('aria-expanded', 'false');
+          });
+          openBtn = null;
+        });
         if (window.lllSort) return;
         window.lllSort = function (th) {
           var table = th.closest('table');
@@ -203,8 +332,8 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         </div>
         <div class="mt-4 flex items-end justify-between gap-3">
           <div class="grid grid-cols-3 gap-3 text-[10px] uppercase tracking-widest text-muted">
-            <div>PF/W <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.pfPerWeek)}</span></div>
-            <div>Draft <span class="block text-black font-bold normal-case tracking-normal text-sm">${escapeHtml(g.draftGrade)}</span></div>
+            <div>PF/week <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.pfPerWeek)}</span></div>
+            <div>Grade <span class="block text-black font-bold normal-case tracking-normal text-sm">${escapeHtml(g.draftGrade)}</span></div>
             <div>Wire <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.wireFpts, 0)}</span></div>
           </div>
           ${sparkSvg(g.sparkline)}
@@ -238,7 +367,8 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         gms.length === 0
           ? emptyIngest()
           : `
-      <p class="text-sm text-muted max-w-3xl">Each week every GM’s best-ball score plays every other GM. Finish is all-play wins, then points — no playoffs. PF/W is <em>not</em> era-adjusted (2023 was 2QB / 6 teams). Draft letter is rank among GMs on auction surplus, not a shared curve that can fail everyone.</p>
+      <p class="text-sm text-muted max-w-3xl">Each week every GM’s best-ball score plays every other GM. Finish is all-play wins, then points — no playoffs. Tap a <span class="text-accent whitespace-nowrap">?</span> on a column header for the short version.</p>
+      ${howWeScore()}
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
@@ -247,14 +377,14 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
               ${sortTh('#', 0)}
               ${sortTh('GM', 1, 'str')}
               ${sortTh('Yrs', 2)}
-              ${sortTh('Win%', 3)}
-              ${sortTh('W-L', 4)}
-              ${sortTh('PF', 5)}
-              ${sortTh('PF/W', 6)}
+              ${sortTh('Win%', 3, 'num', TIPS.winPct)}
+              ${sortTh('W-L', 4, 'num', TIPS.wl)}
+              ${sortTh('PF', 5, 'num', TIPS.pf)}
+              ${sortTh('PF/week', 6, 'num', TIPS.pfWeek)}
               ${sortTh('Avg fin.', 7)}
-              ${sortTh('Draft', 8)}
-              ${sortTh('Late', 9)}
-              ${sortTh('Wire', 10)}
+              ${sortTh('Grade', 8, 'num', TIPS.draftGrade)}
+              ${sortTh('Late', 9, 'num', TIPS.late)}
+              ${sortTh('Wire', 10, 'num', TIPS.wire)}
             </tr>
           </thead>
           <tbody>${tableRows}</tbody>
@@ -311,14 +441,14 @@ export function fantasySeasonPage(
           : `<div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
-            ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Win%', 2)}${sortTh('W-L', 3)}
-            ${sortTh('PF', 4)}${sortTh('PF/W', 5)}
-            ${sortTh('Draft', 6)}${sortTh('Wire', 7)}
+            ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Win%', 2, 'num', TIPS.winPct)}${sortTh('W-L', 3, 'num', TIPS.wl)}
+            ${sortTh('PF', 4, 'num', TIPS.pf)}${sortTh('PF/week', 5, 'num', TIPS.pfWeek)}
+            ${sortTh('Grade', 6, 'num', TIPS.draftGrade)}${sortTh('Wire', 7, 'num', TIPS.wire)}
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs. Draft letter is rank among this season’s GMs on total auction surplus (A–F quintiles).</p>`
+      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs. Tap a <span class="text-accent whitespace-nowrap">?</span> on PF/week or Grade for how those are calculated.</p>`
       }`
       }
     </main>`;
@@ -364,12 +494,13 @@ export function fantasyDraftPage(
             ? `<h2 class="text-3xl font-bold tracking-tighter">${year} auction</h2>
                <div class="card-paper rounded-lg p-6 text-muted italic">Draft opens on Sleeper — this page fills after ingest.</div>`
             : `<h2 class="text-3xl font-bold tracking-tighter">${year} auction</h2>
-               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). Surplus = FPTS minus $ × that position’s in-league pts/$. Team grade is rank among GMs on total surplus (A–F quintiles), not an absolute cutoff. Ungraded until drafts differ. PFF is overlay, not the sort.</p>
+               ${howWeScore()}
+               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). PFF is overlay, not the sort.</p>
                <div class="card-paper rounded-lg overflow-x-auto">
                  <table class="w-min min-w-full text-sm">
                    <thead class="bg-black/[0.03]"><tr>
                      ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Player', 2, 'str')}${sortTh('Pos', 3, 'str')}
-                     ${sortTh('$', 4)}${sortTh('FPTS', 5)}${sortTh('Pts/$', 6)}${sortTh('Surplus', 7)}${sortTh('PFF', 8)}
+                     ${sortTh('$', 4)}${sortTh('FPTS', 5)}${sortTh('Pts/$', 6, 'num', TIPS.ptsPerDollar)}${sortTh('Surplus', 7, 'num', TIPS.surplus)}${sortTh('PFF', 8)}
                    </tr></thead>
                    <tbody>${pickRowsHtml(picks)}</tbody>
                  </table>
@@ -443,7 +574,7 @@ export function fantasyWirePage(
                <table class="w-min min-w-full text-sm">
                  <thead class="bg-black/[0.03]"><tr>
                    ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Adds', 2)}${sortTh('FAAB', 3)}
-                   ${sortTh('Wire FPTS', 4)}${sortTh('Pts/$', 5)}
+                   ${sortTh('Wire FPTS', 4, 'num', TIPS.wire)}${sortTh('Pts/$', 5, 'num', TIPS.ptsPerDollar)}
                  </tr></thead>
                  <tbody>${gmRows || '<tr><td class="px-3 py-4 text-muted" colspan="6">No completed adds this season.</td></tr>'}</tbody>
                </table>
@@ -500,11 +631,11 @@ export function fantasyBargainsPage(
     ${nav('bargains', seasons)}
     <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
       <h2 class="text-3xl font-bold tracking-tighter">Late-round bargains</h2>
-      <p class="text-sm text-muted">A pick is late if it is in the last three auction rounds <em>or</em> cost $2 or less.</p>
+      <p class="text-sm text-muted">A pick is late if it is in the last three auction rounds <em>or</em> cost $2 or less. Scoring a few points does not make it a bargain — Hits are late picks that beat a typical $1 player.</p>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
-            ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Picks', 2)}${sortTh('Hits', 3)}${sortTh('Late FPTS', 4)}
+            ${sortTh('#', 0)}${sortTh('GM', 1, 'str')}${sortTh('Picks', 2)}${sortTh('Hits', 3, 'num', TIPS.hits)}${sortTh('Late FPTS', 4, 'num', TIPS.late)}
           </tr></thead>
           <tbody>${gmRows || '<tr><td class="px-3 py-4 text-muted" colspan="5">No late picks ingested.</td></tr>'}</tbody>
         </table>
@@ -513,7 +644,7 @@ export function fantasyBargainsPage(
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
             ${sortTh('Year', 0)}${sortTh('#', 1)}${sortTh('GM', 2, 'str')}${sortTh('Player', 3, 'str')}
-            ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7)}${sortTh('vs $1', 8)}${sortTh('PFF', 9)}
+            ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7, 'num', TIPS.ptsPerDollar)}${sortTh('vs $1', 8, 'num', TIPS.hits)}${sortTh('PFF', 9)}
           </tr></thead>
           <tbody>${pickRowsHtml(rows, true)}</tbody>
         </table>
@@ -594,20 +725,20 @@ export function fantasyManagerPage(
         ${sparkSvg(gm.sparkline)}
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">PF/W</div><div class="text-2xl font-bold">${fmt(gm.pfPerWeek)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('PF/week', TIPS.pfWeek)}</div><div class="text-2xl font-bold">${fmt(gm.pfPerWeek)}</div></div>
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Avg finish</div><div class="text-2xl font-bold">${fmt(gm.avgFinish)}</div></div>
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Draft</div><div class="text-2xl font-bold">${escapeHtml(gm.draftGrade)}</div></div>
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Wire FPTS</div><div class="text-2xl font-bold">${fmt(gm.wireFpts, 0)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Grade', TIPS.draftGrade)}</div><div class="text-2xl font-bold">${escapeHtml(gm.draftGrade)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Wire FPTS', TIPS.wire)}</div><div class="text-2xl font-bold">${fmt(gm.wireFpts, 0)}</div></div>
       </div>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Year</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Fin</th>
-            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">W-L</th>
-            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">PF</th>
-            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Draft</th>
-            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Wire</th>
+            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">${withTip('W-L', TIPS.wl)}</th>
+            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">${withTip('PF', TIPS.pf)}</th>
+            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">${withTip('Grade', TIPS.draftGrade)}</th>
+            <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">${withTip('Wire', TIPS.wire)}</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">Team</th>
           </tr></thead>
           <tbody>${yearRows}</tbody>
@@ -618,7 +749,7 @@ export function fantasyManagerPage(
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
             ${sortTh('Year', 0)}${sortTh('#', 1)}${sortTh('GM', 2, 'str')}${sortTh('Player', 3, 'str')}
-            ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7)}${sortTh('Surplus', 8)}${sortTh('PFF', 9)}
+            ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7, 'num', TIPS.ptsPerDollar)}${sortTh('Surplus', 8, 'num', TIPS.surplus)}${sortTh('PFF', 9)}
           </tr></thead>
           <tbody>${pickRowsHtml(draftPicks, true)}</tbody>
         </table>
@@ -699,7 +830,7 @@ export function fantasyPlayerPage(
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
             ${sortTh('Year', 0)}${sortTh('#', 1)}${sortTh('GM', 2, 'str')}${sortTh('Player', 3, 'str')}
-            ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7)}${sortTh('Surplus', 8)}${sortTh('PFF', 9)}
+            ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7, 'num', TIPS.ptsPerDollar)}${sortTh('Surplus', 8, 'num', TIPS.surplus)}${sortTh('PFF', 9)}
           </tr></thead>
           <tbody>${pickRowsHtml(data.drafts, true)}</tbody>
         </table>
