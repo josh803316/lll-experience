@@ -157,6 +157,127 @@ export function blendWeeklyPts(
   });
 }
 
+export type HeatPos = 'ovr' | 'qb' | 'rb' | 'wr' | 'te' | 'flex' | 'def';
+
+export interface HeatCell {
+  rank: number;
+  pts: number;
+}
+
+export interface HeatRow {
+  rosterId: number;
+  ovr: HeatCell;
+  qb: HeatCell;
+  rb: HeatCell;
+  wr: HeatCell;
+  te: HeatCell;
+  flex: HeatCell;
+  def: HeatCell;
+}
+
+function slotGroup(slot: string): Exclude<HeatPos, 'ovr'> | null {
+  if (slot === 'BN' || slot === 'IR' || slot === 'TAXI') {
+    return null;
+  }
+  if (slot.includes('FLEX')) {
+    return 'flex';
+  }
+  if (slot === 'QB') {
+    return 'qb';
+  }
+  if (slot === 'RB' || slot === 'FB') {
+    return 'rb';
+  }
+  if (slot === 'WR') {
+    return 'wr';
+  }
+  if (slot === 'TE') {
+    return 'te';
+  }
+  if (slot === 'DEF' || slot === 'DST') {
+    return 'def';
+  }
+  return null;
+}
+
+/** Fill starters like best-ball; return slot-group totals (FLEX = leftover WR/RB/TE). */
+export function positionalTotals(
+  players: LineupPlayer[],
+  slots: string[],
+): Record<Exclude<HeatPos, 'ovr'>, number> {
+  const remaining = players
+    .map((p) => ({...p, position: normalizePosition(p.position)}))
+    .sort((a, b) => b.pts - a.pts);
+  const used = new Set<string>();
+  const totals: Record<Exclude<HeatPos, 'ovr'>, number> = {qb: 0, rb: 0, wr: 0, te: 0, flex: 0, def: 0};
+  const fill = (slot: string) => {
+    const group = slotGroup(slot);
+    if (!group) {
+      return;
+    }
+    const eligible = slotEligible(slot);
+    const pick = remaining.find((p) => !used.has(p.playerId) && eligible.includes(p.position));
+    if (!pick) {
+      return;
+    }
+    used.add(pick.playerId);
+    totals[group] += pick.pts;
+  };
+  for (const slot of slots.filter((s) => !s.includes('FLEX'))) {
+    fill(slot);
+  }
+  for (const slot of slots.filter((s) => s.includes('FLEX'))) {
+    fill(slot);
+  }
+  return totals;
+}
+
+function rankDescending(values: number[]): number[] {
+  const indexed = values.map((v, i) => ({v, i}));
+  indexed.sort((a, b) => b.v - a.v);
+  const ranks = new Array<number>(values.length);
+  let i = 0;
+  while (i < indexed.length) {
+    let j = i + 1;
+    while (j < indexed.length && indexed[j].v === indexed[i].v) {
+      j++;
+    }
+    const rank = i + 1;
+    for (let k = i; k < j; k++) {
+      ranks[indexed[k].i] = rank;
+    }
+    i = j;
+  }
+  return ranks;
+}
+
+export function positionalHeatmap(
+  rosters: {rosterId: number; players: LineupPlayer[]}[],
+  slots: string[],
+): HeatRow[] {
+  const posKeys: Exclude<HeatPos, 'ovr'>[] = ['qb', 'rb', 'wr', 'te', 'flex', 'def'];
+  const built = rosters.map((r) => {
+    const pos = positionalTotals(r.players, slots);
+    const ovr = r.players.reduce((s, p) => s + p.pts, 0);
+    return {rosterId: r.rosterId, pos, ovr};
+  });
+  const ovrRanks = rankDescending(built.map((b) => b.ovr));
+  const posRanks = Object.fromEntries(posKeys.map((k) => [k, rankDescending(built.map((b) => b.pos[k]))])) as Record<
+    Exclude<HeatPos, 'ovr'>,
+    number[]
+  >;
+  return built.map((b, i) => ({
+    rosterId: b.rosterId,
+    ovr: {rank: ovrRanks[i], pts: b.ovr},
+    qb: {rank: posRanks.qb[i], pts: b.pos.qb},
+    rb: {rank: posRanks.rb[i], pts: b.pos.rb},
+    wr: {rank: posRanks.wr[i], pts: b.pos.wr},
+    te: {rank: posRanks.te[i], pts: b.pos.te},
+    flex: {rank: posRanks.flex[i], pts: b.pos.flex},
+    def: {rank: posRanks.def[i], pts: b.pos.def},
+  }));
+}
+
 export function sumProjectedPts(weeklyPts: ProjWeekPts[], playerId: string): number {
   let t = 0;
   for (const w of weeklyPts) {

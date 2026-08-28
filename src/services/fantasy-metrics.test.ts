@@ -11,7 +11,7 @@ import {
   winPct,
   wireStints,
 } from './fantasy-metrics.js';
-import {bestBallScore, projectedWeeklyScores, scoreStats} from './fantasy-projections.js';
+import {bestBallScore, positionalHeatmap, positionalTotals, projectedWeeklyScores, scoreStats} from './fantasy-projections.js';
 
 describe('winPct / median', () => {
   test('win pct includes ties in the denominator', () => {
@@ -243,5 +243,42 @@ describe('best-ball lineup', () => {
     );
     expect(rows.find((r) => r.rosterId === 1)?.points).toBe(25);
     expect(rows.find((r) => r.rosterId === 2)?.points).toBe(10);
+  });
+});
+
+describe('positional heat map', () => {
+  const slots = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'REC_FLEX', 'DEF'];
+  test('FLEX is the leftover WR/RB/TE after starters', () => {
+    const tot = positionalTotals(
+      [
+        {playerId: 'qb', position: 'QB', pts: 20},
+        {playerId: 'rb1', position: 'RB', pts: 18},
+        {playerId: 'rb2', position: 'RB', pts: 10},
+        {playerId: 'wr1', position: 'WR', pts: 22},
+        {playerId: 'wr2', position: 'WR', pts: 15},
+        {playerId: 'wr3', position: 'WR', pts: 12},
+        {playerId: 'wr4', position: 'WR', pts: 8},
+        {playerId: 'te', position: 'TE', pts: 9},
+        {playerId: 'def', position: 'DEF', pts: 5},
+      ],
+      slots,
+    );
+    expect(tot.qb).toBe(20);
+    expect(tot.rb).toBe(28);
+    expect(tot.wr).toBe(22 + 15 + 12);
+    expect(tot.te).toBe(9);
+    expect(tot.flex).toBe(8);
+    expect(tot.def).toBe(5);
+  });
+  test('OVR ranks by starter-slot total; 1 is best', () => {
+    const heat = positionalHeatmap(
+      [
+        {rosterId: 1, players: [{playerId: 'a', position: 'QB', pts: 40}]},
+        {rosterId: 2, players: [{playerId: 'b', position: 'QB', pts: 10}]},
+      ],
+      ['QB'],
+    );
+    expect(heat.find((h) => h.rosterId === 1)?.ovr).toEqual({rank: 1, pts: 40});
+    expect(heat.find((h) => h.rosterId === 2)?.ovr).toEqual({rank: 2, pts: 10});
   });
 });
