@@ -89,16 +89,33 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
   await page.goto(`${SITE_URL}/fantasy/manager/tim`)
   await expect(page.getByRole('heading', { name: 'Tim' })).toBeVisible()
 
+  await page.goto(`${SITE_URL}/fantasy/manager/tim/timeline?season=2025`, { timeout: 60000 })
+  await expect(page.getByRole('heading', { name: 'Team evolution' })).toBeVisible()
+  await expect(page.getByText('retrospective actuals').first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Weekly snapshots' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Transaction markers' })).toBeVisible()
+  await page.goto(`${SITE_URL}/fantasy/manager/tim/timeline?season=all`, { timeout: 60000 })
+  await expect(page.getByRole('heading', { name: 'Evolution over all seasons' })).toBeVisible()
+
   await page.goto(`${SITE_URL}/fantasy/season/2023`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: '2023 standings' })).toBeVisible()
   await expect(page.getByText('6 teams')).toBeVisible()
 
   await page.goto(`${SITE_URL}/fantasy/season/2026`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: '2026 standings' })).toBeVisible()
-  await expect(page.locator('body')).toContainText('projected')
+  await expect(page.locator('body')).toContainText(/projected/i)
   await expect(page.getByRole('heading', { name: 'Positional heat map' })).toBeVisible()
   await expect(page.getByText('FLEX', { exact: true })).toBeVisible()
   await expect(page.locator('body')).toContainText('depth counts on byes')
+
+  await page.goto(`${SITE_URL}/fantasy/manager/wlampe/timeline?season=2026`, { timeout: 60000 })
+  await expect(page.getByRole('heading', { name: 'Team evolution' })).toBeVisible()
+  await expect(page.getByText(/current blended projections/i)).toBeVisible()
+  await expect(page.locator('body')).toContainText(/projected/i)
+
+  await page.goto(`${SITE_URL}/fantasy/2026/chat`, { timeout: 60000 })
+  await expect(page.getByText('Season 2026 message board')).toBeVisible()
+  await expect(page.getByText('No messages yet')).toBeVisible()
 
   await page.goto(`${SITE_URL}/fantasy/draft/2026`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: '2026 auction' })).toBeVisible()

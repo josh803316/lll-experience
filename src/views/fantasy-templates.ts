@@ -1,5 +1,6 @@
 import type {
   DraftPickRow,
+  FantasyTimelineData,
   GmAllTimeRow,
   GmSeasonRow,
   HeatmapTeam,
@@ -7,6 +8,7 @@ import type {
   SeasonSummary,
   WireRow,
 } from '../services/fantasy-scout.js'
+import type { FantasyTimelinePoint } from '../services/fantasy-timeline.js'
 import { baseLayout, escapeHtml } from './templates.js'
 
 function fmt(n: number, digits = 1): string {
@@ -640,6 +642,7 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
         ${tab(y ? `/fantasy/season/${y}` : '/fantasy', 'season', 'Season')}
         ${tab(y ? `/fantasy/draft/${y}` : '/fantasy', 'draft', 'Auction')}
         ${tab(y ? `/fantasy/wire/${y}` : '/fantasy', 'wire', 'Wire')}
+        ${tab(y ? `/fantasy/${y}/chat` : '/fantasy', 'board', 'Board')}
         ${tab('/fantasy/bargains', 'bargains', 'Bargains')}
         ${tab('/fantasy/rankings', 'rankings', 'Over time')}
       </nav>
@@ -1168,7 +1171,10 @@ export function fantasyManagerPage(
           <h2 class="text-4xl font-bold tracking-tighter">${escapeHtml(gm.displayName)}</h2>
           <p class="text-muted">${gm.seasons} seasons · ${pct(gm.winPct)} · ${record(gm.wins, gm.losses, gm.ties)}</p>
         </div>
-        ${sparkSvg(gm.sparkline)}
+        <div class="flex items-center gap-4">
+          ${sparkSvg(gm.sparkline)}
+          <a href="/fantasy/manager/${encodeURIComponent(gm.slug)}/timeline" class="text-accent font-bold text-sm hover:underline">Evolution →</a>
+        </div>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('PF/week', TIPS.pfWeek)}</div><div class="text-2xl font-bold">${fmt(gm.pfPerWeek)}</div></div>
@@ -1406,4 +1412,255 @@ export function fantasyPlayerNotFound(id: string, clerkKey?: string): string {
       <h2 class="text-3xl font-bold tracking-tighter mt-4">No player ${escapeHtml(id)}</h2>
     </main>`
   return fantasyLayout(body, 'Player not found', clerkKey)
+}
+
+function timelineChart(
+  points: FantasyTimelinePoint[],
+  key: 'strengthPoints' | 'cumulativePerformance',
+  color: string
+): string {
+  const values = points.map((point) => point[key])
+  if (values.length === 0 || Math.max(...values) <= 0) {
+    return '<p class="text-sm text-muted py-8 text-center">No scored weeks yet.</p>'
+  }
+  const width = 760
+  const height = 220
+  const padX = 28
+  const padY = 20
+  const max = Math.max(...values, 1)
+  const step = points.length > 1 ? (width - padX * 2) / (points.length - 1) : width - padX * 2
+  const coords = points.map((point, index) => {
+    const x = padX + index * step
+    const y = height - padY - (point[key] / max) * (height - padY * 2)
+    return { point, x, y }
+  })
+  const line = coords.map((coord) => `${coord.x.toFixed(1)},${coord.y.toFixed(1)}`).join(' ')
+  const dots = coords
+    .map(
+      ({ point, x, y }) =>
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${color}"><title>Week ${point.week}: ${fmt(point[key])}</title></circle>`
+    )
+    .join('')
+  const labels = coords
+    .filter(
+      ({ point }) => point.week === 0 || point.week === points.at(-1)?.week || point.week % 4 === 0
+    )
+    .map(
+      ({ point, x }) =>
+        `<text x="${x.toFixed(1)}" y="${height - 3}" text-anchor="middle" fill="#8b95a8" font-size="10">W${point.week}</text>`
+    )
+    .join('')
+  return `<svg viewBox="0 0 ${width} ${height}" class="w-full h-56" role="img" aria-label="Timeline chart">
+    <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="rgba(255,255,255,.12)" />
+    <polyline fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${line}" />
+    ${dots}${labels}
+  </svg>`
+}
+
+function timelineInsightClass(insight: string): string {
+  if (insight.includes('Great') || insight.includes('Strong value')) {
+    return 'text-accent'
+  }
+  if (insight.includes('Weak')) {
+    return 'text-rose-300'
+  }
+  if (insight.includes('expensive')) {
+    return 'text-amber-300'
+  }
+  return 'text-slate-300'
+}
+
+function timelinePerformanceBars(points: FantasyTimelinePoint[]): string {
+  const weekly = points.filter((point) => point.week > 0)
+  const max = Math.max(...weekly.map((point) => point.performancePoints), 0)
+  if (max <= 0) {
+    return ''
+  }
+  const bars = weekly
+    .map(
+      (point) =>
+        `<div class="flex-1 min-w-[5px] group relative h-20 flex items-end"><div class="w-full rounded-t bg-[#7c6bff]" style="height:${Math.max(3, (point.performancePoints / max) * 100)}%" title="W${point.week}: ${fmt(point.performancePoints)}"></div><span class="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[8px] text-muted">${point.week % 4 === 0 ? `W${point.week}` : ''}</span></div>`
+    )
+    .join('')
+  return `<div class="flex items-end gap-1 px-1 pb-5 border-b border-black/10">${bars}</div>`
+}
+
+export function fantasyTimelinePage(
+  data: FantasyTimelineData,
+  seasons: SeasonSummary[],
+  clerkKey?: string
+): string {
+  const points = data.points
+  const final = points.at(-1)
+  const finalWeek = final?.week ?? 0
+  const finalRoom = data.room
+    .filter((point) => point.week === finalWeek)
+    .sort((a, b) => a.strengthRank - b.strengthRank)
+  const seasonLinks = seasons
+    .map(
+      (season) =>
+        `<a href="/fantasy/manager/${encodeURIComponent(data.manager.slug)}/timeline?season=${season.season}" class="px-2 py-1 rounded text-[10px] font-bold ${season.season === data.season ? 'text-accent bg-black/5' : 'text-muted hover:text-black'}">${season.season}</a>`
+    )
+    .join('')
+  const transactionRows = points
+    .filter((point) => point.events.length > 0)
+    .flatMap((point) =>
+      point.events.map(
+        (event) => `<tr class="border-t border-black/5">
+          <td class="px-3 py-2"><a class="hover:text-accent" href="#snapshot-${point.week}">W${point.week}</a></td>
+          <td class="px-3 py-2 ${event.kind === 'add' ? 'text-accent' : 'text-rose-300'}">${event.kind === 'add' ? 'Add' : 'Drop'}</td>
+          <td class="px-3 py-2 font-semibold">${escapeHtml(event.playerName)}</td>
+          <td class="px-3 py-2 text-muted">${escapeHtml(event.type)}${event.waiverBid == null ? '' : ` · $${event.waiverBid}`} · ${event.pointDelta >= 0 ? '+' : ''}${fmt(event.pointDelta, 0)} pts</td>
+        </tr>`
+      )
+    )
+    .join('')
+  const roomRows = finalRoom
+    .map(
+      (point) => `<tr class="border-t border-black/5">
+        <td class="px-3 py-2">${point.strengthRank}</td>
+        <td class="px-3 py-2 font-bold"><a class="hover:text-accent" href="/fantasy/manager/${encodeURIComponent(point.slug)}/timeline?season=${data.season}">${escapeHtml(point.displayName)}</a></td>
+        <td class="px-3 py-2">${fmt(point.strengthPoints, 0)}</td>
+        <td class="px-3 py-2">${point.draftGrade} <span class="text-muted">${point.draftSurplus >= 0 ? '+' : ''}${fmt(point.draftSurplus, 0)}</span></td>
+        <td class="px-3 py-2 ${timelineInsightClass(point.insight)}">${escapeHtml(point.insight)}</td>
+      </tr>`
+    )
+    .join('')
+  const snapshotRows = points
+    .map(
+      (point) => `<tr id="snapshot-${point.week}" class="border-t border-black/5">
+        <td class="px-3 py-2 font-bold">${point.week === 0 ? 'Draft' : `W${point.week}`}</td>
+        <td class="px-3 py-2">${fmt(point.strengthPoints, 0)}</td>
+        <td class="px-3 py-2 ${point.strengthDelta >= 0 ? 'text-accent' : 'text-rose-300'}">${point.strengthDelta >= 0 ? '+' : ''}${fmt(point.strengthDelta, 0)}</td>
+        <td class="px-3 py-2">${point.strengthRank}</td>
+        <td class="px-3 py-2">${point.week === 0 ? '—' : fmt(point.performancePoints)}</td>
+        <td class="px-3 py-2">${point.week === 0 ? '—' : fmt(point.cumulativePerformance)}</td>
+        <td class="px-3 py-2">${point.performanceRank === 0 ? '—' : `${record(point.performanceWins, point.performanceLosses, point.performanceTies)} · #${point.performanceRank}`}</td>
+        <td class="px-3 py-2">${point.week === 0 ? '—' : `${point.performanceChange >= 0 ? '+' : ''}${fmt(point.performanceChange)}`}</td>
+        <td class="px-3 py-2 ${timelineInsightClass(point.insight)}">${escapeHtml(point.insight)}</td>
+        <td class="px-3 py-2 text-muted">${point.events.length > 0 ? `${point.events.length} move${point.events.length === 1 ? '' : 's'}` : '—'}</td>
+      </tr>`
+    )
+    .join('')
+  const body = `
+    ${nav('all', seasons, data.season)}
+    <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <a href="/fantasy/manager/${encodeURIComponent(data.manager.slug)}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← ${escapeHtml(data.manager.displayName)}</a>
+          <h2 class="text-4xl font-bold tracking-tighter mt-2">Team evolution</h2>
+          <p class="text-sm text-muted">${data.season} · ${data.projected ? 'Projected strength from current blended projections' : 'Actual strength from retrospective actuals'} · snapshots after settled transactions</p>
+        </div>
+        <div class="flex gap-1 flex-wrap">
+          <a href="/fantasy/manager/${encodeURIComponent(data.manager.slug)}/timeline?season=all" class="px-2 py-1 rounded text-[10px] font-bold text-muted hover:text-black">All seasons</a>
+          ${seasonLinks}
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-3">
+        <a href="/fantasy/${data.season}/chat" class="card-paper rounded-lg px-4 py-3 text-sm font-bold hover:text-accent">Message board →</a>
+        <div class="card-paper rounded-lg px-4 py-3 text-sm text-muted">Draft grade <strong class="text-black">${final?.draftGrade ?? '—'}</strong> · ${final && final.draftSurplus >= 0 ? '+' : ''}${fmt(final?.draftSurplus ?? 0, 0)} surplus</div>
+        <div class="card-paper rounded-lg px-4 py-3 text-sm text-muted">Performance <strong class="text-black">${final && final.performanceRank > 0 ? record(final.performanceWins, final.performanceLosses, final.performanceTies) : '—'}</strong> · rank ${final?.performanceRank || '—'}</div>
+        <div class="card-paper rounded-lg px-4 py-3 text-sm text-muted">Current strength <strong class="text-black">${fmt(final?.strengthPoints ?? 0, 0)}</strong> · rank ${final?.strengthRank ?? '—'}</div>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <section class="card-paper rounded-lg p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-bold">Roster strength</h3>
+            <span class="text-[10px] uppercase tracking-widest text-muted">${data.projected ? 'proj' : 'actual'} · ${data.points[0]?.strengthBasis ?? ''}</span>
+          </div>
+          ${timelineChart(points, 'strengthPoints', '#3fe1a8')}
+          <p class="text-xs text-muted">Best-ball strength of the roster held at each snapshot. Finished seasons use retrospective actuals; 2026 uses current projections.</p>
+        </section>
+        <section class="card-paper rounded-lg p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-bold">Performance accumulated</h3>
+            <span class="text-[10px] uppercase tracking-widest text-muted">actual</span>
+          </div>
+          ${timelineChart(points, 'cumulativePerformance', '#7c6bff')}
+          ${timelinePerformanceBars(points)}
+          <p class="text-xs text-muted">Actual points scored through each week. Projected seasons remain at zero until games are played.</p>
+        </section>
+      </div>
+      <section class="card-paper rounded-lg p-4">
+        <h3 class="text-xl font-bold tracking-tighter mb-1">The two-axis read</h3>
+        <p class="text-sm text-muted mb-3">Draft grade measures auction value. Strength rank measures the roster you actually assembled. They are intentionally shown separately.</p>
+        <div class="rounded-lg bg-black/[0.03] p-4">
+          <div class="text-2xl font-extrabold ${timelineInsightClass(final?.insight ?? '')}">${escapeHtml(final?.insight ?? 'No read yet')}</div>
+          <p class="text-sm text-muted mt-1">At the latest snapshot: ${fmt(final?.strengthPoints ?? 0, 0)} strength points, rank ${final?.strengthRank ?? '—'}, and ${final && final.draftSurplus >= 0 ? '+' : ''}${fmt(final?.draftSurplus ?? 0, 0)} draft surplus.</p>
+        </div>
+      </section>
+      <section class="card-paper rounded-lg overflow-x-auto">
+        <div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Weekly snapshots</h3><p class="text-xs text-muted">Week 0 is the draft baseline. Moves apply before that week’s snapshot.</p></div>
+        <table class="w-min min-w-full text-sm">
+          <thead class="bg-black/[0.03]"><tr>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Snapshot</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Strength</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Δ base</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Rank</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Week FPTS</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Cumulative</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">All-play</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Δ/wk</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Read</th>
+            <th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Moves</th>
+          </tr></thead>
+          <tbody>${snapshotRows}</tbody>
+        </table>
+      </section>
+      <div class="grid gap-6 md:grid-cols-2">
+        <section class="card-paper rounded-lg overflow-x-auto">
+          <div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Room at W${finalWeek}</h3></div>
+          <table class="w-min min-w-full text-sm">
+            <thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Rank</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">GM</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Strength</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Grade</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Read</th></tr></thead>
+            <tbody>${roomRows}</tbody>
+          </table>
+        </section>
+        <section class="card-paper rounded-lg overflow-x-auto">
+          <div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Transaction markers</h3></div>
+          <table class="w-min min-w-full text-sm">
+            <thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Week</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Action</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Player</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Source</th></tr></thead>
+            <tbody>${transactionRows || '<tr><td class="px-3 py-4 text-muted" colspan="4">No settled transactions.</td></tr>'}</tbody>
+          </table>
+        </section>
+      </div>
+    </main>`
+  return fantasyLayout(body, `${data.manager.displayName} — Evolution`, clerkKey)
+}
+
+export function fantasyTimelineOverviewPage(
+  data: FantasyTimelineData[],
+  seasons: SeasonSummary[],
+  clerkKey?: string
+): string {
+  const manager = data[0]?.manager
+  const cards = data
+    .slice()
+    .sort((a, b) => b.season - a.season)
+    .map((season) => {
+      const final = season.points.at(-1)
+      return `<a href="/fantasy/manager/${encodeURIComponent(season.manager.slug)}/timeline?season=${season.season}" class="card-paper rounded-lg p-5 hover:shadow-md transition-shadow block">
+        <div class="flex items-start justify-between gap-3">
+          <div><h3 class="text-xl font-bold">${season.season}</h3><p class="text-xs text-muted">${season.projected ? 'Current projections' : 'Retrospective actuals'}</p></div>
+          <span class="text-accent font-bold">Open →</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3 mt-5 text-[10px] uppercase tracking-widest text-muted">
+          <div>Strength<span class="block text-black text-base normal-case tracking-normal font-bold">${fmt(final?.strengthPoints ?? 0, 0)}</span></div>
+          <div>Rank<span class="block text-black text-base normal-case tracking-normal font-bold">${final?.strengthRank ?? '—'}</span></div>
+          <div>Draft<span class="block text-black text-base normal-case tracking-normal font-bold">${final?.draftGrade ?? '—'}</span></div>
+        </div>
+        <p class="text-sm mt-4 ${timelineInsightClass(final?.insight ?? '')}">${escapeHtml(final?.insight ?? 'No read yet')}</p>
+      </a>`
+    })
+    .join('')
+  const body = `
+    ${nav('all', seasons)}
+    <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <a href="/fantasy/manager/${encodeURIComponent(manager?.slug ?? '')}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← ${escapeHtml(manager?.displayName ?? 'Manager')}</a>
+      <div>
+        <h2 class="text-4xl font-bold tracking-tighter mt-2">Evolution over all seasons</h2>
+        <p class="text-sm text-muted">Each season keeps its own draft baseline, weekly roster replay, strength track, and performance track.</p>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">${cards || '<p class="text-muted">No timeline data.</p>'}</div>
+    </main>`
+  return fantasyLayout(body, `${manager?.displayName ?? 'Manager'} — Evolution`, clerkKey)
 }

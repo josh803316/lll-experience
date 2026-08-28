@@ -39,6 +39,7 @@ import {
   projectedWeeklyScores,
   starterSlots,
 } from './fantasy-projections.js'
+import { buildFantasyTimeline, type FantasyTimelinePoint } from './fantasy-timeline.js'
 
 export interface SeasonSummary {
   season: number
@@ -153,6 +154,14 @@ export interface PlayerCardData {
   surplus: number | null
   weeks: PlayerCardWeek[]
   stats: CountingStat[]
+}
+
+export interface FantasyTimelineData {
+  season: number
+  projected: boolean
+  manager: { slug: string; displayName: string }
+  points: FantasyTimelinePoint[]
+  room: FantasyTimelinePoint[]
 }
 
 function pffCategory(position: string | null): string | null {
@@ -645,6 +654,105 @@ function buildHeatmap(ctx: Ctx, year: number): HeatmapTeam[] {
   return out
 }
 
+function buildTimeline(ctx: Ctx, year: number): FantasyTimelinePoint[] {
+  const league = ctx.leagues.find((l) => l.season === year)
+  if (!league) {
+    return []
+  }
+  const draft = ctx.drafts.find((d) => d.sleeperLeagueId === league.sleeperLeagueId)
+  const leagueRosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId)
+  const draftPicks = ctx.picks
+    .filter((pick) => draft && pick.draftId === draft.draftId)
+    .map((pick) => ({
+      playerId: pick.playerId,
+      rosterId: pick.rosterId,
+      position: pick.position,
+    }))
+  const actualWeeks = ctx.playerWeeks.filter((w) => w.sleeperLeagueId === league.sleeperLeagueId)
+  const hasActual = actualWeeks.some((w) => w.points > 0)
+  const weeklyPoints = hasActual
+    ? actualWeeks.map((w) => ({ week: w.week, playerId: w.playerId, points: w.points }))
+    : blendWeeklyPts(ctx.projections, year).map((w) => ({
+        week: w.week,
+        playerId: w.playerId,
+        points: w.pts,
+      }))
+  const actualMatchups = ctx.matchups
+    .filter((m) => m.sleeperLeagueId === league.sleeperLeagueId)
+    .map((m) => ({ week: m.week, rosterId: m.rosterId, points: m.points }))
+  const seasonRows = buildSeasonRows(ctx).filter((row) => row.season === year)
+  const draftSurplusByRoster = new Map(seasonRows.map((row) => [row.rosterId, row.draftSurplus]))
+  const draftGradeByRoster = new Map(seasonRows.map((row) => [row.rosterId, row.draftGrade]))
+  const playerPositions = new Map<string, string | null>()
+  const playerNames = new Map<string, string>()
+  for (const pick of draftPicks) {
+    playerPositions.set(
+      pick.playerId,
+      pick.position ?? ctx.playerById.get(pick.playerId)?.position ?? null
+    )
+    playerNames.set(pick.playerId, playerName(ctx, pick.playerId))
+  }
+  for (const playerId of new Set(weeklyPoints.map((row) => row.playerId))) {
+    if (!playerPositions.has(playerId)) {
+      playerPositions.set(playerId, ctx.playerById.get(playerId)?.position ?? null)
+    }
+    playerNames.set(playerId, playerName(ctx, playerId))
+  }
+  const transactions = ctx.txs
+    .filter((tx) => tx.sleeperLeagueId === league.sleeperLeagueId)
+    .map((tx) => ({
+      transactionId: tx.transactionId,
+      week: tx.week,
+      type: tx.type,
+      status: tx.status,
+      adds: tx.adds,
+      drops: tx.drops,
+      waiverBid: tx.waiverBid,
+      createdAtMs: tx.createdAtMs,
+    }))
+  const maxWeek = Math.max(
+    0,
+    ...ctx.matchups.filter((m) => m.sleeperLeagueId === league.sleeperLeagueId).map((m) => m.week),
+    ...weeklyPoints.map((row) => row.week)
+  )
+  return buildFantasyTimeline({
+    rosters: leagueRosters.map((roster) => {
+      const id = ident(ctx, roster.sleeperUserId, roster.teamName)
+      return { rosterId: roster.rosterId, slug: id.slug, displayName: id.displayName }
+    }),
+    draftPicks,
+    transactions,
+    playerPositions,
+    playerNames,
+    rosterPositions: starterSlots(league.rosterPositions),
+    weeklyPoints,
+    actualMatchups,
+    draftSurplusByRoster,
+    draftGradeByRoster,
+    maxWeek,
+    projected: !hasActual && weeklyPoints.length > 0,
+  })
+}
+
+function timelineDataForContext(
+  ctx: Ctx,
+  slug: string,
+  season: number
+): FantasyTimelineData | null {
+  const room = buildTimeline(ctx, season)
+  const managerPoint = room.find((point) => point.slug === slug)
+  if (!managerPoint) {
+    return null
+  }
+  return {
+    season,
+    projected: managerPoint.projected,
+    manager: { slug: managerPoint.slug, displayName: managerPoint.displayName },
+    points: room.filter((point) => point.slug === slug).sort((a, b) => a.week - b.week),
+    room,
+  }
+}
+
 export const FantasyScout = {
   async listSeasons(): Promise<SeasonSummary[]> {
     const ctx = await loadContext()
@@ -685,6 +793,22 @@ export const FantasyScout = {
       .filter((r) => r.season === year)
       .sort((a, b) => a.finish - b.finish)
     return { summary: seasons[0] ?? null, standings, heatmap: buildHeatmap(ctx, year) }
+  },
+
+  async timeline(slug: string, year?: number): Promise<FantasyTimelineData | null> {
+    const ctx = await loadContext()
+    const selectedSeason = year ?? ctx.leagues.at(-1)?.season
+    if (!selectedSeason) {
+      return null
+    }
+    return timelineDataForContext(ctx, slug, selectedSeason)
+  },
+
+  async timelines(slug: string): Promise<FantasyTimelineData[]> {
+    const ctx = await loadContext()
+    return ctx.leagues
+      .map((league) => timelineDataForContext(ctx, slug, league.season))
+      .filter((data): data is FantasyTimelineData => data !== null)
   },
 
   async draft(year: number): Promise<{

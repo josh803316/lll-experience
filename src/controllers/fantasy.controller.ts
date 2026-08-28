@@ -12,6 +12,8 @@ import {
   fantasyPlayerPage,
   fantasyRankingsPage,
   fantasySeasonPage,
+  fantasyTimelineOverviewPage,
+  fantasyTimelinePage,
   fantasyWirePage,
 } from '../views/fantasy-templates.js'
 
@@ -56,6 +58,25 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
     const { seasons, gms } = await FantasyScout.rankings()
     const meta = await FantasyScout.listSeasons()
     return fantasyRankingsPage(seasons, gms, meta, CLERK_KEY)
+  })
+  .get('/manager/:slug/timeline', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html'
+    if (ctx.query.season === 'all') {
+      const allData = await FantasyScout.timelines(ctx.params.slug)
+      if (allData.length === 0) {
+        return fantasyManagerNotFound(ctx.params.slug, CLERK_KEY)
+      }
+      const seasons = await FantasyScout.listSeasons()
+      return fantasyTimelineOverviewPage(allData, seasons, CLERK_KEY)
+    }
+    const seasonRaw = Number(ctx.query.season)
+    const season = Number.isFinite(seasonRaw) && seasonRaw > 0 ? seasonRaw : undefined
+    const data = await FantasyScout.timeline(ctx.params.slug, season)
+    if (!data) {
+      return fantasyManagerNotFound(ctx.params.slug, CLERK_KEY)
+    }
+    const seasons = await FantasyScout.listSeasons()
+    return fantasyTimelinePage(data, seasons, CLERK_KEY)
   })
   .get('/manager/:slug', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'

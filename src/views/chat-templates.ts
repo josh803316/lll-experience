@@ -1,117 +1,121 @@
-import {baseLayout, escapeHtml, draftTopBar} from './templates.js';
-import {pickModalContainer, pickModalScript} from './ticker-section.js';
+import { baseLayout, draftTopBar, escapeHtml } from './templates.js'
+import { pickModalContainer, pickModalScript } from './ticker-section.js'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface ReactionGroup {
-  emoji: string;
-  count: number;
-  names: string[];
-  currentUserReacted: boolean;
+  emoji: string
+  count: number
+  names: string[]
+  currentUserReacted: boolean
 }
 
 export interface ChatMessageDisplay {
-  id: number;
-  userId: number;
-  firstName: string | null;
-  lastName: string | null;
-  content: string;
-  createdAt: string; // ISO string
-  isOwn: boolean;
-  reactions: ReactionGroup[];
+  id: number
+  userId: number
+  firstName: string | null
+  lastName: string | null
+  content: string
+  createdAt: string // ISO string
+  isOwn: boolean
+  reactions: ReactionGroup[]
 }
 
 export interface ChatGroupDisplay {
-  id: number;
-  name: string;
-  isDefault: boolean;
-  memberCount: number;
+  id: number
+  name: string
+  isDefault: boolean
+  memberCount: number
 }
 
 export interface TickerPick {
-  pickNumber: number; // overall pick number
-  round: number;
-  pickInRound: number; // pick within the round
-  teamName: string;
-  playerName: string | null;
-  position: string | null;
-  athleteId?: string | null; // ESPN athlete id, when available
-  hasWriteup?: boolean; // true when an AI writeup is cached for this pick
+  pickNumber: number // overall pick number
+  round: number
+  pickInRound: number // pick within the round
+  teamName: string
+  playerName: string | null
+  position: string | null
+  athleteId?: string | null // ESPN athlete id, when available
+  hasWriteup?: boolean // true when an AI writeup is cached for this pick
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function shortName(first: string | null, last: string | null): string {
   if (first && last) {
-    return `${first} ${last.charAt(0)}.`;
+    return `${first} ${last.charAt(0)}.`
   }
-  return first || last || 'Anon';
+  return first || last || 'Anon'
 }
 
 function formatTime(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  const d = new Date(iso)
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 || 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
 function initials(first: string | null, last: string | null): string {
-  const f = first?.charAt(0)?.toUpperCase() || '';
-  const l = last?.charAt(0)?.toUpperCase() || '';
-  return f + l || '?';
+  const f = first?.charAt(0)?.toUpperCase() || ''
+  const l = last?.charAt(0)?.toUpperCase() || ''
+  return f + l || '?'
 }
 
 // ─── Quick reaction emojis ───────────────────────────────────────────────────
 
-const QUICK_REACTIONS = ['👍', '😂', '🔥', '❤️', '😱', '💯'];
+const QUICK_REACTIONS = ['👍', '😂', '🔥', '❤️', '😱', '💯']
 
 // ─── Reactions display below a message ───────────────────────────────────────
 
-export function messageReactionsFragment(messageId: number, reactions: ReactionGroup[], _year?: number): string {
+export function messageReactionsFragment(
+  messageId: number,
+  reactions: ReactionGroup[],
+  _year?: number
+): string {
   if (reactions.length === 0) {
-    return `<div id="reactions-${messageId}" class="msg-reactions"></div>`;
+    return `<div id="reactions-${messageId}" class="msg-reactions"></div>`
   }
 
   const pills = reactions
     .map((r) => {
       const activeClass = r.currentUserReacted
         ? 'bg-blue-900/40 border-blue-500/50'
-        : 'bg-slate-800 border-slate-600 hover:border-slate-500';
-      const tooltip = r.names.join(', ');
+        : 'bg-slate-800 border-slate-600 hover:border-slate-500'
+      const tooltip = r.names.join(', ')
       return `<button type="button"
         class="react-btn inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-xs transition-colors ${activeClass}"
         data-msg-id="${messageId}" data-emoji="${r.emoji}"
         title="${escapeHtml(tooltip)}">
         <span>${r.emoji}</span><span class="text-slate-400">${r.count}</span>
-      </button>`;
+      </button>`
     })
-    .join('');
+    .join('')
 
-  return `<div id="reactions-${messageId}" class="msg-reactions flex flex-wrap gap-1 mt-1">${pills}</div>`;
+  return `<div id="reactions-${messageId}" class="msg-reactions flex flex-wrap gap-1 mt-1">${pills}</div>`
 }
 
 function inlineReactions(m: ChatMessageDisplay): string {
   if (m.reactions.length === 0) {
-    return `<div id="reactions-${m.id}" class="msg-reactions"></div>`;
+    return `<div id="reactions-${m.id}" class="msg-reactions"></div>`
   }
   // Use 0 for year since inline reactions don't need a year for the toggle endpoint
-  return messageReactionsFragment(m.id, m.reactions, 0);
+  return messageReactionsFragment(m.id, m.reactions, 0)
 }
 
 // ─── Single message bubble ───────────────────────────────────────────────────
 
 export function chatSingleMessageFragment(m: ChatMessageDisplay): string {
-  const time = formatTime(m.createdAt);
-  const name = shortName(m.firstName, m.lastName);
-  const ini = initials(m.firstName, m.lastName);
+  const time = formatTime(m.createdAt)
+  const name = shortName(m.firstName, m.lastName)
+  const ini = initials(m.firstName, m.lastName)
 
   const reactionBar = `<div class="react-bar hidden absolute ${m.isOwn ? 'left-0 -translate-x-full pr-1' : 'right-0 translate-x-full pl-1'} top-0 z-10">
     <div class="flex gap-0.5 bg-slate-900 border border-slate-600 rounded-full px-1.5 py-1 shadow-lg">
       ${QUICK_REACTIONS.map((e) => `<button type="button" class="react-quick w-6 h-6 flex items-center justify-center rounded-full hover:bg-slate-700 text-sm transition-colors" data-msg-id="${m.id}" data-emoji="${e}">${e}</button>`).join('')}
     </div>
-  </div>`;
+  </div>`
 
   if (m.isOwn) {
     return `
@@ -126,7 +130,7 @@ export function chatSingleMessageFragment(m: ChatMessageDisplay): string {
         ${inlineReactions(m)}
         <p class="text-[10px] text-slate-500 text-right mt-0.5 pr-1">${time}</p>
       </div>
-    </div>`;
+    </div>`
   }
 
   return `
@@ -143,58 +147,58 @@ export function chatSingleMessageFragment(m: ChatMessageDisplay): string {
       ${inlineReactions(m)}
       <p class="text-[10px] text-slate-500 mt-0.5 pl-1">${time}</p>
     </div>
-  </div>`;
+  </div>`
 }
 
 // ─── Messages fragment (polling endpoint returns this) ───────────────────────
 
 export function chatMessagesFragment(messages: ChatMessageDisplay[]): string {
-  return messages.map((m) => chatSingleMessageFragment(m)).join('');
+  return messages.map((m) => chatSingleMessageFragment(m)).join('')
 }
 
 // ─── NFL team metadata ───────────────────────────────────────────────────────
 
 interface TeamMeta {
-  abbr: string;
-  primary: string; // bg color
-  secondary: string; // text/accent color
-  espnId: string; // ESPN team ID for logo URL
+  abbr: string
+  primary: string // bg color
+  secondary: string // text/accent color
+  espnId: string // ESPN team ID for logo URL
 }
 
 const NFL_TEAMS: Record<string, TeamMeta> = {
-  'Arizona Cardinals': {abbr: 'ARI', primary: '#97233F', secondary: '#FFB612', espnId: '22'},
-  'Atlanta Falcons': {abbr: 'ATL', primary: '#A71930', secondary: '#000000', espnId: '1'},
-  'Baltimore Ravens': {abbr: 'BAL', primary: '#241773', secondary: '#9E7C0C', espnId: '33'},
-  'Buffalo Bills': {abbr: 'BUF', primary: '#00338D', secondary: '#C60C30', espnId: '2'},
-  'Carolina Panthers': {abbr: 'CAR', primary: '#0085CA', secondary: '#101820', espnId: '29'},
-  'Chicago Bears': {abbr: 'CHI', primary: '#0B162A', secondary: '#C83803', espnId: '3'},
-  'Cincinnati Bengals': {abbr: 'CIN', primary: '#FB4F14', secondary: '#000000', espnId: '4'},
-  'Cleveland Browns': {abbr: 'CLE', primary: '#311D00', secondary: '#FF3C00', espnId: '5'},
-  'Dallas Cowboys': {abbr: 'DAL', primary: '#003594', secondary: '#869397', espnId: '6'},
-  'Denver Broncos': {abbr: 'DEN', primary: '#FB4F14', secondary: '#002244', espnId: '7'},
-  'Detroit Lions': {abbr: 'DET', primary: '#0076B6', secondary: '#B0B7BC', espnId: '8'},
-  'Green Bay Packers': {abbr: 'GB', primary: '#203731', secondary: '#FFB612', espnId: '9'},
-  'Houston Texans': {abbr: 'HOU', primary: '#03202F', secondary: '#A71930', espnId: '34'},
-  'Indianapolis Colts': {abbr: 'IND', primary: '#002C5F', secondary: '#A2AAAD', espnId: '11'},
-  'Jacksonville Jaguars': {abbr: 'JAX', primary: '#006778', secondary: '#D7A22A', espnId: '30'},
-  'Kansas City Chiefs': {abbr: 'KC', primary: '#E31837', secondary: '#FFB81C', espnId: '12'},
-  'Las Vegas Raiders': {abbr: 'LV', primary: '#000000', secondary: '#A5ACAF', espnId: '13'},
-  'Los Angeles Chargers': {abbr: 'LAC', primary: '#0080C6', secondary: '#FFC20E', espnId: '24'},
-  'Los Angeles Rams': {abbr: 'LAR', primary: '#003594', secondary: '#FFA300', espnId: '14'},
-  'Miami Dolphins': {abbr: 'MIA', primary: '#008E97', secondary: '#FC4C02', espnId: '15'},
-  'Minnesota Vikings': {abbr: 'MIN', primary: '#4F2683', secondary: '#FFC62F', espnId: '16'},
-  'New England Patriots': {abbr: 'NE', primary: '#002244', secondary: '#C60C30', espnId: '17'},
-  'New Orleans Saints': {abbr: 'NO', primary: '#D3BC8D', secondary: '#101820', espnId: '18'},
-  'New York Giants': {abbr: 'NYG', primary: '#0B2265', secondary: '#A71930', espnId: '19'},
-  'New York Jets': {abbr: 'NYJ', primary: '#125740', secondary: '#FFFFFF', espnId: '20'},
-  'Philadelphia Eagles': {abbr: 'PHI', primary: '#004C54', secondary: '#A5ACAF', espnId: '21'},
-  'Pittsburgh Steelers': {abbr: 'PIT', primary: '#FFB612', secondary: '#101820', espnId: '23'},
-  'San Francisco 49ers': {abbr: 'SF', primary: '#AA0000', secondary: '#B3995D', espnId: '25'},
-  'Seattle Seahawks': {abbr: 'SEA', primary: '#002244', secondary: '#69BE28', espnId: '26'},
-  'Tampa Bay Buccaneers': {abbr: 'TB', primary: '#D50A0A', secondary: '#FF7900', espnId: '27'},
-  'Tennessee Titans': {abbr: 'TEN', primary: '#0C2340', secondary: '#4B92DB', espnId: '10'},
-  'Washington Commanders': {abbr: 'WSH', primary: '#5A1414', secondary: '#FFB612', espnId: '28'},
-};
+  'Arizona Cardinals': { abbr: 'ARI', primary: '#97233F', secondary: '#FFB612', espnId: '22' },
+  'Atlanta Falcons': { abbr: 'ATL', primary: '#A71930', secondary: '#000000', espnId: '1' },
+  'Baltimore Ravens': { abbr: 'BAL', primary: '#241773', secondary: '#9E7C0C', espnId: '33' },
+  'Buffalo Bills': { abbr: 'BUF', primary: '#00338D', secondary: '#C60C30', espnId: '2' },
+  'Carolina Panthers': { abbr: 'CAR', primary: '#0085CA', secondary: '#101820', espnId: '29' },
+  'Chicago Bears': { abbr: 'CHI', primary: '#0B162A', secondary: '#C83803', espnId: '3' },
+  'Cincinnati Bengals': { abbr: 'CIN', primary: '#FB4F14', secondary: '#000000', espnId: '4' },
+  'Cleveland Browns': { abbr: 'CLE', primary: '#311D00', secondary: '#FF3C00', espnId: '5' },
+  'Dallas Cowboys': { abbr: 'DAL', primary: '#003594', secondary: '#869397', espnId: '6' },
+  'Denver Broncos': { abbr: 'DEN', primary: '#FB4F14', secondary: '#002244', espnId: '7' },
+  'Detroit Lions': { abbr: 'DET', primary: '#0076B6', secondary: '#B0B7BC', espnId: '8' },
+  'Green Bay Packers': { abbr: 'GB', primary: '#203731', secondary: '#FFB612', espnId: '9' },
+  'Houston Texans': { abbr: 'HOU', primary: '#03202F', secondary: '#A71930', espnId: '34' },
+  'Indianapolis Colts': { abbr: 'IND', primary: '#002C5F', secondary: '#A2AAAD', espnId: '11' },
+  'Jacksonville Jaguars': { abbr: 'JAX', primary: '#006778', secondary: '#D7A22A', espnId: '30' },
+  'Kansas City Chiefs': { abbr: 'KC', primary: '#E31837', secondary: '#FFB81C', espnId: '12' },
+  'Las Vegas Raiders': { abbr: 'LV', primary: '#000000', secondary: '#A5ACAF', espnId: '13' },
+  'Los Angeles Chargers': { abbr: 'LAC', primary: '#0080C6', secondary: '#FFC20E', espnId: '24' },
+  'Los Angeles Rams': { abbr: 'LAR', primary: '#003594', secondary: '#FFA300', espnId: '14' },
+  'Miami Dolphins': { abbr: 'MIA', primary: '#008E97', secondary: '#FC4C02', espnId: '15' },
+  'Minnesota Vikings': { abbr: 'MIN', primary: '#4F2683', secondary: '#FFC62F', espnId: '16' },
+  'New England Patriots': { abbr: 'NE', primary: '#002244', secondary: '#C60C30', espnId: '17' },
+  'New Orleans Saints': { abbr: 'NO', primary: '#D3BC8D', secondary: '#101820', espnId: '18' },
+  'New York Giants': { abbr: 'NYG', primary: '#0B2265', secondary: '#A71930', espnId: '19' },
+  'New York Jets': { abbr: 'NYJ', primary: '#125740', secondary: '#FFFFFF', espnId: '20' },
+  'Philadelphia Eagles': { abbr: 'PHI', primary: '#004C54', secondary: '#A5ACAF', espnId: '21' },
+  'Pittsburgh Steelers': { abbr: 'PIT', primary: '#FFB612', secondary: '#101820', espnId: '23' },
+  'San Francisco 49ers': { abbr: 'SF', primary: '#AA0000', secondary: '#B3995D', espnId: '25' },
+  'Seattle Seahawks': { abbr: 'SEA', primary: '#002244', secondary: '#69BE28', espnId: '26' },
+  'Tampa Bay Buccaneers': { abbr: 'TB', primary: '#D50A0A', secondary: '#FF7900', espnId: '27' },
+  'Tennessee Titans': { abbr: 'TEN', primary: '#0C2340', secondary: '#4B92DB', espnId: '10' },
+  'Washington Commanders': { abbr: 'WSH', primary: '#5A1414', secondary: '#FFB612', espnId: '28' },
+}
 
 function getTeamMeta(teamName: string): TeamMeta {
   return (
@@ -204,56 +208,56 @@ function getTeamMeta(teamName: string): TeamMeta {
       secondary: '#9CA3AF',
       espnId: '',
     }
-  );
+  )
 }
 
 function teamLogoUrl(espnId: string): string {
   if (!espnId) {
-    return '';
+    return ''
   }
-  return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${espnId}.png&h=40&w=40`;
+  return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${espnId}.png&h=40&w=40`
 }
 
 // ─── Ticker fragment (ESPN-style horizontal scroll) ─────────────────────────
 
 export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRound = 1): string {
   // Group picks by round
-  const rounds = new Map<number, TickerPick[]>();
+  const rounds = new Map<number, TickerPick[]>()
   for (const p of picks) {
     if (!rounds.has(p.round)) {
-      rounds.set(p.round, []);
+      rounds.set(p.round, [])
     }
-    const arr = rounds.get(p.round) as TickerPick[];
-    arr.push(p);
+    const arr = rounds.get(p.round) as TickerPick[]
+    arr.push(p)
   }
-  const roundNumbers = Array.from(rounds.keys()).sort((a, b) => a - b);
+  const roundNumbers = Array.from(rounds.keys()).sort((a, b) => a - b)
   if (roundNumbers.length === 0) {
-    roundNumbers.push(1);
+    roundNumbers.push(1)
   }
 
   // Show current round's picks
-  const currentPicks = rounds.get(activeRound) ?? [];
-  const onTheClockIdx = currentPicks.findIndex((p) => !p.playerName);
-  const completedInRound = currentPicks.filter((p) => p.playerName).length;
-  const totalInRound = currentPicks.length;
-  const totalCompleted = picks.filter((p) => p.playerName).length;
+  const currentPicks = rounds.get(activeRound) ?? []
+  const onTheClockIdx = currentPicks.findIndex((p) => !p.playerName)
+  const completedInRound = currentPicks.filter((p) => p.playerName).length
+  const totalInRound = currentPicks.length
+  const totalCompleted = picks.filter((p) => p.playerName).length
 
   function teamLogo(team: TeamMeta, size: 'sm' | 'lg'): string {
-    const dim = size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
-    const url = teamLogoUrl(team.espnId);
+    const dim = size === 'lg' ? 'w-10 h-10' : 'w-8 h-8'
+    const url = teamLogoUrl(team.espnId)
     if (url) {
-      return `<img src="${url}" alt="${team.abbr}" class="${dim} shrink-0 object-contain" loading="lazy" />`;
+      return `<img src="${url}" alt="${team.abbr}" class="${dim} shrink-0 object-contain" loading="lazy" />`
     }
-    const textSize = size === 'lg' ? 'text-xs' : 'text-[10px]';
-    return `<div class="${dim} ${textSize} rounded-full flex items-center justify-center font-extrabold shrink-0 border border-white/20" style="background:${team.primary};color:${team.secondary}">${team.abbr}</div>`;
+    const textSize = size === 'lg' ? 'text-xs' : 'text-[10px]'
+    return `<div class="${dim} ${textSize} rounded-full flex items-center justify-center font-extrabold shrink-0 border border-white/20" style="background:${team.primary};color:${team.secondary}">${team.abbr}</div>`
   }
 
   const cards = currentPicks
     .map((p, i) => {
-      const tm = getTeamMeta(p.teamName);
-      const isComplete = !!p.playerName;
-      const isOnClock = i === onTheClockIdx;
-      const ovrLabel = `Rd ${p.round}, Pick ${p.pickInRound} (${p.pickNumber} OVR)`;
+      const tm = getTeamMeta(p.teamName)
+      const isComplete = !!p.playerName
+      const isOnClock = i === onTheClockIdx
+      const ovrLabel = `Rd ${p.round}, Pick ${p.pickInRound} (${p.pickNumber} OVR)`
 
       if (isOnClock) {
         return `
@@ -266,14 +270,14 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
               <div class="text-[10px] text-white/60">${ovrLabel}</div>
             </div>
           </div>
-        </div>`;
+        </div>`
       }
 
       if (isComplete) {
-        const athleteAttr = p.athleteId ? ` data-athlete-id="${escapeHtml(p.athleteId)}"` : '';
+        const athleteAttr = p.athleteId ? ` data-athlete-id="${escapeHtml(p.athleteId)}"` : ''
         const aiBadge = p.hasWriteup
           ? `<span class="absolute top-1 right-1 px-1.5 py-[1px] rounded-full bg-blue-500/25 border border-blue-400/40 text-[8px] font-extrabold text-blue-200 tracking-widest leading-tight" title="AI pick analysis available">AI</span>`
-          : '';
+          : ''
         return `
         <button type="button" class="ticker-card ticker-card-clickable shrink-0 w-36 rounded-lg px-3 py-2 border border-slate-600 relative text-left hover:border-slate-400 transition-colors" data-pick="${p.pickNumber}"${athleteAttr} style="background:linear-gradient(135deg, ${tm.primary}40, ${tm.primary}15)">
           ${aiBadge}
@@ -286,7 +290,7 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
             </div>
           </div>
           <div class="text-[9px] text-slate-500 mt-1">${ovrLabel}</div>
-        </button>`;
+        </button>`
       }
 
       // Future pick
@@ -299,28 +303,28 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
             <div class="text-[10px] text-slate-600">${ovrLabel}</div>
           </div>
         </div>
-      </div>`;
+      </div>`
     })
-    .join('');
+    .join('')
 
   // Round tabs
   const roundTabs = roundNumbers
     .map((r) => {
-      const roundPicks = rounds.get(r) ?? [];
-      const done = roundPicks.filter((p) => p.playerName).length;
-      const isActive = r === activeRound;
+      const roundPicks = rounds.get(r) ?? []
+      const done = roundPicks.filter((p) => p.playerName).length
+      const isActive = r === activeRound
       const cls = isActive
         ? 'bg-slate-600 text-white'
-        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white';
+        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
       // Round tabs use JS to switch (avoid full page reload) by updating the ticker via HTMX
-      return `<button type="button" class="ticker-round-tab px-2.5 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap ${cls}" data-round="${r}">R${r}${done > 0 ? ` <span class="text-slate-500">${done}</span>` : ''}</button>`;
+      return `<button type="button" class="ticker-round-tab px-2.5 py-1 rounded text-[11px] font-medium transition-colors whitespace-nowrap ${cls}" data-round="${r}">R${r}${done > 0 ? ` <span class="text-slate-500">${done}</span>` : ''}</button>`
     })
-    .join('');
+    .join('')
 
   const liveIndicator = isLive
     ? `<span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span></span>
        <span class="text-[10px] font-semibold text-red-400 uppercase tracking-wider">Live</span>`
-    : '';
+    : ''
 
   return `
   <div class="flex items-center gap-2 mb-1.5 flex-wrap">
@@ -338,98 +342,102 @@ export function chatTickerFragment(picks: TickerPick[], isLive = false, activeRo
     <button type="button" class="ticker-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-slate-900/90 border border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors shadow-lg">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
     </button>
-  </div>`;
+  </div>`
 }
 
 // ─── Pick detail modal ──────────────────────────────────────────────────────
 
 export interface PickModalNewsItem {
-  headline: string;
-  description: string;
-  link: string;
-  publishedAt?: string;
+  headline: string
+  description: string
+  link: string
+  publishedAt?: string
 }
 
 export interface PickModalSource {
-  url: string;
-  title?: string;
+  url: string
+  title?: string
 }
 
 export interface PickModalGradeBreakdown {
-  source: string;
-  grade: string | null;
+  source: string
+  grade: string | null
 }
 
 export interface PickModalData {
-  pickNumber: number;
-  round: number;
-  pickInRound: number;
-  teamName: string;
-  playerName: string | null;
-  position: string | null;
-  height: string | null;
-  weight: string | null;
-  college: string | null;
-  collegeAbbr: string | null;
-  headshotUrl: string | null;
-  draftGrade: string | null;
-  positionRank: string | null;
-  overallRank: string | null;
-  espnLink: string | null;
-  news: PickModalNewsItem[];
-  writeup: string | null;
-  writeupSources: PickModalSource[];
-  writeupGeneratedAt: string | null;
-  gradeLetter: string | null;
-  gradeNumeric: string | null;
-  gradeSourceCount: number | null;
-  gradeBreakdown: PickModalGradeBreakdown[];
+  pickNumber: number
+  round: number
+  pickInRound: number
+  teamName: string
+  playerName: string | null
+  position: string | null
+  height: string | null
+  weight: string | null
+  college: string | null
+  collegeAbbr: string | null
+  headshotUrl: string | null
+  draftGrade: string | null
+  positionRank: string | null
+  overallRank: string | null
+  espnLink: string | null
+  news: PickModalNewsItem[]
+  writeup: string | null
+  writeupSources: PickModalSource[]
+  writeupGeneratedAt: string | null
+  gradeLetter: string | null
+  gradeNumeric: string | null
+  gradeSourceCount: number | null
+  gradeBreakdown: PickModalGradeBreakdown[]
 }
 
 function relativeDate(iso?: string): string | null {
   if (!iso) {
-    return null;
+    return null
   }
-  const t = Date.parse(iso);
+  const t = Date.parse(iso)
   if (!Number.isFinite(t)) {
-    return null;
+    return null
   }
-  const diffMs = Date.now() - t;
-  const day = 86_400_000;
+  const diffMs = Date.now() - t
+  const day = 86_400_000
   if (diffMs < day) {
-    const h = Math.max(1, Math.round(diffMs / 3_600_000));
-    return `${h}h ago`;
+    const h = Math.max(1, Math.round(diffMs / 3_600_000))
+    return `${h}h ago`
   }
-  const days = Math.round(diffMs / day);
+  const days = Math.round(diffMs / day)
   if (days < 30) {
-    return `${days}d ago`;
+    return `${days}d ago`
   }
-  return new Date(t).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
+  return new Date(t).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 /** Render the modal body for a pick. Returns the inner content (without backdrop). */
 export function pickModalFragment(d: PickModalData): string {
-  const tm = getTeamMeta(d.teamName);
-  const ovrLabel = `Round ${d.round}, Pick ${d.pickInRound} (${d.pickNumber} OVR)`;
+  const tm = getTeamMeta(d.teamName)
+  const ovrLabel = `Round ${d.round}, Pick ${d.pickInRound} (${d.pickNumber} OVR)`
 
-  const stats: Array<[string, string]> = [];
+  const stats: [string, string][] = []
   if (d.position) {
-    stats.push(['Position', d.position]);
+    stats.push(['Position', d.position])
   }
   if (d.college) {
-    stats.push(['College', d.college]);
+    stats.push(['College', d.college])
   }
   if (d.height) {
-    stats.push(['Height', d.height]);
+    stats.push(['Height', d.height])
   }
   if (d.weight) {
-    stats.push(['Weight', d.weight]);
+    stats.push(['Weight', d.weight])
   }
   if (d.positionRank) {
-    stats.push(['Position rank', `#${d.positionRank}`]);
+    stats.push(['Position rank', `#${d.positionRank}`])
   }
   if (d.overallRank) {
-    stats.push(['Overall rank', `#${d.overallRank}`]);
+    stats.push(['Overall rank', `#${d.overallRank}`])
   }
 
   const statRows = stats
@@ -438,13 +446,13 @@ export function pickModalFragment(d: PickModalData): string {
       <div class="flex justify-between gap-4 py-1.5 border-b border-slate-700 last:border-0">
         <span class="text-xs text-slate-400">${escapeHtml(k)}</span>
         <span class="text-xs font-semibold text-white text-right">${escapeHtml(v)}</span>
-      </div>`,
+      </div>`
     )
-    .join('');
+    .join('')
 
   const headshot = d.headshotUrl
     ? `<img src="${escapeHtml(d.headshotUrl)}" alt="${escapeHtml(d.playerName ?? '')}" class="w-24 h-24 rounded-full object-cover border-2 border-white/20 shrink-0 bg-slate-700" loading="lazy" />`
-    : `<div class="w-24 h-24 rounded-full flex items-center justify-center font-extrabold text-2xl shrink-0 border-2 border-white/20" style="background:${tm.primary};color:${tm.secondary}">${escapeHtml((d.playerName ?? '?').charAt(0))}</div>`;
+    : `<div class="w-24 h-24 rounded-full flex items-center justify-center font-extrabold text-2xl shrink-0 border-2 border-white/20" style="background:${tm.primary};color:${tm.secondary}">${escapeHtml((d.playerName ?? '?').charAt(0))}</div>`
 
   // Prefer the consensus letter grade aggregated across CBS / NFL.com / USA Today / etc.
   // Fall back to the ESPN draft-grade number ("OVR" 0-100) when no consensus is available.
@@ -459,7 +467,7 @@ export function pickModalFragment(d: PickModalData): string {
           <div class="text-[9px] uppercase tracking-wider text-amber-300 font-bold">ESPN Grade</div>
           <div class="text-2xl font-black text-amber-200 leading-none">${escapeHtml(d.draftGrade)}</div>
         </div>`
-      : '';
+      : ''
 
   // Per-source breakdown pills shown inside the writeup section
   const breakdownPills =
@@ -469,43 +477,43 @@ export function pickModalFragment(d: PickModalData): string {
             .filter((b) => b.grade)
             .map(
               (
-                b,
+                b
               ) => `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-600 text-[10px]">
                 <span class="text-slate-400">${escapeHtml(b.source)}</span>
                 <span class="font-bold text-white">${escapeHtml(b.grade ?? '')}</span>
-              </span>`,
+              </span>`
             )
             .join('')}
         </div>`
-      : '';
+      : ''
 
   const writeupBlock = d.writeup
     ? (() => {
-        const generatedWhen = relativeDate(d.writeupGeneratedAt ?? undefined);
+        const generatedWhen = relativeDate(d.writeupGeneratedAt ?? undefined)
         const sourcePills = d.writeupSources
           .slice(0, 6)
           .map((s) => {
-            let host: string;
+            let host: string
             try {
-              host = new URL(s.url).hostname.replace(/^www\./, '');
+              host = new URL(s.url).hostname.replace(/^www\./, '')
             } catch (_) {
-              host = '';
+              host = ''
             }
-            const label = s.title || host || 'source';
+            const label = s.title || host || 'source'
             return `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${escapeHtml(s.title ?? s.url)}"
               class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-700/60 hover:bg-slate-700 border border-slate-600 text-[10px] text-slate-200">
               ${host ? `<span class="text-slate-400">${escapeHtml(host)}</span>` : ''}
               <span class="truncate max-w-[180px]">${escapeHtml(label)}</span>
-            </a>`;
+            </a>`
           })
-          .join('');
+          .join('')
         // Convert the markdown-ish writeup into safe paragraphs
         const paragraphs = d.writeup
           .split(/\n{2,}/)
           .map((p) => p.trim())
           .filter(Boolean)
           .map((p) => `<p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(p)}</p>`)
-          .join('');
+          .join('')
         return `
     <div class="mt-4 p-4 rounded-lg bg-gradient-to-br from-blue-900/30 to-slate-800/60 border border-blue-700/30">
       <div class="flex items-center gap-2 mb-2">
@@ -515,9 +523,9 @@ export function pickModalFragment(d: PickModalData): string {
       <div class="space-y-2">${paragraphs}</div>
       ${breakdownPills}
       ${sourcePills ? `<div class="flex flex-wrap gap-1.5 mt-3">${sourcePills}</div>` : ''}
-    </div>`;
+    </div>`
       })()
-    : '';
+    : ''
 
   const newsBlock =
     d.news.length > 0
@@ -527,7 +535,7 @@ export function pickModalFragment(d: PickModalData): string {
       <div class="space-y-2">
         ${d.news
           .map((n) => {
-            const when = relativeDate(n.publishedAt);
+            const when = relativeDate(n.publishedAt)
             return `
         <a href="${escapeHtml(n.link)}" target="_blank" rel="noopener"
            class="block p-3 rounded-lg bg-slate-800/60 border border-slate-700 hover:border-slate-500 hover:bg-slate-800 transition-colors">
@@ -538,7 +546,7 @@ export function pickModalFragment(d: PickModalData): string {
             ${when ? `<span>·</span><span>${escapeHtml(when)}</span>` : ''}
             <span class="ml-auto text-blue-400">Read →</span>
           </div>
-        </a>`;
+        </a>`
           })
           .join('')}
       </div>
@@ -546,7 +554,7 @@ export function pickModalFragment(d: PickModalData): string {
       : `
     <div class="mt-4 p-3 rounded-lg bg-slate-800/60 border border-slate-700 text-sm text-slate-300">
       No expert commentary indexed for this pick yet.${d.espnLink ? ` <a href="${escapeHtml(d.espnLink)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 underline ml-1">View on ESPN →</a>` : ''}
-    </div>`;
+    </div>`
 
   return `
   <div class="relative max-w-lg w-full mx-auto bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col" style="max-height:calc(100dvh - 2rem)" data-pick-modal-card>
@@ -579,7 +587,7 @@ export function pickModalFragment(d: PickModalData): string {
           : ''
       }
     </div>
-  </div>`;
+  </div>`
 }
 
 /** A standard "no detail available" fragment used when ESPN has no record. */
@@ -592,21 +600,26 @@ export function pickModalEmptyFragment(pickNumber: number, year: number): string
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
     <div class="text-sm text-slate-300">Detail isn't available yet for pick ${pickNumber} of the ${year} draft.</div>
-  </div>`;
+  </div>`
 }
 
 // ─── Group selector bar ──────────────────────────────────────────────────────
 
-export function chatGroupBar(groups: ChatGroupDisplay[], activeGroupId: number, year: number): string {
+export function chatGroupBar(
+  groups: ChatGroupDisplay[],
+  activeGroupId: number,
+  year: number,
+  routePrefix = '/draft'
+): string {
   const pills = groups
     .map((g) => {
-      const isActive = g.id === activeGroupId;
+      const isActive = g.id === activeGroupId
       const cls = isActive
         ? 'bg-slate-600 text-white'
-        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white';
-      return `<a href="/draft/${year}/chat?groupId=${g.id}" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${cls}">${escapeHtml(g.name)}${g.memberCount > 0 ? ` <span class="text-slate-500">${g.memberCount}</span>` : ''}</a>`;
+        : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+      return `<a href="${routePrefix}/${year}/chat?groupId=${g.id}" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${cls}">${escapeHtml(g.name)}${g.memberCount > 0 ? ` <span class="text-slate-500">${g.memberCount}</span>` : ''}</a>`
     })
-    .join('');
+    .join('')
 
   return `
   <div class="flex items-center gap-2 overflow-x-auto pb-1">
@@ -615,27 +628,32 @@ export function chatGroupBar(groups: ChatGroupDisplay[], activeGroupId: number, 
   </div>
   <!-- Inline create-group form (hidden by default) -->
   <form id="create-group-form" class="hidden mt-2 flex gap-2"
-        hx-post="/draft/${year}/chat/groups"
+        hx-post="${routePrefix}/${year}/chat/groups"
         hx-target="body"
         hx-swap="none">
     <input name="name" type="text" placeholder="Group name..." maxlength="50"
            class="flex-1 bg-slate-700 text-white rounded-lg px-3 py-1.5 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-slate-600" autocomplete="off" required />
     <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">Create</button>
     <button type="button" id="create-group-cancel" class="px-2 py-1.5 text-slate-400 hover:text-white text-xs transition-colors">Cancel</button>
-  </form>`;
+  </form>`
 }
 
 // ─── Invite form fragment ────────────────────────────────────────────────────
 
-export function chatInviteSection(groupId: number, year: number, isDefault: boolean): string {
+export function chatInviteSection(
+  groupId: number,
+  year: number,
+  isDefault: boolean,
+  routePrefix = '/draft'
+): string {
   if (isDefault) {
-    return '';
+    return ''
   }
   return `
   <div class="mt-2">
     <button type="button" id="invite-toggle-btn" class="text-xs text-blue-400 hover:text-blue-300 transition-colors">+ Invite someone</button>
     <form id="invite-form" class="hidden mt-1.5 flex gap-2"
-          hx-post="/draft/${year}/chat/groups/${groupId}/invite"
+          hx-post="${routePrefix}/${year}/chat/groups/${groupId}/invite"
           hx-target="#invite-status"
           hx-swap="innerHTML">
       <input name="email" type="email" placeholder="Email address..."
@@ -643,29 +661,97 @@ export function chatInviteSection(groupId: number, year: number, isDefault: bool
       <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">Invite</button>
     </form>
     <div id="invite-status" class="mt-1 text-xs"></div>
-  </div>`;
+  </div>`
 }
 
 // ─── Emoji panel ─────────────────────────────────────────────────────────────
 
-const EMOJI_CATEGORIES: Array<{label: string; emojis: string[]}> = [
+const EMOJI_CATEGORIES: Array<{ label: string; emojis: string[] }> = [
   {
     label: 'Football',
-    emojis: ['🏈', '🏆', '🥇', '🥈', '🥉', '🎯', '💪', '🔥', '⭐', '🏟️', '🎉', '🎊', '📈', '📉', '💯', '🏅'],
+    emojis: [
+      '🏈',
+      '🏆',
+      '🥇',
+      '🥈',
+      '🥉',
+      '🎯',
+      '💪',
+      '🔥',
+      '⭐',
+      '🏟️',
+      '🎉',
+      '🎊',
+      '📈',
+      '📉',
+      '💯',
+      '🏅',
+    ],
   },
   {
     label: 'Reactions',
-    emojis: ['😂', '🤣', '😭', '😱', '🤯', '😤', '🙄', '😎', '🤔', '😬', '🫣', '🤦', '👀', '💀', '🤡', '😈'],
+    emojis: [
+      '😂',
+      '🤣',
+      '😭',
+      '😱',
+      '🤯',
+      '😤',
+      '🙄',
+      '😎',
+      '🤔',
+      '😬',
+      '🫣',
+      '🤦',
+      '👀',
+      '💀',
+      '🤡',
+      '😈',
+    ],
   },
   {
     label: 'Hands',
-    emojis: ['👍', '👎', '👏', '🙌', '🤝', '✊', '👊', '🤙', '✌️', '🫡', '🖐️', '👋', '🤞', '🫶', '💅', '🤷'],
+    emojis: [
+      '👍',
+      '👎',
+      '👏',
+      '🙌',
+      '🤝',
+      '✊',
+      '👊',
+      '🤙',
+      '✌️',
+      '🫡',
+      '🖐️',
+      '👋',
+      '🤞',
+      '🫶',
+      '💅',
+      '🤷',
+    ],
   },
   {
     label: 'People',
-    emojis: ['🧠', '👑', '🐐', '🦅', '🐻', '🦁', '🐬', '🐴', '🐏', '🐆', '🦬', '🐦', '🐯', '🦈', '⚡', '🌪️'],
+    emojis: [
+      '🧠',
+      '👑',
+      '🐐',
+      '🦅',
+      '🐻',
+      '🦁',
+      '🐬',
+      '🐴',
+      '🐏',
+      '🐆',
+      '🦬',
+      '🐦',
+      '🐯',
+      '🦈',
+      '⚡',
+      '🌪️',
+    ],
   },
-];
+]
 
 function emojiPanelHtml(): string {
   const cats = EMOJI_CATEGORIES.map(
@@ -673,13 +759,30 @@ function emojiPanelHtml(): string {
     <div class="mb-2">
       <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1 px-1">${cat.label}</p>
       <div class="grid grid-cols-8 gap-0.5">${cat.emojis.map((e) => `<button type="button" class="emoji-pick w-8 h-8 flex items-center justify-center rounded hover:bg-slate-600 text-lg transition-colors cursor-pointer" data-emoji="${e}">${e}</button>`).join('')}</div>
-    </div>`,
-  ).join('');
+    </div>`
+  ).join('')
 
   return `
   <div id="emoji-panel" class="hidden absolute bottom-full mb-2 left-0 z-50 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-3 w-72 max-h-64 overflow-y-auto">
     ${cats}
-  </div>`;
+  </div>`
+}
+
+function fantasyChatTopBar(year: number): string {
+  return `
+  <header class="shrink-0 border-b border-slate-700 bg-slate-900">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div>
+        <a href="/apps" class="text-[10px] uppercase tracking-[0.3em] text-slate-500 hover:text-white">← Apps</a>
+        <h1 class="text-lg font-extrabold tracking-tight text-white">UCSB Legacy</h1>
+        <p class="text-[10px] text-slate-500">Season ${year} message board</p>
+      </div>
+      <nav class="flex gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        <a href="/fantasy/season/${year}" class="hover:text-white">Season</a>
+        <a href="/fantasy" class="hover:text-white">Managers</a>
+      </nav>
+    </div>
+  </header>`
 }
 
 // ─── Full chat page ──────────────────────────────────────────────────────────
@@ -688,15 +791,33 @@ export function chatPage(
   messages: ChatMessageDisplay[],
   groups: ChatGroupDisplay[],
   activeGroupId: number,
-  activeGroup: {id: number; name: string; isDefault: boolean},
-  ticker: {picks: TickerPick[]; draftLive: boolean; mockActive: boolean; currentRound: number},
+  activeGroup: { id: number; name: string; isDefault: boolean },
+  ticker: { picks: TickerPick[]; draftLive: boolean; mockActive: boolean; currentRound: number },
   year: number,
-  currentUserId: number,
+  _currentUserId: number,
   clerkPublishableKey?: string,
   isAdmin = false,
+  options: {
+    routePrefix?: string
+    appTitle?: string
+    showTicker?: boolean
+  } = {}
 ): string {
-  const isLive = ticker.draftLive || ticker.mockActive;
-  const lastId = messages.length > 0 ? messages[messages.length - 1].id : 0;
+  const isLive = ticker.draftLive || ticker.mockActive
+  const lastId = messages.length > 0 ? messages[messages.length - 1].id : 0
+  const routePrefix = options.routePrefix ?? '/draft'
+  const appTitle = options.appTitle ?? `NFL Draft ${year}`
+  const showTicker = options.showTicker ?? true
+  const topBar = showTicker ? draftTopBar(year, 'chat', isAdmin) : fantasyChatTopBar(year)
+  const tickerHtml = showTicker
+    ? `<div id="chat-ticker" class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg px-3 py-2" data-year="${year}"
+               hx-get="${routePrefix}/${year}/ticker"
+               hx-trigger="every ${isLive ? '10' : '30'}s"
+               hx-swap="innerHTML"
+               data-current-round="${ticker.currentRound}">
+            ${chatTickerFragment(ticker.picks, isLive, ticker.currentRound)}
+          </div>`
+    : ''
 
   const messagesHtml =
     messages.length > 0
@@ -705,7 +826,7 @@ export function chatPage(
           <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mb-3 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0m-12.375 0c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9a8.96 8.96 0 01-4.998-1.516L3.75 20.25l1.766-4.248A8.96 8.96 0 013.75 12z" /></svg>
           <p class="text-sm font-medium">No messages yet</p>
           <p class="text-xs mt-1">Start the conversation!</p>
-        </div>`;
+        </div>`
 
   const content = `
   <style>
@@ -714,7 +835,7 @@ export function chatPage(
     .ticker-scroll::-webkit-scrollbar { display: none; }
   </style>
   <div class="bg-slate-800 text-gray-100 flex flex-col overflow-hidden" style="height:100dvh">
-    ${draftTopBar(year, 'chat', isAdmin)}
+    ${topBar}
     <div class="flex-1 flex flex-col min-h-0 max-w-4xl w-full mx-auto px-4 pt-3 pb-4">
 
       <!-- Scrollable messages area; ticker sticks to top so older messages scroll behind it -->
@@ -723,18 +844,12 @@ export function chatPage(
         <!-- Sticky header: group selector + ticker -->
         <div class="sticky top-0 z-20 bg-slate-800 pb-2 -mx-1 px-1">
           <div class="mb-2">
-            ${chatGroupBar(groups, activeGroupId, year)}
-            ${chatInviteSection(activeGroup.id, year, activeGroup.isDefault)}
+            ${chatGroupBar(groups, activeGroupId, year, routePrefix)}
+            ${chatInviteSection(activeGroup.id, year, activeGroup.isDefault, routePrefix)}
           </div>
 
           <!-- Draft ticker — polls every 10s when live, 30s otherwise -->
-          <div id="chat-ticker" class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg px-3 py-2" data-year="${year}"
-               hx-get="/draft/${year}/ticker"
-               hx-trigger="every ${isLive ? '10' : '30'}s"
-               hx-swap="innerHTML"
-               data-current-round="${ticker.currentRound}">
-            ${chatTickerFragment(ticker.picks, isLive, ticker.currentRound)}
-          </div>
+          ${tickerHtml}
         </div>
 
         <div id="chat-messages" class="py-2">
@@ -742,7 +857,7 @@ export function chatPage(
         </div>
         <!-- Polling sentinel -->
         <div id="chat-poll"
-             hx-get="/draft/${year}/chat/messages?groupId=${activeGroupId}&afterId=${lastId}"
+             hx-get="${routePrefix}/${year}/chat/messages?groupId=${activeGroupId}&afterId=${lastId}"
              hx-trigger="every 4s"
              hx-target="#chat-messages"
              hx-swap="beforeend">
@@ -752,7 +867,7 @@ export function chatPage(
       <!-- Input area -->
       <div class="shrink-0 border-t border-slate-700 pt-3 mt-1">
         <form id="chat-send-form"
-              hx-post="/draft/${year}/chat/send"
+              hx-post="${routePrefix}/${year}/chat/send"
               hx-target="#chat-messages"
               hx-swap="beforeend">
           <input type="hidden" name="groupId" value="${activeGroupId}">
@@ -983,7 +1098,8 @@ export function chatPage(
     }
 
     // ─── Reactions: quick bar + existing reaction pills ───
-    var DRAFT_YEAR = ${year};
+    var CHAT_YEAR = ${year};
+    var CHAT_BASE = ${JSON.stringify(routePrefix)};
     document.addEventListener('click', function(e) {
       var quickBtn = e.target.closest('.react-quick');
       var reactBtn = e.target.closest('.react-btn');
@@ -996,7 +1112,7 @@ export function chatPage(
 
       // POST to toggle reaction
       var token = window.__clerkToken;
-      fetch('/draft/' + DRAFT_YEAR + '/chat/react', {
+      fetch(CHAT_BASE + '/' + CHAT_YEAR + '/chat/react', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -1029,7 +1145,7 @@ export function chatPage(
     // ─── Clerk auth token for HTMX ───
     // Already handled by the global htmx:configRequest listener in baseLayout
   })();
-  </script>`;
+  </script>`
 
-  return baseLayout(content, `Chat — NFL Draft ${year}`, clerkPublishableKey);
+  return baseLayout(content, `Chat — ${appTitle}`, clerkPublishableKey)
 }
