@@ -25,7 +25,9 @@ import {
   type SleeperNflPlayer,
   type SleeperUser,
 } from './sleeper-client.js';
-import {scoreStats} from './fantasy-projections.js';
+import {scoreStats, type SourceProjRow} from './fantasy-projections.js';
+import {fetchEspnWeeklyProjections} from './espn-projections.js';
+import {fetchFantasyProsWeeklyProjections} from './fantasypros-projections.js';
 
 const MAX_WEEK = 18;
 const CHUNK = 200;
@@ -448,6 +450,37 @@ async function ingestSeasonProjections(
   return counts.reduce((s, c) => s + c, 0);
 }
 
+async function insertProjectionRows(db: Db, rows: SourceProjRow[]): Promise<number> {
+  if (rows.length === 0) {
+    return 0;
+  }
+  const uniq = new Map<string, SourceProjRow>();
+  for (const r of rows) {
+    uniq.set(`${r.season}|${r.week}|${r.playerId}|${r.source}`, r);
+  }
+  const withTs = [...uniq.values()].map((r) => ({...r, updatedAt: new Date()}));
+  await insertChunks(withTs, (chunk) =>
+    db
+      .insert(fantasyProjections)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [
+          fantasyProjections.season,
+          fantasyProjections.week,
+          fantasyProjections.playerId,
+          fantasyProjections.source,
+        ],
+        set: {
+          opponent: sql`excluded.opponent`,
+          stats: sql`excluded.stats`,
+          pts: sql`excluded.pts`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      }),
+  );
+  return rows.length;
+}
+
 export async function ingestSleeperLeague(
   startLeagueId: string = process.env.SLEEPER_LEAGUE_ID || UCSB_LEGACY_LEAGUE_ID,
   opts: {refreshPlayers?: boolean; refreshProjections?: boolean} = {},
@@ -508,7 +541,22 @@ export async function ingestSleeperLeague(
   if (opts.refreshProjections !== false) {
     for (const job of projectionJobs) {
       console.log(`[sleeper-ingest] ${job.season} weekly projections for ${job.playerIds.length} drafted players…`);
+      const sleeperIds = new Set(job.playerIds);
       totals.projections += await ingestSeasonProjections(db, job.season, job.playerIds, job.scoring);
+      try {
+        const espn = await fetchEspnWeeklyProjections(job.season, job.scoring, sleeperIds);
+        console.log(`[sleeper-ingest] ${job.season} ESPN weekly rows ${espn.length}`);
+        totals.projections += await insertProjectionRows(db, espn);
+      } catch (err) {
+        console.log('[sleeper-ingest] ESPN projections failed', err instanceof Error ? err.message : err);
+      }
+      try {
+        const fp = await fetchFantasyProsWeeklyProjections(job.season, job.scoring, sleeperIds);
+        console.log(`[sleeper-ingest] ${job.season} FantasyPros weekly rows ${fp.length}`);
+        totals.projections += await insertProjectionRows(db, fp);
+      } catch (err) {
+        console.log('[sleeper-ingest] FantasyPros projections failed', err instanceof Error ? err.message : err);
+      }
     }
   }
 

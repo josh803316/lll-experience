@@ -127,6 +127,36 @@ export function projectedWeeklyScores(
   return rows;
 }
 
+export interface SourceProjRow {
+  season: number;
+  week: number;
+  playerId: string;
+  source: string;
+  opponent: string | null;
+  stats: Record<string, number>;
+  pts: number;
+}
+
+export function blendWeeklyPts(
+  rows: {season: number; week: number; playerId: string; pts: number}[],
+  season: number,
+): ProjWeekPts[] {
+  const bag = new Map<string, number[]>();
+  for (const r of rows) {
+    if (r.season !== season) {
+      continue;
+    }
+    const key = `${r.week}|${r.playerId}`;
+    const list = bag.get(key) ?? [];
+    list.push(r.pts);
+    bag.set(key, list);
+  }
+  return [...bag.entries()].map(([key, pts]) => {
+    const [week, playerId] = key.split('|');
+    return {week: Number(week), playerId, pts: pts.reduce((s, n) => s + n, 0) / pts.length};
+  });
+}
+
 export function sumProjectedPts(weeklyPts: ProjWeekPts[], playerId: string): number {
   let t = 0;
   for (const w of weeklyPts) {

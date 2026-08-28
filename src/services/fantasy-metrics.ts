@@ -134,16 +134,19 @@ export function scoreDraftPicks(
     };
   });
 
-  const posFpts = new Map<string, number>();
-  const posDollars = new Map<string, number>();
+  const byPos = new Map<string, {amount: number; fpts: number}[]>();
   for (const p of prelim) {
-    posFpts.set(p.position, (posFpts.get(p.position) ?? 0) + p.fpts);
-    posDollars.set(p.position, (posDollars.get(p.position) ?? 0) + p.amount);
+    const list = byPos.get(p.position) ?? [];
+    list.push({amount: p.amount, fpts: p.fpts});
+    byPos.set(p.position, list);
+  }
+  const expectedAt = new Map<string, (amount: number) => number>();
+  for (const [pos, samples] of byPos) {
+    expectedAt.set(pos, expectedFptsFromSpend(samples));
   }
 
   return prelim.map((p) => {
-    const dollars = posDollars.get(p.position) ?? 0;
-    const rate = dollars > 0 ? (posFpts.get(p.position) ?? 0) / dollars : 0;
+    const expected = expectedAt.get(p.position)?.(p.amount) ?? 0;
     return {
       playerId: p.playerId,
       rosterId: p.rosterId,
@@ -153,11 +156,43 @@ export function scoreDraftPicks(
       position: p.position,
       fpts: p.fpts,
       value: p.value,
-      surplus: p.fpts - p.amount * rate,
+      surplus: p.fpts - expected,
       late: p.late,
       bucket: p.bucket,
     };
   });
+}
+
+/** FPTS ~ a + b·ln($) fit on this position’s auction. Not linear pts/$. */
+export function expectedFptsFromSpend(samples: {amount: number; fpts: number}[]): (amount: number) => number {
+  if (samples.length === 0) {
+    return () => 0;
+  }
+  if (samples.length < 3) {
+    const m = median(samples.map((s) => s.fpts));
+    return () => m;
+  }
+  const xs = samples.map((s) => Math.log(Math.max(s.amount, 1)));
+  const ys = samples.map((s) => s.fpts);
+  const n = samples.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += xs[i];
+    sumY += ys[i];
+    sumXY += xs[i] * ys[i];
+    sumXX += xs[i] * xs[i];
+  }
+  const denom = n * sumXX - sumX * sumX;
+  if (Math.abs(denom) < 1e-9) {
+    const m = median(ys);
+    return () => m;
+  }
+  const b = (n * sumXY - sumX * sumY) / denom;
+  const a = (sumY - b * sumX) / n;
+  return (amount: number) => Math.max(0, a + b * Math.log(Math.max(amount, 1)));
 }
 
 const LETTER_BANDS = ['A', 'B', 'C', 'D', 'F'] as const;

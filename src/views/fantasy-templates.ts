@@ -51,7 +51,7 @@ const TIPS = {
   draftGrade:
     'We add every pick’s surplus, then rank GMs. Top fifth A, then B, C, D, F. After the auction and before games, that uses projected best-ball (RotoWire weekly stats × UCSB scoring), labeled proj. Once weeks are scored, actual FPTS replace it.',
   surplus:
-    'Season FPTS minus (auction $ × that position’s pts per dollar in this league). Before weeks are scored, FPTS is RotoWire weekly stats run through UCSB scoring (Projected). A cheap pick is only a bargain if he beats the going rate.',
+    'Surplus vs what this league paid at that position for that $ (log spend curve), not linear pts/$. A $1 dart is not automatically better than a $55 QB. Before weeks are scored, FPTS is blended weekly projections (RotoWire/ESPN/FantasyPros) run through UCSB scoring.',
   ptsPerDollar: 'Season FPTS divided by auction dollars paid.',
   late: 'Points from auction picks in the last three rounds, or that cost $2 or less.',
   wire: 'Points scored for you by waiver/FA adds, from add week through drop (or season end). Trades do not count.',
@@ -84,7 +84,7 @@ function howWeScore(): string {
         </div>
         <div>
           <dt class="font-bold">Draft grade</dt>
-          <dd class="text-muted mt-1">Each pick’s surplus is added up, then GMs are ranked. Top fifth A, then B, C, D, F. Before any week is played, <strong class="text-accent font-bold">proj</strong> means RotoWire weekly stats scored with this league’s PPR/best-ball settings — not ESPN+PFF ranks, not actual football. Real weeks replace it as they finish.</dd>
+          <dd class="text-muted mt-1">Each pick’s surplus is vs expected production at that spend <em>and position</em> in this auction (not “pts per dollar,” which makes $1 hits look like genius and Allen look like a bust). Ranked A–F among GMs. <strong class="text-accent font-bold">proj</strong> blends RotoWire + ESPN + FantasyPros weekly stats through UCSB scoring until real weeks land.</dd>
         </div>
         <div>
           <dt class="font-bold">Are cheap picks bargains if they score?</dt>
@@ -432,7 +432,7 @@ export function fantasySeasonPage(
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-3xl font-bold tracking-tighter">${year} standings</h2>
-          <p class="text-sm text-muted">${summary.teamCount} teams · ${escapeHtml(summary.status)}${preDraft ? ' — auction has not started on Sleeper yet' : ''}${standings.some((s) => s.projected) ? ' · W-L / PF / Grade are <span class="text-accent">projected</span> (RotoWire weekly × UCSB scoring) until weeks are played' : ''}</p>
+          <p class="text-sm text-muted">${summary.teamCount} teams · ${escapeHtml(summary.status)}${preDraft ? ' — auction has not started on Sleeper yet' : ''}${standings.some((s) => s.projected) ? ' · W-L / PF / Grade are <span class="text-accent">projected</span> (RotoWire+ESPN+FantasyPros weekly × UCSB scoring; surplus vs positional spend, not pts/$) until weeks are played' : ''}</p>
         </div>
         <div class="flex gap-3 text-sm font-bold">
           <a class="text-accent hover:underline" href="/fantasy/draft/${year}">Auction →</a>
@@ -499,7 +499,7 @@ export function fantasyDraftPage(
                <div class="card-paper rounded-lg p-6 text-muted italic">Draft opens on Sleeper — this page fills after ingest.</div>`
             : `<h2 class="text-3xl font-bold tracking-tighter">${year} auction</h2>
                ${howWeScore()}
-               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). Before weeks are scored, FPTS/surplus are <span class="text-accent">projected</span> from RotoWire weekly stats run through this league’s scoring. PFF is overlay, not the sort.</p>
+               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). Surplus is vs expected FPTS at that $ and position in this room (log spend curve) — a $1 average guy is not automatically a better pick than Allen. Before weeks are scored, FPTS are blended weekly projections. PFF is overlay, not the sort.</p>
                <div class="card-paper rounded-lg overflow-x-auto">
                  <table class="w-min min-w-full text-sm">
                    <thead class="bg-black/[0.03]"><tr>
