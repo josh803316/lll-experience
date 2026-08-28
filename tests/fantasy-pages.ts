@@ -57,7 +57,7 @@ test('UCSB Legacy app card and GM lab pages', async ({page}) => {
   await page.getByRole('button', {name: 'What PF/week means'}).first().click();
   await expect(page.getByRole('tooltip')).toContainText('average best-ball score');
   await page.getByRole('button', {name: 'What Grade means'}).first().click();
-  await expect(page.getByRole('tooltip')).toContainText('Top fifth get A');
+  await expect(page.getByRole('tooltip')).toContainText('Top fifth A');
 
   await page.goto(`${SITE_URL}/fantasy/season/2025`);
   await expect(page.getByRole('heading', {name: '2025 standings'})).toBeVisible();
@@ -84,7 +84,12 @@ test('UCSB Legacy app card and GM lab pages', async ({page}) => {
   await expect(page.getByText('6 teams')).toBeVisible();
 
   await page.goto(`${SITE_URL}/fantasy/season/2026`, {timeout: 60000});
-  await expect(page.getByText('auction has not started')).toBeVisible({timeout: 15000});
+  await expect(page.getByRole('heading', {name: '2026 standings'})).toBeVisible();
+  await expect(page.locator('body')).toContainText('projected');
+
+  await page.goto(`${SITE_URL}/fantasy/draft/2026`, {timeout: 60000});
+  await expect(page.getByRole('heading', {name: '2026 auction'})).toBeVisible();
+  await expect(page.getByText('Puka Nacua')).toBeVisible();
 
   await page.goto(`${SITE_URL}/fantasy`, {timeout: 60000});
   await page.screenshot({path: 'test-results/fantasy-desktop.png', fullPage: false});

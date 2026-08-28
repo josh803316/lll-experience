@@ -120,6 +120,13 @@
       "when": 1787850133783,
       "tag": "0016_thin_goblin_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787930434041,
+      "tag": "0017_salty_hellion",
+      "breakpoints": true
     }
   ]
 }

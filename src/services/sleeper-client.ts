@@ -133,6 +133,26 @@ export function combineFpts(whole?: number, decimal?: number): number {
   return (whole ?? 0) + (decimal ?? 0) / 100;
 }
 
+export interface SleeperWeeklyProjection {
+  player_id: string;
+  week: number;
+  season?: string;
+  opponent?: string | null;
+  company?: string | null;
+  category?: string | null;
+  stats?: Record<string, number> | null;
+}
+
+async function sleeperGetUrl<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    headers: {'User-Agent': 'lll-experience-ucsb-legacy/1.0'},
+  });
+  if (!res.ok) {
+    throw new SleeperHttpError(url, res.status, `Sleeper ${res.status} for ${url}`);
+  }
+  return (await res.json()) as T;
+}
+
 export const sleeperClient = {
   getLeague: (leagueId: string) => sleeperGet<SleeperLeague | null>(`/league/${leagueId}`),
   getUsers: (leagueId: string) => sleeperGetArray<SleeperUser>(`/league/${leagueId}/users`),
@@ -146,5 +166,20 @@ export const sleeperClient = {
   getPlayers: async () => {
     const data = await sleeperGet<Record<string, SleeperNflPlayer> | null>('/players/nfl');
     return data && typeof data === 'object' ? data : {};
+  },
+  /**
+   * Undocumented weekly projections (RotoWire). One call returns weeks 1–18 for a player.
+   * Not under /v1.
+   */
+  getPlayerWeeklyProjections: async (playerId: string, season: number): Promise<SleeperWeeklyProjection[]> => {
+    const url = `https://api.sleeper.app/projections/nfl/player/${encodeURIComponent(playerId)}?season=${season}&season_type=regular&grouping=week`;
+    const data = await sleeperGetUrl<Record<string, SleeperWeeklyProjection> | SleeperWeeklyProjection[] | null>(url);
+    if (!data) {
+      return [];
+    }
+    if (Array.isArray(data)) {
+      return data.filter((row) => row && row.player_id);
+    }
+    return Object.values(data).filter((row) => row && row.player_id);
   },
 };

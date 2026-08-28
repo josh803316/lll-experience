@@ -49,9 +49,9 @@ const TIPS = {
   pfWeek:
     'Points for per week: your average best-ball score. Total points divided by weeks you actually played. Not adjusted for 2023 (2QB, 6 teams).',
   draftGrade:
-    'We add every pick’s surplus, then rank GMs against each other. Top fifth get A, then B, C, D, F. The number is extra (or missing) fantasy points vs what those dollars usually returned at that position. A dash means nobody to rank against yet.',
+    'We add every pick’s surplus, then rank GMs. Top fifth A, then B, C, D, F. After the auction and before games, that uses projected best-ball (RotoWire weekly stats × UCSB scoring), labeled proj. Once weeks are scored, actual FPTS replace it.',
   surplus:
-    'Season FPTS minus (auction $ × that position’s pts per dollar in this league). A cheap pick is only a bargain if he beats the going rate — putting up a few points is not enough.',
+    'Season FPTS minus (auction $ × that position’s pts per dollar in this league). Before weeks are scored, FPTS is RotoWire weekly stats run through UCSB scoring (Projected). A cheap pick is only a bargain if he beats the going rate.',
   ptsPerDollar: 'Season FPTS divided by auction dollars paid.',
   late: 'Points from auction picks in the last three rounds, or that cost $2 or less.',
   wire: 'Points scored for you by waiver/FA adds, from add week through drop (or season end). Trades do not count.',
@@ -69,6 +69,10 @@ function withTip(label: string, text: string): string {
   return `${escapeHtml(label)}${tipBtn(text, label)}`;
 }
 
+function projMark(on: boolean): string {
+  return on ? ' <span class="text-[10px] uppercase tracking-widest text-accent">proj</span>' : '';
+}
+
 function howWeScore(): string {
   return `
     <section class="card-paper rounded-lg p-5 space-y-3" id="how-we-score">
@@ -80,7 +84,7 @@ function howWeScore(): string {
         </div>
         <div>
           <dt class="font-bold">Draft grade</dt>
-          <dd class="text-muted mt-1">Each pick’s surplus is added up, then GMs are ranked. Top fifth A, then B, C, D, F. Career grade ranks your average yearly surplus. The number next to the letter is extra fantasy points vs the going rate, not a PFF score. A dash means the season has not differentiated yet.</dd>
+          <dd class="text-muted mt-1">Each pick’s surplus is added up, then GMs are ranked. Top fifth A, then B, C, D, F. Before any week is played, <strong class="text-accent font-bold">proj</strong> means RotoWire weekly stats scored with this league’s PPR/best-ball settings — not ESPN+PFF ranks, not actual football. Real weeks replace it as they finish.</dd>
         </div>
         <div>
           <dt class="font-bold">Are cheap picks bargains if they score?</dt>
@@ -333,7 +337,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         <div class="mt-4 flex items-end justify-between gap-3">
           <div class="grid grid-cols-3 gap-3 text-[10px] uppercase tracking-widest text-muted">
             <div>PF/week <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.pfPerWeek)}</span></div>
-            <div>Grade <span class="block text-black font-bold normal-case tracking-normal text-sm">${escapeHtml(g.draftGrade)}</span></div>
+            <div>Grade <span class="block text-black font-bold normal-case tracking-normal text-sm">${escapeHtml(g.draftGrade)}${projMark(g.draftProjected)}</span></div>
             <div>Wire <span class="block text-black font-bold normal-case tracking-normal text-sm">${fmt(g.wireFpts, 0)}</span></div>
           </div>
           ${sparkSvg(g.sparkline)}
@@ -353,7 +357,7 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
         <td class="px-3 py-2" data-val="${g.fpts}">${fmt(g.fpts, 0)}</td>
         <td class="px-3 py-2" data-val="${g.pfPerWeek}">${fmt(g.pfPerWeek)}</td>
         <td class="px-3 py-2" data-val="${g.avgFinish}">${fmt(g.avgFinish)}</td>
-        <td class="px-3 py-2" data-val="${g.draftSurplus}">${escapeHtml(g.draftGrade)} <span class="text-muted">${fmt(g.draftSurplus, 0)}</span></td>
+        <td class="px-3 py-2" data-val="${g.draftSurplus}">${escapeHtml(g.draftGrade)}${projMark(g.draftProjected)} <span class="text-muted">${fmt(g.draftSurplus, 0)}</span></td>
         <td class="px-3 py-2" data-val="${g.lateFpts}">${fmt(g.lateFpts, 0)}</td>
         <td class="px-3 py-2" data-val="${g.wireFpts}">${fmt(g.wireFpts, 0)}</td>
       </tr>`;
@@ -413,7 +417,7 @@ export function fantasySeasonPage(
         <td class="px-3 py-2" data-val="${r.wins}">${record(r.wins, r.losses, r.ties)}</td>
         <td class="px-3 py-2" data-val="${r.fpts}">${fmt(r.fpts)}</td>
         <td class="px-3 py-2" data-val="${r.pfPerWeek}">${fmt(r.pfPerWeek)}</td>
-        <td class="px-3 py-2" data-val="${r.draftSurplus}">${escapeHtml(r.draftGrade)} <span class="text-muted">${fmt(r.draftSurplus, 0)}</span></td>
+        <td class="px-3 py-2" data-val="${r.draftSurplus}">${escapeHtml(r.draftGrade)}${projMark(r.draftProjected)} <span class="text-muted">${fmt(r.draftSurplus, 0)}</span></td>
         <td class="px-3 py-2" data-val="${r.wireFpts}">${fmt(r.wireFpts, 0)}</td>
       </tr>`,
     )
@@ -428,7 +432,7 @@ export function fantasySeasonPage(
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-3xl font-bold tracking-tighter">${year} standings</h2>
-          <p class="text-sm text-muted">${summary.teamCount} teams · ${escapeHtml(summary.status)}${preDraft ? ' — auction has not started on Sleeper yet' : ''}</p>
+          <p class="text-sm text-muted">${summary.teamCount} teams · ${escapeHtml(summary.status)}${preDraft ? ' — auction has not started on Sleeper yet' : ''}${standings.some((s) => s.projected) ? ' · W-L / PF / Grade are <span class="text-accent">projected</span> (RotoWire weekly × UCSB scoring) until weeks are played' : ''}</p>
         </div>
         <div class="flex gap-3 text-sm font-bold">
           <a class="text-accent hover:underline" href="/fantasy/draft/${year}">Auction →</a>
@@ -495,7 +499,7 @@ export function fantasyDraftPage(
                <div class="card-paper rounded-lg p-6 text-muted italic">Draft opens on Sleeper — this page fills after ingest.</div>`
             : `<h2 class="text-3xl font-bold tracking-tighter">${year} auction</h2>
                ${howWeScore()}
-               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). PFF is overlay, not the sort.</p>
+               <p class="text-sm text-muted">Draft credit = that player’s league FPTS all season (even if later dropped). Before weeks are scored, FPTS/surplus are <span class="text-accent">projected</span> from RotoWire weekly stats run through this league’s scoring. PFF is overlay, not the sort.</p>
                <div class="card-paper rounded-lg overflow-x-auto">
                  <table class="w-min min-w-full text-sm">
                    <thead class="bg-black/[0.03]"><tr>
@@ -707,7 +711,7 @@ export function fantasyManagerPage(
         <td class="px-3 py-2">${y.finish}</td>
         <td class="px-3 py-2">${record(y.wins, y.losses, y.ties)}</td>
         <td class="px-3 py-2">${fmt(y.fpts)}</td>
-        <td class="px-3 py-2">${escapeHtml(y.draftGrade)} <span class="text-muted">${fmt(y.draftSurplus, 0)}</span></td>
+        <td class="px-3 py-2">${escapeHtml(y.draftGrade)}${projMark(y.draftProjected)} <span class="text-muted">${fmt(y.draftSurplus, 0)}</span></td>
         <td class="px-3 py-2">${fmt(y.wireFpts, 0)}</td>
         <td class="px-3 py-2 text-muted">${escapeHtml(y.teamName || '')}</td>
       </tr>`,
@@ -727,7 +731,7 @@ export function fantasyManagerPage(
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('PF/week', TIPS.pfWeek)}</div><div class="text-2xl font-bold">${fmt(gm.pfPerWeek)}</div></div>
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Avg finish</div><div class="text-2xl font-bold">${fmt(gm.avgFinish)}</div></div>
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Grade', TIPS.draftGrade)}</div><div class="text-2xl font-bold">${escapeHtml(gm.draftGrade)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Grade', TIPS.draftGrade)}</div><div class="text-2xl font-bold">${escapeHtml(gm.draftGrade)}${projMark(gm.draftProjected)}</div></div>
         <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Wire FPTS', TIPS.wire)}</div><div class="text-2xl font-bold">${fmt(gm.wireFpts, 0)}</div></div>
       </div>
       <div class="card-paper rounded-lg overflow-x-auto">

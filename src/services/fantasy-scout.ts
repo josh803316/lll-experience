@@ -9,6 +9,7 @@ import {
   fantasyMatchups,
   fantasyPlayerWeeks,
   fantasyPlayers,
+  fantasyProjections,
   fantasyRosters,
   fantasyTransactions,
   pffPlayerStats,
@@ -24,6 +25,7 @@ import {
   type ScoredPick,
   type TxEvent,
 } from './fantasy-metrics.js';
+import {projectedWeeklyScores, starterSlots} from './fantasy-projections.js';
 
 export interface SeasonSummary {
   season: number;
@@ -55,8 +57,10 @@ export interface GmSeasonRow {
   waiverBudgetUsed: number;
   draftSurplus: number;
   draftGrade: string;
+  draftProjected: boolean;
   wireFpts: number;
   lateFpts: number;
+  projected: boolean;
 }
 
 export interface GmAllTimeRow {
@@ -75,6 +79,7 @@ export interface GmAllTimeRow {
   sparkline: number[]; // finish by season ascending, 0 = DNP
   draftSurplus: number;
   draftGrade: string;
+  draftProjected: boolean;
   wireFpts: number;
   lateFpts: number;
   years: GmSeasonRow[];
@@ -118,7 +123,7 @@ function pffCategory(position: string | null): string | null {
 
 async function loadContext() {
   const db = getDB();
-  const [leagues, managers, rosters, drafts, picks, matchups, playerWeeks, txs] = await Promise.all([
+  const [leagues, managers, rosters, drafts, picks, matchups, playerWeeks, txs, projections] = await Promise.all([
     db.select().from(fantasyLeagues).orderBy(asc(fantasyLeagues.season)),
     db.select().from(fantasyManagers),
     db.select().from(fantasyRosters),
@@ -127,6 +132,12 @@ async function loadContext() {
     db.select().from(fantasyMatchups),
     db.select().from(fantasyPlayerWeeks),
     db.select().from(fantasyTransactions),
+    db.select({
+      season: fantasyProjections.season,
+      week: fantasyProjections.week,
+      playerId: fantasyProjections.playerId,
+      pts: fantasyProjections.pts,
+    }).from(fantasyProjections),
   ]);
   const ids = new Set<string>();
   for (const p of picks) {
@@ -162,6 +173,7 @@ async function loadContext() {
     txs,
     playerById,
     managerBySleeper,
+    projections,
   };
 }
 
@@ -206,13 +218,34 @@ function maxWeek(ctx: Ctx, leagueId: string): number {
   return max;
 }
 
-function scoredPicksForLeague(ctx: Ctx, leagueId: string): ScoredPick[] {
+function projectedPtsMap(ctx: Ctx, season: number): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const p of ctx.projections) {
+    if (p.season !== season) {
+      continue;
+    }
+    map.set(p.playerId, (map.get(p.playerId) ?? 0) + p.pts);
+  }
+  return map;
+}
+
+function scoredPicksForLeague(ctx: Ctx, leagueId: string, ptsOverride?: Map<string, number>): ScoredPick[] {
   const draft = ctx.drafts.find((d) => d.sleeperLeagueId === leagueId);
   if (!draft) {
     return [];
   }
   const picks = ctx.picks.filter((p) => p.draftId === draft.draftId);
-  const pts = seasonPtsMap(ctx, leagueId);
+  let pts = ptsOverride ?? seasonPtsMap(ctx, leagueId);
+  if (!ptsOverride) {
+    const actual = [...pts.values()].reduce((s, v) => s + v, 0);
+    const league = ctx.leagues.find((l) => l.sleeperLeagueId === leagueId);
+    if (actual === 0 && league) {
+      const proj = projectedPtsMap(ctx, league.season);
+      if (proj.size > 0) {
+        pts = proj;
+      }
+    }
+  }
   return scoreDraftPicks(
     picks.map((p) => ({
       playerId: p.playerId,
@@ -317,11 +350,26 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
   const rows: GmSeasonRow[] = [];
   for (const league of ctx.leagues) {
     const leagueRosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId);
-    const allPlay = allPlayFromMatchups(
+    let allPlay = allPlayFromMatchups(
       ctx.matchups
         .filter((m) => m.sleeperLeagueId === league.sleeperLeagueId)
         .map((m) => ({week: m.week, rosterId: m.rosterId, matchupId: m.matchupId, points: m.points})),
     );
+    const hasActual = [...allPlay.values()].some((r) => r.weeksPlayed > 0 && r.fpts > 0);
+    const projPts = projectedPtsMap(ctx, league.season);
+    const useProjected = !hasActual && projPts.size > 0;
+    if (useProjected) {
+      const draft = ctx.drafts.find((d) => d.sleeperLeagueId === league.sleeperLeagueId);
+      const drafted = ctx.picks
+        .filter((p) => draft && p.draftId === draft.draftId)
+        .map((p) => ({rosterId: p.rosterId, playerId: p.playerId, position: p.position}));
+      const weekly = ctx.projections
+        .filter((p) => p.season === league.season)
+        .map((p) => ({week: p.week, playerId: p.playerId, pts: p.pts}));
+      allPlay = allPlayFromMatchups(
+        projectedWeeklyScores(drafted, weekly, starterSlots(league.rosterPositions)),
+      );
+    }
     const ranked = finishRanks(
       leagueRosters.map((r) => {
         const rec = allPlay.get(r.rosterId);
@@ -335,7 +383,7 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
         };
       }),
     );
-    const scored = scoredPicksForLeague(ctx, league.sleeperLeagueId);
+    const scored = scoredPicksForLeague(ctx, league.sleeperLeagueId, useProjected ? projPts : undefined);
     const stints = wireStints(
       txEventsForLeague(ctx, league.sleeperLeagueId),
       ctx.playerWeeks
@@ -372,8 +420,10 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
         waiverBudgetUsed: r.waiverBudgetUsed,
         draftSurplus: totalSurplus,
         draftGrade: gmPicks.length ? '' : '—',
+        draftProjected: useProjected,
         wireFpts,
         lateFpts,
+        projected: useProjected,
       });
     }
     rows.push(...applyDraftLetters(seasonRows));
@@ -391,17 +441,24 @@ function rollupAllTime(seasonRows: GmSeasonRow[], seasons: number[]): GmAllTimeR
   const out: GmAllTimeRow[] = [];
   for (const [slug, years] of bySlug) {
     years.sort((a, b) => a.season - b.season);
-    const wins = years.reduce((s, y) => s + y.wins, 0);
-    const losses = years.reduce((s, y) => s + y.losses, 0);
-    const ties = years.reduce((s, y) => s + y.ties, 0);
-    const fpts = years.reduce((s, y) => s + y.fpts, 0);
-    const fptsAgainst = years.reduce((s, y) => s + y.fptsAgainst, 0);
-    const weeksPlayed = years.reduce((s, y) => s + y.weeksPlayed, 0);
+    const live = years.filter((y) => !y.projected);
+    const wins = live.reduce((s, y) => s + y.wins, 0);
+    const losses = live.reduce((s, y) => s + y.losses, 0);
+    const ties = live.reduce((s, y) => s + y.ties, 0);
+    const fpts = live.reduce((s, y) => s + y.fpts, 0);
+    const fptsAgainst = live.reduce((s, y) => s + y.fptsAgainst, 0);
+    const weeksPlayed = live.reduce((s, y) => s + y.weeksPlayed, 0);
     const gradedYears = years.filter((y) => y.draftGrade !== '—');
     const draftSurplus = gradedYears.length
       ? gradedYears.reduce((s, y) => s + y.draftSurplus, 0) / gradedYears.length
       : 0;
-    const sparkline = seasons.map((season) => years.find((y) => y.season === season)?.finish ?? 0);
+    const sparkline = seasons.map((season) => {
+      const y = years.find((row) => row.season === season);
+      if (!y || y.projected) {
+        return 0;
+      }
+      return y.finish;
+    });
     out.push({
       slug,
       displayName: years[years.length - 1].displayName,
@@ -414,10 +471,11 @@ function rollupAllTime(seasonRows: GmSeasonRow[], seasons: number[]): GmAllTimeR
       fpts,
       fptsAgainst,
       pfPerWeek: weeksPlayed ? fpts / weeksPlayed : 0,
-      avgFinish: years.reduce((s, y) => s + y.finish, 0) / years.length,
+      avgFinish: live.length ? live.reduce((s, y) => s + y.finish, 0) / live.length : 0,
       sparkline,
       draftSurplus,
       draftGrade: gradedYears.length ? '' : '—',
+      draftProjected: gradedYears.some((y) => y.draftProjected),
       wireFpts: years.reduce((s, y) => s + y.wireFpts, 0),
       lateFpts: years.reduce((s, y) => s + y.lateFpts, 0),
       years,

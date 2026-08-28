@@ -14,6 +14,7 @@ import {
   fantasyMatchups,
   fantasyPlayerWeeks,
   fantasyPlayers,
+  fantasyProjections,
   fantasyRosters,
   fantasyTransactions,
 } from '../db/schema.js';
@@ -24,6 +25,7 @@ import {
   type SleeperNflPlayer,
   type SleeperUser,
 } from './sleeper-client.js';
+import {scoreStats} from './fantasy-projections.js';
 
 const MAX_WEEK = 18;
 const CHUNK = 200;
@@ -38,6 +40,7 @@ export interface IngestResult {
   playerWeeks: number;
   transactions: number;
   players: number;
+  projections: number;
   seasons: number[];
 }
 
@@ -115,6 +118,8 @@ async function ingestLeague(
   playerWeeks: number;
   transactions: number;
   users: SleeperUser[];
+  playerIds: string[];
+  scoring: Record<string, unknown> | null;
 }> {
   const season = Number(league.season);
   await db
@@ -189,6 +194,7 @@ async function ingestLeague(
   );
 
   let pickCount = 0;
+  const playerIds = new Set<string>();
   for (const draft of drafts) {
     await db
       .insert(fantasyDrafts)
@@ -214,6 +220,11 @@ async function ingestLeague(
 
     const picks = await sleeperClient.getDraftPicks(draft.draft_id);
     pickCount += picks.length;
+    for (const pick of picks) {
+      if (pick.player_id) {
+        playerIds.add(pick.player_id);
+      }
+    }
     const pickRows = picks.map((pick) => ({
       draftId: pick.draft_id,
       pickNo: pick.pick_no,
@@ -341,6 +352,8 @@ async function ingestLeague(
     playerWeeks: playerWeekRows.length,
     transactions: txRows.length,
     users,
+    playerIds: [...playerIds],
+    scoring: league.scoring_settings ?? null,
   };
 }
 
@@ -372,9 +385,72 @@ async function refreshPlayers(db: Db): Promise<number> {
   return rows.length;
 }
 
+async function poolMap<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let i = 0;
+  const workers = Array.from({length: Math.min(limit, Math.max(items.length, 1))}, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+}
+
+async function ingestSeasonProjections(
+  db: Db,
+  season: number,
+  playerIds: string[],
+  scoring: Record<string, unknown> | null,
+): Promise<number> {
+  if (playerIds.length === 0) {
+    return 0;
+  }
+  const counts: number[] = [];
+  await poolMap(playerIds, 8, async (playerId) => {
+    const weeks = await sleeperClient.getPlayerWeeklyProjections(playerId, season);
+    const rows = weeks
+      .filter((w) => w.stats && (w.category == null || w.category === 'proj') && w.week)
+      .map((w) => ({
+        season,
+        week: w.week,
+        playerId,
+        source: (w.company || 'rotowire').toLowerCase(),
+        opponent: w.opponent ?? null,
+        stats: w.stats as Record<string, number>,
+        pts: scoreStats(scoring, w.stats),
+        updatedAt: new Date(),
+      }));
+    if (rows.length === 0) {
+      counts.push(0);
+      return;
+    }
+    counts.push(rows.length);
+    await insertChunks(rows, (chunk) =>
+      db
+        .insert(fantasyProjections)
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: [
+            fantasyProjections.season,
+            fantasyProjections.week,
+            fantasyProjections.playerId,
+            fantasyProjections.source,
+          ],
+          set: {
+            opponent: sql`excluded.opponent`,
+            stats: sql`excluded.stats`,
+            pts: sql`excluded.pts`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        }),
+    );
+  });
+  return counts.reduce((s, c) => s + c, 0);
+}
+
 export async function ingestSleeperLeague(
   startLeagueId: string = process.env.SLEEPER_LEAGUE_ID || UCSB_LEGACY_LEAGUE_ID,
-  opts: {refreshPlayers?: boolean} = {},
+  opts: {refreshPlayers?: boolean; refreshProjections?: boolean} = {},
 ): Promise<IngestResult> {
   const db = getDB();
   const seasons: number[] = [];
@@ -387,8 +463,11 @@ export async function ingestSleeperLeague(
     playerWeeks: 0,
     transactions: 0,
     players: 0,
+    projections: 0,
     seasons,
   };
+  const projectionJobs: {season: number; playerIds: string[]; scoring: Record<string, unknown> | null; status: string}[] =
+    [];
 
   let leagueId: string | null = startLeagueId;
   const seen = new Set<string>();
@@ -408,6 +487,14 @@ export async function ingestSleeperLeague(
     totals.matchups += result.matchups;
     totals.playerWeeks += result.playerWeeks;
     totals.transactions += result.transactions;
+    if (league.status !== 'complete') {
+      projectionJobs.push({
+        season: Number(league.season),
+        playerIds: result.playerIds,
+        scoring: result.scoring,
+        status: league.status,
+      });
+    }
     leagueId = league.previous_league_id;
   }
 
@@ -416,6 +503,13 @@ export async function ingestSleeperLeague(
   if (opts.refreshPlayers !== false) {
     console.log('[sleeper-ingest] refreshing NFL player cache…');
     totals.players = await refreshPlayers(db);
+  }
+
+  if (opts.refreshProjections !== false) {
+    for (const job of projectionJobs) {
+      console.log(`[sleeper-ingest] ${job.season} weekly projections for ${job.playerIds.length} drafted players…`);
+      totals.projections += await ingestSeasonProjections(db, job.season, job.playerIds, job.scoring);
+    }
   }
 
   seasons.sort((a, b) => a - b);
