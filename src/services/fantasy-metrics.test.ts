@@ -281,4 +281,39 @@ describe('positional heat map', () => {
     expect(heat.find((h) => h.rosterId === 1)?.ovr).toEqual({rank: 1, pts: 40});
     expect(heat.find((h) => h.rosterId === 2)?.ovr).toEqual({rank: 2, pts: 10});
   });
+  test('OVR is the sum of starter columns; a fat bench does not count', () => {
+    const starters = [
+      {playerId: 'qb', position: 'QB', pts: 20},
+      {playerId: 'rb1', position: 'RB', pts: 18},
+      {playerId: 'rb2', position: 'RB', pts: 10},
+      {playerId: 'wr1', position: 'WR', pts: 22},
+      {playerId: 'wr2', position: 'WR', pts: 15},
+      {playerId: 'wr3', position: 'WR', pts: 12},
+      {playerId: 'wr4', position: 'WR', pts: 8},
+      {playerId: 'te', position: 'TE', pts: 9},
+      {playerId: 'def', position: 'DEF', pts: 5},
+    ];
+    const heat = positionalHeatmap([{rosterId: 1, players: [...starters, {playerId: 'qb-bench', position: 'QB', pts: 3}]}], slots);
+    const deep = heat[0];
+    const starterPts = 20 + 18 + 10 + 22 + 15 + 12 + 9 + 8 + 5;
+    expect(deep.ovr.pts).toBe(starterPts);
+    expect(deep.ovr.pts).toBe(deep.qb.pts + deep.rb.pts + deep.wr.pts + deep.te.pts + deep.flex.pts + deep.def.pts);
+  });
+  test('deeper bench does not beat a better starting lineup', () => {
+    const heat = positionalHeatmap(
+      [
+        {
+          rosterId: 1,
+          players: [
+            {playerId: 'qb', position: 'QB', pts: 40},
+            {playerId: 'bench', position: 'RB', pts: 200},
+          ],
+        },
+        {rosterId: 2, players: [{playerId: 'qb2', position: 'QB', pts: 50}]},
+      ],
+      ['QB'],
+    );
+    expect(heat.find((h) => h.rosterId === 1)?.ovr).toEqual({rank: 2, pts: 40});
+    expect(heat.find((h) => h.rosterId === 2)?.ovr).toEqual({rank: 1, pts: 50});
+  });
 });
