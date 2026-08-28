@@ -359,7 +359,7 @@ export function positionalHeatmap(
   const posKeys: Exclude<HeatPos, 'ovr'>[] = ['qb', 'rb', 'wr', 'te', 'flex', 'def']
   const built = rosters.map((r) => {
     const pos = positionalTotals(r.players, slots)
-    const ovr = r.players.reduce((s, p) => s + p.pts, 0)
+    const ovr = pos.qb + pos.rb + pos.wr + pos.te + pos.flex + pos.def
     return { rosterId: r.rosterId, pos, ovr }
   })
   const ovrRanks = rankDescending(built.map((b) => b.ovr))
