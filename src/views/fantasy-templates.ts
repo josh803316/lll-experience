@@ -448,7 +448,7 @@ function fantasyHeatmap(teams: HeatmapTeam[]): string {
   return `
     <div>
       <h3 class="text-xl font-bold tracking-tighter mb-1">Positional heat map</h3>
-      <p class="text-xs text-muted mb-3">${projected ? 'Projected starter-slot FPTS (blended weekly stats × UCSB scoring). ' : ''}OVR is the starting lineup — QB+RB+WR+TE+FLEX+DEF, same points as the other columns. Bench does not count. FLEX is the leftover RB/WR/TE after 2 RB / 3 WR / 1 TE. Green = 1st in the room, red = last. Same idea as last year’s FFR board.</p>
+      <p class="text-xs text-muted mb-3">${projected ? 'Projected weekly best-ball (blended weekly stats × UCSB scoring). ' : ''}Best-ball: each week we start the highest eligible lineup from the whole roster, so depth counts on byes and off weeks. A second QB only counts the weeks he beats your first. OVR is the sum of those weekly lineups (same as the position columns). FLEX is the leftover RB/WR/TE after 2 RB / 3 WR / 1 TE. Green = 1st in the room, red = last.</p>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead><tr>
