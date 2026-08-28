@@ -35,7 +35,7 @@ import {
   type CountingStat,
   countingStatsForPosition,
   type HeatCell,
-  positionalHeatmap,
+  positionalHeatmapWeekly,
   projectedWeeklyScores,
   starterSlots,
 } from './fantasy-projections.js'
@@ -600,27 +600,29 @@ function buildHeatmap(ctx: Ctx, year: number): HeatmapTeam[] {
   if (!league) {
     return []
   }
-  const actual = seasonPtsMap(ctx, league.sleeperLeagueId)
-  const actualSum = [...actual.values()].reduce((s, v) => s + v, 0)
-  const pts = actualSum > 0 ? actual : projectedPtsMap(ctx, year)
-  const projected = actualSum === 0 && pts.size > 0
-  if (pts.size === 0) {
+  const actualWeeks = ctx.playerWeeks.filter((w) => w.sleeperLeagueId === league.sleeperLeagueId)
+  const hasActual = actualWeeks.some((w) => w.points > 0)
+  const weekly = hasActual
+    ? actualWeeks.map((w) => ({ week: w.week, playerId: w.playerId, pts: w.points }))
+    : blendWeeklyPts(ctx.projections, year)
+  const projected = !hasActual && weekly.length > 0
+  if (weekly.length === 0) {
     return []
   }
   const draft = ctx.drafts.find((d) => d.sleeperLeagueId === league.sleeperLeagueId)
   const leagueRosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId)
-  const byRoster = new Map<number, { playerId: string; position: string; pts: number }[]>()
+  const byRoster = new Map<number, { playerId: string; position: string }[]>()
   for (const p of ctx.picks.filter((x) => draft && x.draftId === draft.draftId)) {
     const list = byRoster.get(p.rosterId) ?? []
     list.push({
       playerId: p.playerId,
       position: p.position ?? 'UNK',
-      pts: pts.get(p.playerId) ?? 0,
     })
     byRoster.set(p.rosterId, list)
   }
-  const heat = positionalHeatmap(
+  const heat = positionalHeatmapWeekly(
     leagueRosters.map((r) => ({ rosterId: r.rosterId, players: byRoster.get(r.rosterId) ?? [] })),
+    weekly,
     starterSlots(league.rosterPositions)
   )
   const out: HeatmapTeam[] = heat.map((h) => {

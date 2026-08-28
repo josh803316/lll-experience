@@ -98,7 +98,7 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
   await expect(page.locator('body')).toContainText('projected')
   await expect(page.getByRole('heading', { name: 'Positional heat map' })).toBeVisible()
   await expect(page.getByText('FLEX', { exact: true })).toBeVisible()
-  await expect(page.locator('body')).toContainText('Bench does not count')
+  await expect(page.locator('body')).toContainText('depth counts on byes')
 
   await page.goto(`${SITE_URL}/fantasy/draft/2026`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: '2026 auction' })).toBeVisible()

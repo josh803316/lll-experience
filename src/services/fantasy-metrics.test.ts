@@ -16,6 +16,7 @@ import {
   blendWeeklyStats,
   countingStatsForPosition,
   positionalHeatmap,
+  positionalHeatmapWeekly,
   positionalTotals,
   projectedWeeklyScores,
   scoreStats,
@@ -390,6 +391,61 @@ describe('positional heat map', () => {
     )
     expect(heat.find((h) => h.rosterId === 1)?.ovr).toEqual({ rank: 2, pts: 40 })
     expect(heat.find((h) => h.rosterId === 2)?.ovr).toEqual({ rank: 1, pts: 50 })
+  })
+  test('weekly heat map counts a backup only in weeks they would start', () => {
+    const heat = positionalHeatmapWeekly(
+      [
+        {
+          rosterId: 1,
+          players: [
+            { playerId: 'a', position: 'QB' },
+            { playerId: 'b', position: 'QB' },
+          ],
+        },
+      ],
+      [
+        { week: 1, playerId: 'a', pts: 25 },
+        { week: 1, playerId: 'b', pts: 5 },
+        { week: 2, playerId: 'a', pts: 4 },
+        { week: 2, playerId: 'b', pts: 20 },
+      ],
+      ['QB']
+    )
+    expect(heat[0].qb.pts).toBe(45)
+    expect(heat[0].ovr.pts).toBe(45)
+  })
+  test('weekly OVR matches summing best-ball weeks', () => {
+    const rosters = [
+      {
+        rosterId: 1,
+        players: [
+          { playerId: 'qb', position: 'QB' },
+          { playerId: 'rb1', position: 'RB' },
+          { playerId: 'rb2', position: 'RB' },
+        ],
+      },
+      { rosterId: 2, players: [{ playerId: 'qb2', position: 'QB' }] },
+    ]
+    const weekly = [
+      { week: 1, playerId: 'qb', pts: 10 },
+      { week: 1, playerId: 'rb1', pts: 8 },
+      { week: 1, playerId: 'rb2', pts: 3 },
+      { week: 1, playerId: 'qb2', pts: 20 },
+      { week: 2, playerId: 'qb', pts: 6 },
+      { week: 2, playerId: 'rb1', pts: 1 },
+      { week: 2, playerId: 'rb2', pts: 12 },
+      { week: 2, playerId: 'qb2', pts: 5 },
+    ]
+    const slots = ['QB', 'RB']
+    const heat = positionalHeatmapWeekly(rosters, weekly, slots)
+    const a = heat.find((h) => h.rosterId === 1)!
+    const b = heat.find((h) => h.rosterId === 2)!
+    expect(a.ovr.pts).toBe(10 + 8 + 6 + 12)
+    expect(a.qb.pts).toBe(16)
+    expect(a.rb.pts).toBe(20)
+    expect(b.ovr.pts).toBe(25)
+    expect(a.ovr.rank).toBe(1)
+    expect(b.ovr.rank).toBe(2)
   })
 })
 
