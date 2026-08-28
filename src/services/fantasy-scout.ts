@@ -1,5 +1,5 @@
 import {asc, eq, inArray} from 'drizzle-orm';
-import {managerForSleeperUser, normPlayerName} from '../config/fantasy-managers.js';
+import {canonicalManager, managerForSleeperUser, normPlayerName} from '../config/fantasy-managers.js';
 import {getDB} from '../db/index.js';
 import {
   fantasyDraftPicks,
@@ -168,6 +168,10 @@ async function loadContext() {
 type Ctx = Awaited<ReturnType<typeof loadContext>>;
 
 function ident(ctx: Ctx, sleeperUserId: string | null, fallback?: string | null) {
+  const known = canonicalManager(sleeperUserId);
+  if (known) {
+    return {slug: known.slug, displayName: known.displayName};
+  }
   if (sleeperUserId) {
     const row = ctx.managerBySleeper.get(sleeperUserId);
     if (row) {
