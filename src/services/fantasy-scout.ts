@@ -25,7 +25,7 @@ import {
   type ScoredPick,
   type TxEvent,
 } from './fantasy-metrics.js';
-import {projectedWeeklyScores, starterSlots} from './fantasy-projections.js';
+import {blendWeeklyPts, projectedWeeklyScores, starterSlots} from './fantasy-projections.js';
 
 export interface SeasonSummary {
   season: number;
@@ -220,11 +220,8 @@ function maxWeek(ctx: Ctx, leagueId: string): number {
 
 function projectedPtsMap(ctx: Ctx, season: number): Map<string, number> {
   const map = new Map<string, number>();
-  for (const p of ctx.projections) {
-    if (p.season !== season) {
-      continue;
-    }
-    map.set(p.playerId, (map.get(p.playerId) ?? 0) + p.pts);
+  for (const w of blendWeeklyPts(ctx.projections, season)) {
+    map.set(w.playerId, (map.get(w.playerId) ?? 0) + w.pts);
   }
   return map;
 }
@@ -363,9 +360,7 @@ function buildSeasonRows(ctx: Ctx): GmSeasonRow[] {
       const drafted = ctx.picks
         .filter((p) => draft && p.draftId === draft.draftId)
         .map((p) => ({rosterId: p.rosterId, playerId: p.playerId, position: p.position}));
-      const weekly = ctx.projections
-        .filter((p) => p.season === league.season)
-        .map((p) => ({week: p.week, playerId: p.playerId, pts: p.pts}));
+      const weekly = blendWeeklyPts(ctx.projections, league.season);
       allPlay = allPlayFromMatchups(
         projectedWeeklyScores(drafted, weekly, starterSlots(league.rosterPositions)),
       );

@@ -3,6 +3,7 @@ import {dollarBucket, isLatePick} from '../config/fantasy-managers.js';
 import {
   allPlayFromMatchups,
   applyDraftLetters,
+  expectedFptsFromSpend,
   finishRanks,
   lettersForScores,
   median,
@@ -49,7 +50,7 @@ describe('all-play from weekly scores', () => {
 });
 
 describe('auction surplus', () => {
-  test('star in a unique $ bucket still scores vs positional pts-per-dollar', () => {
+  test('star in a unique $ bucket still beats a cheap bust at the same position', () => {
     const scored = scoreDraftPicks(
       [
         {playerId: 'star', rosterId: 1, sleeperUserId: 'u1', amount: 55, round: 1, position: 'RB'},
@@ -69,30 +70,39 @@ describe('auction surplus', () => {
     expect(star.bucket).toBe('51+');
     expect(mid.bucket).toBe('16-30');
     expect(wr.late).toBe(true);
-    // RB par = (300+80) / (55+20) = 5.066… pts/$. Unique $ buckets must not zero the star.
-    expect(star.surplus).toBeCloseTo(300 - 55 * (380 / 75));
-    expect(mid.surplus).toBeCloseTo(80 - 20 * (380 / 75));
-    expect(star.surplus).toBeGreaterThan(0);
-    expect(mid.surplus).toBeLessThan(0);
-    expect(wr.surplus).toBeCloseTo(0);
+    expect(star.surplus).toBeGreaterThan(mid.surplus);
+    expect(wr.surplus).toBe(0);
     expect(wr.value).toBe(80);
   });
-  test('same-position picks share one pts/$ rate, not a bucket median', () => {
+  test('$1 dart is not automatically a better pick than a $55 QB who hits', () => {
     const scored = scoreDraftPicks(
       [
-        {playerId: 'a', rosterId: 1, sleeperUserId: 'u1', amount: 40, round: 1, position: 'RB'},
-        {playerId: 'b', rosterId: 2, sleeperUserId: 'u2', amount: 42, round: 1, position: 'RB'},
+        {playerId: 'allen', rosterId: 1, sleeperUserId: 'u1', amount: 55, round: 1, position: 'QB'},
+        {playerId: 'mid', rosterId: 2, sleeperUserId: 'u2', amount: 18, round: 1, position: 'QB'},
+        {playerId: 'cheap', rosterId: 3, sleeperUserId: 'u3', amount: 1, round: 12, position: 'QB'},
+        {playerId: 'mid2', rosterId: 4, sleeperUserId: 'u4', amount: 8, round: 2, position: 'QB'},
       ],
       [
-        {playerId: 'a', fpts: 300},
-        {playerId: 'b', fpts: 100},
+        {playerId: 'allen', fpts: 380},
+        {playerId: 'mid', fpts: 220},
+        {playerId: 'cheap', fpts: 90},
+        {playerId: 'mid2', fpts: 160},
       ],
       13,
     );
-    expect(dollarBucket(40)).toBe('31-50');
-    const rate = 400 / 82;
-    expect(scored[0].surplus).toBeCloseTo(300 - 40 * rate);
-    expect(scored[1].surplus).toBeCloseTo(100 - 42 * rate);
+    const allen = scored.find((p) => p.playerId === 'allen')!;
+    const cheap = scored.find((p) => p.playerId === 'cheap')!;
+    expect(allen.surplus).toBeGreaterThan(cheap.surplus);
+  });
+  test('expected FPTS rises with spend on a positional log curve', () => {
+    const expected = expectedFptsFromSpend([
+      {amount: 1, fpts: 80},
+      {amount: 8, fpts: 160},
+      {amount: 20, fpts: 240},
+      {amount: 55, fpts: 360},
+    ]);
+    expect(expected(55)).toBeGreaterThan(expected(1));
+    expect(expected(20)).toBeGreaterThan(expected(8));
   });
 });
 
