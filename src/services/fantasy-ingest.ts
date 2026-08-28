@@ -1,5 +1,10 @@
-import {sql} from 'drizzle-orm';
-import {CANONICAL_MANAGERS, managerForSleeperUser, UCSB_LEGACY_LEAGUE_ID} from '../config/fantasy-managers.js';
+import {and, eq, inArray, ne, sql} from 'drizzle-orm';
+import {
+  CANONICAL_MANAGERS,
+  managerForSleeperUser,
+  SLEEPER_ID_ALIASES,
+  UCSB_LEGACY_LEAGUE_ID,
+} from '../config/fantasy-managers.js';
 import {getDB} from '../db/index.js';
 import {
   fantasyDraftPicks,
@@ -54,15 +59,34 @@ async function insertChunks<T>(rows: T[], write: (chunk: T[]) => Promise<unknown
 }
 
 async function upsertManagers(db: Db, usersByLeague: SleeperUser[][]): Promise<void> {
+  const aliasIds = Object.keys(SLEEPER_ID_ALIASES);
+  if (aliasIds.length > 0) {
+    await db.delete(fantasyManagers).where(inArray(fantasyManagers.sleeperUserId, aliasIds));
+  }
+  for (const m of CANONICAL_MANAGERS) {
+    await db
+      .update(fantasyManagers)
+      .set({slug: `tmp-${m.sleeperUserId}`})
+      .where(and(eq(fantasyManagers.slug, m.slug), ne(fantasyManagers.sleeperUserId, m.sleeperUserId)));
+  }
+
   const seen = new Map<string, {slug: string; displayName: string}>();
+  const slugs = new Set<string>();
   for (const m of CANONICAL_MANAGERS) {
     seen.set(m.sleeperUserId, {slug: m.slug, displayName: m.displayName});
+    slugs.add(m.slug);
   }
   for (const users of usersByLeague) {
     for (const u of users) {
-      if (!seen.has(u.user_id)) {
-        seen.set(u.user_id, managerForSleeperUser(u.user_id, u.display_name || u.username));
+      if (seen.has(u.user_id) || SLEEPER_ID_ALIASES[u.user_id]) {
+        continue;
       }
+      const ident = managerForSleeperUser(u.user_id, u.display_name || u.username);
+      if (slugs.has(ident.slug)) {
+        continue;
+      }
+      seen.set(u.user_id, ident);
+      slugs.add(ident.slug);
     }
   }
   const rows = [...seen.entries()].map(([sleeperUserId, ident]) => ({

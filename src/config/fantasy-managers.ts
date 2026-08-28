@@ -21,8 +21,10 @@ export const CANONICAL_MANAGERS: CanonicalManager[] = [
   {slug: 'victor', displayName: 'Victor', sleeperUserId: '1000247677319245824'},
   {slug: 'brian', displayName: 'Brian', sleeperUserId: '1000431218392915968'},
   {slug: 'austin', displayName: 'Austin', sleeperUserId: '1125564516407881728'},
-  {slug: 'connor', displayName: 'Connor', sleeperUserId: '1125566103884767232'},
-  {slug: 'andrew', displayName: 'Andrew', sleeperUserId: '1114724829195841536'},
+  // Connor = 2024 DawgsOnTop15. Andrew’s 2024/25 account was drewmadness / bigsweatyfarts;
+  // 2026 re-invite is nut1master (primary id below). See SLEEPER_ID_ALIASES.
+  {slug: 'connor', displayName: 'Connor', sleeperUserId: '1114724829195841536'},
+  {slug: 'andrew', displayName: 'Andrew', sleeperUserId: '1398842100069490688'},
   {slug: 'jacob-s', displayName: 'Jacob S', sleeperUserId: '1127083720248356864'},
   {slug: 'nate', displayName: 'Nate', sleeperUserId: '1121091505395036160'},
   {slug: 'cai', displayName: 'Cai', sleeperUserId: '1263180646356893696'},
@@ -30,17 +32,38 @@ export const CANONICAL_MANAGERS: CanonicalManager[] = [
   {slug: 'wlampe', displayName: 'wlampe', sleeperUserId: '1144876462861012992'},
 ];
 
-const BY_SLEEPER_ID = new Map(CANONICAL_MANAGERS.map((m) => [m.sleeperUserId, m]));
+/** Extra Sleeper user_ids that are the same person as a canonical slug (new login / rename). */
+export const SLEEPER_ID_ALIASES: Record<string, string> = {
+  '1125566103884767232': 'andrew', // 2024 drewmadness → 2025–26 bigsweatyfarts
+};
+
+const BY_SLEEPER_ID = new Map<string, CanonicalManager>();
+for (const m of CANONICAL_MANAGERS) {
+  BY_SLEEPER_ID.set(m.sleeperUserId, m);
+}
+for (const [sleeperUserId, slug] of Object.entries(SLEEPER_ID_ALIASES)) {
+  const person = CANONICAL_MANAGERS.find((m) => m.slug === slug);
+  if (person) {
+    BY_SLEEPER_ID.set(sleeperUserId, person);
+  }
+}
+
+export function canonicalManager(
+  sleeperUserId: string | null | undefined,
+): CanonicalManager | undefined {
+  if (!sleeperUserId) {
+    return undefined;
+  }
+  return BY_SLEEPER_ID.get(sleeperUserId);
+}
 
 export function managerForSleeperUser(
   sleeperUserId: string | null | undefined,
   fallbackDisplayName?: string | null,
 ): {slug: string; displayName: string} {
-  if (sleeperUserId) {
-    const known = BY_SLEEPER_ID.get(sleeperUserId);
-    if (known) {
-      return {slug: known.slug, displayName: known.displayName};
-    }
+  const known = canonicalManager(sleeperUserId);
+  if (known) {
+    return {slug: known.slug, displayName: known.displayName};
   }
   const name = (fallbackDisplayName || 'Unknown').trim() || 'Unknown';
   const slug = slugify(sleeperUserId || name);
