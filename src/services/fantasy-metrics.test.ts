@@ -10,6 +10,7 @@ import {
   winPct,
   wireStints,
 } from './fantasy-metrics.js';
+import {bestBallScore, projectedWeeklyScores, scoreStats} from './fantasy-projections.js';
 
 describe('winPct / median', () => {
   test('win pct includes ties in the denominator', () => {
@@ -173,5 +174,64 @@ describe('draft letters among GMs', () => {
       {draftSurplus: -20, draftGrade: ''},
     ]);
     expect(rows.map((r) => r.draftGrade)).toEqual(['A', '—', 'F']);
+  });
+});
+
+describe('UCSB scoring of projected stats', () => {
+  const ppr = {rec: 1, rec_yd: 0.1, rec_td: 6, rush_yd: 0.1, rush_td: 6, pass_yd: 0.04, pass_td: 6, pass_int: -2};
+  test('PPR receiver: rec + yards + TD, ignores pts_ppr and ADP', () => {
+    const pts = scoreStats(ppr, {
+      rec: 7.28,
+      rec_yd: 96.15,
+      rec_td: 0.53,
+      pts_ppr: 20.48,
+      adp_ppr: 4,
+    });
+    expect(pts).toBeCloseTo(7.28 + 9.615 + 3.18);
+  });
+  test('DEF uses sack/int buckets, not raw pts_allow', () => {
+    const def = {sack: 1, int: 2, pts_allow_14_20: 3, def_td: 6};
+    expect(scoreStats(def, {sack: 2.54, int: 0.87, pts_allow: 20.5, pts_allow_14_20: 1, def_td: 0.22})).toBeCloseTo(
+      2.54 + 1.74 + 3 + 1.32,
+    );
+  });
+});
+
+describe('best-ball lineup', () => {
+  const slots = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'REC_FLEX', 'DEF'];
+  test('starts the highest remaining WR/TE in REC_FLEX', () => {
+    const pts = bestBallScore(
+      [
+        {playerId: 'qb', position: 'QB', pts: 20},
+        {playerId: 'rb1', position: 'RB', pts: 18},
+        {playerId: 'rb2', position: 'RB', pts: 10},
+        {playerId: 'wr1', position: 'WR', pts: 22},
+        {playerId: 'wr2', position: 'WR', pts: 15},
+        {playerId: 'wr3', position: 'WR', pts: 8},
+        {playerId: 'wr4', position: 'WR', pts: 12},
+        {playerId: 'te', position: 'TE', pts: 9},
+        {playerId: 'def', position: 'DEF', pts: 5},
+      ],
+      slots,
+    );
+    // QB20 + RB18+10 + WR22+15+12 + TE9 + flex wr4 already in WR3? WR slots take 22,15,12; flex is wr3=8
+    // Sorted: wr1 22, qb 20, rb1 18, wr2 15, wr4 12, rb2 10, te 9, wr3 8, def 5
+    // QB: 20, RB: 18+10, WR: 22+15+12, TE: 9, DEF: 5, REC_FLEX: wr3 8
+    expect(pts).toBe(20 + 18 + 10 + 22 + 15 + 12 + 9 + 8 + 5);
+  });
+  test('projected weeks emit one score per roster', () => {
+    const rows = projectedWeeklyScores(
+      [
+        {rosterId: 1, playerId: 'a', position: 'QB'},
+        {rosterId: 2, playerId: 'b', position: 'QB'},
+      ],
+      [
+        {week: 1, playerId: 'a', pts: 25},
+        {week: 1, playerId: 'b', pts: 10},
+      ],
+      ['QB'],
+    );
+    expect(rows.find((r) => r.rosterId === 1)?.points).toBe(25);
+    expect(rows.find((r) => r.rosterId === 2)?.points).toBe(10);
   });
 });

@@ -579,3 +579,23 @@ export const fantasyPlayers = pgTable(
     idxFantasyPlayersName: index('idx_fantasy_players_name').on(t.fullName),
   }),
 );
+
+/** RotoWire weekly counting stats via Sleeper, scored with UCSB settings. */
+export const fantasyProjections = pgTable(
+  'fantasy_projections',
+  {
+    id: serial('id').primaryKey(),
+    season: integer('season').notNull(),
+    week: integer('week').notNull(),
+    playerId: text('player_id').notNull(),
+    source: text('source').notNull().default('rotowire'),
+    opponent: text('opponent'),
+    stats: jsonb('stats').$type<Record<string, number>>().notNull(),
+    pts: doublePrecision('pts').notNull().default(0),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => ({
+    uniqFantasyProjection: unique().on(t.season, t.week, t.playerId, t.source),
+    idxFantasyProjPlayer: index('idx_fantasy_proj_player').on(t.season, t.playerId),
+  }),
+);

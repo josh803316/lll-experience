@@ -198,7 +198,11 @@ const app = baseApp
       // Default skip the 5MB player map so Vercel cron stays under timeout.
       // Pass ?players=1 for a full refresh.
       const skipPlayers = query?.players !== '1'
-      const result = await ingestSleeperLeague(undefined, { refreshPlayers: !skipPlayers })
+      const skipProjections = query?.projections !== '1'
+      const result = await ingestSleeperLeague(undefined, {
+        refreshPlayers: !skipPlayers,
+        refreshProjections: !skipProjections,
+      })
       return { ok: true, ...result }
     } catch (err: unknown) {
       console.error('[CRON] sync-sleeper error:', getErrorMessage(err))
