@@ -25,7 +25,13 @@ import {
   type ScoredPick,
   type TxEvent,
 } from './fantasy-metrics.js';
-import {blendWeeklyPts, projectedWeeklyScores, starterSlots} from './fantasy-projections.js';
+import {
+  blendWeeklyPts,
+  positionalHeatmap,
+  projectedWeeklyScores,
+  starterSlots,
+  type HeatCell,
+} from './fantasy-projections.js';
 
 export interface SeasonSummary {
   season: number;
@@ -61,6 +67,19 @@ export interface GmSeasonRow {
   wireFpts: number;
   lateFpts: number;
   projected: boolean;
+}
+
+export interface HeatmapTeam {
+  slug: string;
+  displayName: string;
+  projected: boolean;
+  ovr: HeatCell;
+  qb: HeatCell;
+  rb: HeatCell;
+  wr: HeatCell;
+  te: HeatCell;
+  flex: HeatCell;
+  def: HeatCell;
 }
 
 export interface GmAllTimeRow {
@@ -523,6 +542,50 @@ function lookupPff(
   return map.get(`${normPlayerName(name)}|${season}|${cat}`) ?? null;
 }
 
+function buildHeatmap(ctx: Ctx, year: number): HeatmapTeam[] {
+  const league = ctx.leagues.find((l) => l.season === year);
+  if (!league) {
+    return [];
+  }
+  const actual = seasonPtsMap(ctx, league.sleeperLeagueId);
+  const actualSum = [...actual.values()].reduce((s, v) => s + v, 0);
+  const pts = actualSum > 0 ? actual : projectedPtsMap(ctx, year);
+  const projected = actualSum === 0 && pts.size > 0;
+  if (pts.size === 0) {
+    return [];
+  }
+  const draft = ctx.drafts.find((d) => d.sleeperLeagueId === league.sleeperLeagueId);
+  const leagueRosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId);
+  const byRoster = new Map<number, {playerId: string; position: string; pts: number}[]>();
+  for (const p of ctx.picks.filter((x) => draft && x.draftId === draft.draftId)) {
+    const list = byRoster.get(p.rosterId) ?? [];
+    list.push({playerId: p.playerId, position: p.position ?? 'UNK', pts: pts.get(p.playerId) ?? 0});
+    byRoster.set(p.rosterId, list);
+  }
+  const heat = positionalHeatmap(
+    leagueRosters.map((r) => ({rosterId: r.rosterId, players: byRoster.get(r.rosterId) ?? []})),
+    starterSlots(league.rosterPositions),
+  );
+  const out: HeatmapTeam[] = heat.map((h) => {
+    const roster = leagueRosters.find((r) => r.rosterId === h.rosterId);
+    const id = ident(ctx, roster?.sleeperUserId ?? null, roster?.teamName);
+    return {
+      slug: id.slug,
+      displayName: id.displayName,
+      projected,
+      ovr: h.ovr,
+      qb: h.qb,
+      rb: h.rb,
+      wr: h.wr,
+      te: h.te,
+      flex: h.flex,
+      def: h.def,
+    };
+  });
+  out.sort((a, b) => a.ovr.rank - b.ovr.rank || b.ovr.pts - a.ovr.pts);
+  return out;
+}
+
 export const FantasyScout = {
   async listSeasons(): Promise<SeasonSummary[]> {
     const ctx = await loadContext();
@@ -546,13 +609,17 @@ export const FantasyScout = {
     return {seasons, gms: rollupAllTime(rows, seasons.map((s) => s.season))};
   },
 
-  async season(year: number): Promise<{summary: SeasonSummary | null; standings: GmSeasonRow[]}> {
+  async season(year: number): Promise<{
+    summary: SeasonSummary | null;
+    standings: GmSeasonRow[];
+    heatmap: HeatmapTeam[];
+  }> {
     const ctx = await loadContext();
     const seasons = (await this.listSeasons()).filter((s) => s.season === year);
     const standings = buildSeasonRows(ctx)
       .filter((r) => r.season === year)
       .sort((a, b) => a.finish - b.finish);
-    return {summary: seasons[0] ?? null, standings};
+    return {summary: seasons[0] ?? null, standings, heatmap: buildHeatmap(ctx, year)};
   },
 
   async draft(year: number): Promise<{

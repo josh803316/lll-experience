@@ -27,8 +27,8 @@ export const fantasyController = new Elysia({prefix: '/fantasy'})
     ctx.set.headers['Content-Type'] = 'text/html';
     const year = Number(ctx.params.year);
     const seasons = await FantasyScout.listSeasons();
-    const {summary, standings} = await FantasyScout.season(year);
-    return fantasySeasonPage(summary, standings, seasons, CLERK_KEY);
+    const {summary, standings, heatmap} = await FantasyScout.season(year);
+    return fantasySeasonPage(summary, standings, seasons, heatmap, CLERK_KEY);
   })
   .get('/draft/:year', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html';

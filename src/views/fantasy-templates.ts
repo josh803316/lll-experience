@@ -3,6 +3,7 @@ import type {
   DraftPickRow,
   GmAllTimeRow,
   GmSeasonRow,
+  HeatmapTeam,
   SeasonSummary,
   WireRow,
 } from '../services/fantasy-scout.js';
@@ -399,10 +400,72 @@ export function fantasyDashboard(gms: GmAllTimeRow[], seasons: SeasonSummary[], 
   return fantasyLayout(body, 'UCSB Legacy — All-time', clerkKey);
 }
 
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) {
+    return `${n}th`;
+  }
+  if (n % 10 === 1) {
+    return `${n}st`;
+  }
+  if (n % 10 === 2) {
+    return `${n}nd`;
+  }
+  if (n % 10 === 3) {
+    return `${n}rd`;
+  }
+  return `${n}th`;
+}
+
+function heatBg(rank: number, n: number): string {
+  const t = n <= 1 ? 0 : (rank - 1) / (n - 1);
+  const hue = 152 - t * 152;
+  return `background:hsl(${hue.toFixed(0)} 62% ${32 + t * 6}%);color:#f4f7fb`;
+}
+
+function heatCell(rank: number, pts: number, n: number): string {
+  const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
+  return `<td class="px-2 py-2 text-center font-bold tabular-nums rounded-sm" style="${heatBg(rank, n)}" title="${fmt(pts, 0)} FPTS" data-val="${rank}">${medal}${ordinal(rank)}</td>`;
+}
+
+function fantasyHeatmap(teams: HeatmapTeam[]): string {
+  if (teams.length === 0) {
+    return '';
+  }
+  const n = teams.length;
+  const head = ['OVR', 'QB', 'RB', 'WR', 'TE', 'FLEX', 'DEF'];
+  const keys = ['ovr', 'qb', 'rb', 'wr', 'te', 'flex', 'def'] as const;
+  const body = teams
+    .map((t) => {
+      const cells = keys.map((k) => heatCell(t[k].rank, t[k].pts, n)).join('');
+      return `<tr class="border-t border-black/5">
+        <td class="px-3 py-2 font-bold whitespace-nowrap"><a class="hover:text-accent" href="/fantasy/manager/${encodeURIComponent(t.slug)}">${escapeHtml(t.displayName)}</a></td>
+        ${cells}
+      </tr>`;
+    })
+    .join('');
+  const projected = teams.some((t) => t.projected);
+  return `
+    <div>
+      <h3 class="text-xl font-bold tracking-tighter mb-1">Positional heat map</h3>
+      <p class="text-xs text-muted mb-3">${projected ? 'Projected starter-slot FPTS (blended weekly stats × UCSB scoring). ' : ''}OVR is the starting lineup. FLEX is the leftover RB/WR/TE after 2 RB / 3 WR / 1 TE. Green = 1st in the room, red = last. Same idea as last year’s FFR board.</p>
+      <div class="card-paper rounded-lg overflow-x-auto">
+        <table class="w-min min-w-full text-sm">
+          <thead><tr>
+            <th class="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-muted">GM</th>
+            ${head.map((h) => `<th class="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-muted">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 export function fantasySeasonPage(
   summary: SeasonSummary | null,
   standings: GmSeasonRow[],
   seasons: SeasonSummary[],
+  heatmap: HeatmapTeam[] = [],
   clerkKey?: string,
 ): string {
   const year = summary?.season;
@@ -452,7 +515,8 @@ export function fantasySeasonPage(
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs. Tap a <span class="text-accent whitespace-nowrap">?</span> on PF/week or Grade for how those are calculated.</p>`
+      <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs. Tap a <span class="text-accent whitespace-nowrap">?</span> on PF/week or Grade for how those are calculated.</p>
+      ${fantasyHeatmap(heatmap)}`
       }`
       }
     </main>`;
