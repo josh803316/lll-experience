@@ -11,7 +11,14 @@ import {
   winPct,
   wireStints,
 } from './fantasy-metrics.js';
-import {bestBallScore, positionalHeatmap, positionalTotals, projectedWeeklyScores, scoreStats} from './fantasy-projections.js';
+import {
+  bestBallScore,
+  positionalHeatmap,
+  positionalHeatmapWeekly,
+  positionalTotals,
+  projectedWeeklyScores,
+  scoreStats,
+} from './fantasy-projections.js';
 
 describe('winPct / median', () => {
   test('win pct includes ties in the denominator', () => {
@@ -280,5 +287,95 @@ describe('positional heat map', () => {
     );
     expect(heat.find((h) => h.rosterId === 1)?.ovr).toEqual({rank: 1, pts: 40});
     expect(heat.find((h) => h.rosterId === 2)?.ovr).toEqual({rank: 2, pts: 10});
+  });
+  test('OVR is the sum of starter columns; a fat bench does not count', () => {
+    const starters = [
+      {playerId: 'qb', position: 'QB', pts: 20},
+      {playerId: 'rb1', position: 'RB', pts: 18},
+      {playerId: 'rb2', position: 'RB', pts: 10},
+      {playerId: 'wr1', position: 'WR', pts: 22},
+      {playerId: 'wr2', position: 'WR', pts: 15},
+      {playerId: 'wr3', position: 'WR', pts: 12},
+      {playerId: 'wr4', position: 'WR', pts: 8},
+      {playerId: 'te', position: 'TE', pts: 9},
+      {playerId: 'def', position: 'DEF', pts: 5},
+    ];
+    const heat = positionalHeatmap([{rosterId: 1, players: [...starters, {playerId: 'qb-bench', position: 'QB', pts: 3}]}], slots);
+    const deep = heat[0];
+    const starterPts = 20 + 18 + 10 + 22 + 15 + 12 + 9 + 8 + 5;
+    expect(deep.ovr.pts).toBe(starterPts);
+    expect(deep.ovr.pts).toBe(deep.qb.pts + deep.rb.pts + deep.wr.pts + deep.te.pts + deep.flex.pts + deep.def.pts);
+  });
+  test('deeper bench does not beat a better starting lineup', () => {
+    const heat = positionalHeatmap(
+      [
+        {
+          rosterId: 1,
+          players: [
+            {playerId: 'qb', position: 'QB', pts: 40},
+            {playerId: 'bench', position: 'RB', pts: 200},
+          ],
+        },
+        {rosterId: 2, players: [{playerId: 'qb2', position: 'QB', pts: 50}]},
+      ],
+      ['QB'],
+    );
+    expect(heat.find((h) => h.rosterId === 1)?.ovr).toEqual({rank: 2, pts: 40});
+    expect(heat.find((h) => h.rosterId === 2)?.ovr).toEqual({rank: 1, pts: 50});
+  });
+  test('weekly heat map counts a backup only in weeks they would start', () => {
+    const heat = positionalHeatmapWeekly(
+      [
+        {
+          rosterId: 1,
+          players: [
+            {playerId: 'a', position: 'QB'},
+            {playerId: 'b', position: 'QB'},
+          ],
+        },
+      ],
+      [
+        {week: 1, playerId: 'a', pts: 25},
+        {week: 1, playerId: 'b', pts: 5},
+        {week: 2, playerId: 'a', pts: 4},
+        {week: 2, playerId: 'b', pts: 20},
+      ],
+      ['QB'],
+    );
+    expect(heat[0].qb.pts).toBe(45);
+    expect(heat[0].ovr.pts).toBe(45);
+  });
+  test('weekly OVR matches summing best-ball weeks', () => {
+    const rosters = [
+      {
+        rosterId: 1,
+        players: [
+          {playerId: 'qb', position: 'QB'},
+          {playerId: 'rb1', position: 'RB'},
+          {playerId: 'rb2', position: 'RB'},
+        ],
+      },
+      {rosterId: 2, players: [{playerId: 'qb2', position: 'QB'}]},
+    ];
+    const weekly = [
+      {week: 1, playerId: 'qb', pts: 10},
+      {week: 1, playerId: 'rb1', pts: 8},
+      {week: 1, playerId: 'rb2', pts: 3},
+      {week: 1, playerId: 'qb2', pts: 20},
+      {week: 2, playerId: 'qb', pts: 6},
+      {week: 2, playerId: 'rb1', pts: 1},
+      {week: 2, playerId: 'rb2', pts: 12},
+      {week: 2, playerId: 'qb2', pts: 5},
+    ];
+    const slots = ['QB', 'RB'];
+    const heat = positionalHeatmapWeekly(rosters, weekly, slots);
+    const a = heat.find((h) => h.rosterId === 1)!;
+    const b = heat.find((h) => h.rosterId === 2)!;
+    expect(a.ovr.pts).toBe(10 + 8 + 6 + 12);
+    expect(a.qb.pts).toBe(16);
+    expect(a.rb.pts).toBe(20);
+    expect(b.ovr.pts).toBe(25);
+    expect(a.ovr.rank).toBe(1);
+    expect(b.ovr.rank).toBe(2);
   });
 });

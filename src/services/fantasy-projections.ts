@@ -251,18 +251,17 @@ function rankDescending(values: number[]): number[] {
   return ranks;
 }
 
-export function positionalHeatmap(
-  rosters: {rosterId: number; players: LineupPlayer[]}[],
-  slots: string[],
+const POS_KEYS: Exclude<HeatPos, 'ovr'>[] = ['qb', 'rb', 'wr', 'te', 'flex', 'def'];
+
+function emptyPos(): Record<Exclude<HeatPos, 'ovr'>, number> {
+  return {qb: 0, rb: 0, wr: 0, te: 0, flex: 0, def: 0};
+}
+
+function heatRowsFromBuilt(
+  built: {rosterId: number; pos: Record<Exclude<HeatPos, 'ovr'>, number>; ovr: number}[],
 ): HeatRow[] {
-  const posKeys: Exclude<HeatPos, 'ovr'>[] = ['qb', 'rb', 'wr', 'te', 'flex', 'def'];
-  const built = rosters.map((r) => {
-    const pos = positionalTotals(r.players, slots);
-    const ovr = r.players.reduce((s, p) => s + p.pts, 0);
-    return {rosterId: r.rosterId, pos, ovr};
-  });
   const ovrRanks = rankDescending(built.map((b) => b.ovr));
-  const posRanks = Object.fromEntries(posKeys.map((k) => [k, rankDescending(built.map((b) => b.pos[k]))])) as Record<
+  const posRanks = Object.fromEntries(POS_KEYS.map((k) => [k, rankDescending(built.map((b) => b.pos[k]))])) as Record<
     Exclude<HeatPos, 'ovr'>,
     number[]
   >;
@@ -276,6 +275,58 @@ export function positionalHeatmap(
     flex: {rank: posRanks.flex[i], pts: b.pos.flex},
     def: {rank: posRanks.def[i], pts: b.pos.def},
   }));
+}
+
+export function positionalHeatmap(
+  rosters: {rosterId: number; players: LineupPlayer[]}[],
+  slots: string[],
+): HeatRow[] {
+  return heatRowsFromBuilt(
+    rosters.map((r) => {
+      const pos = positionalTotals(r.players, slots);
+      return {rosterId: r.rosterId, pos, ovr: pos.qb + pos.rb + pos.wr + pos.te + pos.flex + pos.def};
+    }),
+  );
+}
+
+/**
+ * Best-ball heat map: each week, fill starter slots from the whole roster.
+ * A backup only adds points in weeks they would actually start.
+ */
+export function positionalHeatmapWeekly(
+  rosters: {rosterId: number; players: {playerId: string; position: string}[]}[],
+  weeklyPts: ProjWeekPts[],
+  slots: string[],
+): HeatRow[] {
+  const weeks = [...new Set(weeklyPts.map((w) => w.week))].sort((a, b) => a - b);
+  const pts = new Map<string, number>();
+  for (const w of weeklyPts) {
+    pts.set(`${w.week}|${w.playerId}`, (pts.get(`${w.week}|${w.playerId}`) ?? 0) + w.pts);
+  }
+  const built = rosters.map((r) => ({rosterId: r.rosterId, pos: emptyPos(), ovr: 0}));
+  const byId = new Map(built.map((b) => [b.rosterId, b]));
+  for (const week of weeks) {
+    for (const r of rosters) {
+      const players = r.players.map((p) => ({
+        playerId: p.playerId,
+        position: p.position,
+        pts: pts.get(`${week}|${p.playerId}`) ?? 0,
+      }));
+      const pos = positionalTotals(players, slots);
+      const cur = byId.get(r.rosterId);
+      if (!cur) {
+        continue;
+      }
+      cur.pos.qb += pos.qb;
+      cur.pos.rb += pos.rb;
+      cur.pos.wr += pos.wr;
+      cur.pos.te += pos.te;
+      cur.pos.flex += pos.flex;
+      cur.pos.def += pos.def;
+      cur.ovr += pos.qb + pos.rb + pos.wr + pos.te + pos.flex + pos.def;
+    }
+  }
+  return heatRowsFromBuilt(built);
 }
 
 export function sumProjectedPts(weeklyPts: ProjWeekPts[], playerId: string): number {

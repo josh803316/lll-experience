@@ -425,7 +425,7 @@ function heatBg(rank: number, n: number): string {
 
 function heatCell(rank: number, pts: number, n: number): string {
   const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
-  return `<td class="px-2 py-2 text-center font-bold tabular-nums rounded-sm" style="${heatBg(rank, n)}" title="${fmt(pts, 0)} FPTS" data-val="${rank}">${medal}${ordinal(rank)}</td>`;
+  return `<td class="px-2 py-2 text-center font-bold tabular-nums rounded-sm" style="${heatBg(rank, n)}" title="${fmt(pts, 0)} FPTS" data-val="${rank}">${medal}${ordinal(rank)}<div class="text-[10px] font-semibold opacity-80">${fmt(pts, 0)}</div></td>`;
 }
 
 function fantasyHeatmap(teams: HeatmapTeam[]): string {
@@ -448,7 +448,7 @@ function fantasyHeatmap(teams: HeatmapTeam[]): string {
   return `
     <div>
       <h3 class="text-xl font-bold tracking-tighter mb-1">Positional heat map</h3>
-      <p class="text-xs text-muted mb-3">${projected ? 'Projected starter-slot FPTS (blended weekly stats × UCSB scoring). ' : ''}OVR is the starting lineup. FLEX is the leftover RB/WR/TE after 2 RB / 3 WR / 1 TE. Green = 1st in the room, red = last. Same idea as last year’s FFR board.</p>
+      <p class="text-xs text-muted mb-3">${projected ? 'Projected weekly best-ball (blended weekly stats × UCSB scoring). ' : ''}Best-ball: each week we start the highest eligible lineup from the whole roster, so depth counts on byes and off weeks. A second QB only counts the weeks he beats your first. OVR is the sum of those weekly lineups (same as the position columns). FLEX is the leftover RB/WR/TE after 2 RB / 3 WR / 1 TE. Green = 1st in the room, red = last.</p>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead><tr>
