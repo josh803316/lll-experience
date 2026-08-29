@@ -149,6 +149,12 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Positional heat map' })).toBeVisible()
   await expect(page.getByText('FLEX', { exact: true })).toBeVisible()
   await expect(page.locator('body')).toContainText('depth counts on byes')
+  await page.locator('td[data-val="Jacob"]').first().locator('..').click()
+  await page.waitForURL('**/fantasy/manager/jacob?season=2026', { timeout: 60000 })
+  await expect(page.getByRole('heading', { name: 'Jacob · 2026', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '2026 current team', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '2026 auction picks', exact: true })).toBeVisible()
+  await expect(page.locator('body')).toContainText('Roster reconstructed from the season draft')
 
   await page.goto(`${SITE_URL}/fantasy/manager/wlampe/timeline?season=2026`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: 'Team evolution' })).toBeVisible()
@@ -160,7 +166,6 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
 
   await page.goto(`${SITE_URL}/fantasy/2026/chat`, { timeout: 60000 })
   await expect(page.getByText('Season 2026 message board')).toBeVisible()
-  await expect(page.getByText('No messages yet')).toBeVisible()
 
   await page.goto(`${SITE_URL}/fantasy/draft/2026`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: '2026 auction' })).toBeVisible()

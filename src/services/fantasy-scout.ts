@@ -45,6 +45,7 @@ import {
   type FantasyEvolutionResult,
   type FantasyTimelineInput,
   type FantasyTimelinePoint,
+  replayRosterSnapshots,
 } from './fantasy-timeline.js'
 
 export interface SeasonSummary {
@@ -174,6 +175,14 @@ export interface FantasyEvolutionData extends FantasyEvolutionResult {
   season: number
   projected: boolean
   strengthBasis: 'retrospective actuals' | 'current projections'
+}
+
+export interface ManagerTeamPlayer {
+  playerId: string
+  playerName: string
+  position: string | null
+  source: 'auction' | 'in-season'
+  addWeek: number | null
 }
 
 function pffCategory(position: string | null): string | null {
@@ -984,23 +993,35 @@ export const FantasyScout = {
     return { seasons: seasons.map((s) => s.season), gms }
   },
 
-  async manager(slug: string): Promise<{
+  async manager(
+    slug: string,
+    season?: number
+  ): Promise<{
     gm: GmAllTimeRow | null
+    season: GmSeasonRow | null
+    team: ManagerTeamPlayer[]
     draftPicks: (DraftPickRow & { season: number })[]
     wire: (WireRow & { season: number })[]
     missed: (WireRow & { season: number })[]
   }> {
     const ctx = await loadContext()
     const seasonNums = ctx.leagues.map((l) => l.season)
-    const gm = rollupAllTime(buildSeasonRows(ctx), seasonNums).find((g) => g.slug === slug) ?? null
+    const seasonRows = buildSeasonRows(ctx)
+    const gm = rollupAllTime(seasonRows, seasonNums).find((g) => g.slug === slug) ?? null
+    const selectedSeason = season
+      ? (seasonRows.find((row) => row.season === season && row.slug === slug) ?? null)
+      : null
     if (!gm) {
-      return { gm: null, draftPicks: [], wire: [], missed: [] }
+      return { gm: null, season: selectedSeason, team: [], draftPicks: [], wire: [], missed: [] }
     }
-    const pff = await pffMap(ctx.db, seasonNums)
+    const pff = await pffMap(ctx.db, season ? [season] : seasonNums)
     const draftPicks: (DraftPickRow & { season: number })[] = []
     const wire: (WireRow & { season: number })[] = []
     const missed: (WireRow & { season: number })[] = []
-    for (const league of ctx.leagues) {
+    let team: ManagerTeamPlayer[] = []
+    for (const league of ctx.leagues.filter(
+      (candidate) => !season || candidate.season === season
+    )) {
       const draft = ctx.drafts.find((d) => d.sleeperLeagueId === league.sleeperLeagueId)
       const scored = scoredPicksForLeague(ctx, league.sleeperLeagueId)
       const pickMeta = new Map(
@@ -1033,8 +1054,53 @@ export const FantasyScout = {
       missed.push(
         ...w.missed.filter((r) => r.slug === slug).map((r) => ({ ...r, season: league.season }))
       )
+      if (season === league.season && selectedSeason) {
+        const input = timelineInputForContext(ctx, league.season)
+        if (input) {
+          const snapshots = replayRosterSnapshots(
+            input.rosters,
+            input.draftPicks,
+            input.transactions,
+            input.maxWeek,
+            input.playerNames
+          )
+          const currentIds = snapshots.at(-1)?.rosters.get(selectedSeason.rosterId) ?? []
+          const auctionIds = new Set(
+            input.draftPicks
+              .filter((pick) => pick.rosterId === selectedSeason.rosterId)
+              .map((pick) => pick.playerId)
+          )
+          const addWeeks = new Map<string, number>()
+          for (const transaction of input.transactions) {
+            if (transaction.status !== 'complete') {
+              continue
+            }
+            for (const [playerId, rawRosterId] of Object.entries(transaction.adds ?? {})) {
+              if (Number(rawRosterId) === selectedSeason.rosterId) {
+                addWeeks.set(
+                  playerId,
+                  Math.min(addWeeks.get(playerId) ?? transaction.week, transaction.week)
+                )
+              }
+            }
+          }
+          team = currentIds
+            .map((playerId) => ({
+              playerId,
+              playerName: input.playerNames.get(playerId) ?? playerName(ctx, playerId),
+              position: input.playerPositions.get(playerId) ?? null,
+              source: auctionIds.has(playerId) ? ('auction' as const) : ('in-season' as const),
+              addWeek: addWeeks.get(playerId) ?? null,
+            }))
+            .sort(
+              (a, b) =>
+                (a.position ?? 'ZZZ').localeCompare(b.position ?? 'ZZZ') ||
+                a.playerName.localeCompare(b.playerName)
+            )
+        }
+      }
     }
-    return { gm, draftPicks, wire, missed }
+    return { gm, season: selectedSeason, team, draftPicks, wire, missed }
   },
 
   async playerCard(playerId: string, seasonHint?: number): Promise<PlayerCardData | null> {

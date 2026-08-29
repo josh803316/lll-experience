@@ -89,13 +89,32 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
   })
   .get('/manager/:slug', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
+    const seasonRaw = Number(ctx.query.season)
+    const season = Number.isFinite(seasonRaw) && seasonRaw > 0 ? seasonRaw : undefined
     const seasons = await FantasyScout.listSeasons()
-    const { gm, draftPicks, wire, missed } = await FantasyScout.manager(ctx.params.slug)
+    const {
+      gm,
+      season: seasonRow,
+      team,
+      draftPicks,
+      wire,
+      missed,
+    } = await FantasyScout.manager(ctx.params.slug, season)
     if (!gm) {
       return fantasyManagerNotFound(ctx.params.slug, CLERK_KEY)
     }
     const showMissed = ctx.query.missed === '1' || ctx.query.missed === 'true'
-    return fantasyManagerPage(gm, draftPicks, wire, missed, seasons, showMissed, CLERK_KEY)
+    return fantasyManagerPage(
+      gm,
+      team,
+      draftPicks,
+      wire,
+      missed,
+      seasons,
+      showMissed,
+      CLERK_KEY,
+      seasonRow
+    )
   })
   .get('/player/:id/card', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'

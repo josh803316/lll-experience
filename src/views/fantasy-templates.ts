@@ -5,6 +5,7 @@ import type {
   GmAllTimeRow,
   GmSeasonRow,
   HeatmapTeam,
+  ManagerTeamPlayer,
   PlayerCardData,
   SeasonSummary,
   WireRow,
@@ -781,7 +782,7 @@ function heatCell(rank: number, pts: number, n: number): string {
   return `<td class="px-2 py-2 text-center font-bold tabular-nums rounded-sm" style="${heatBg(rank, n)}" title="${fmt(pts, 0)} FPTS" data-val="${rank}">${medal}${ordinal(rank)}<div class="text-[10px] font-semibold opacity-80">${fmt(pts, 0)}</div></td>`
 }
 
-function fantasyHeatmap(teams: HeatmapTeam[]): string {
+function fantasyHeatmap(teams: HeatmapTeam[], season?: number): string {
   if (teams.length === 0) {
     return ''
   }
@@ -792,7 +793,7 @@ function fantasyHeatmap(teams: HeatmapTeam[]): string {
     .map((t) => {
       const cells = keys.map((k) => heatCell(t[k].rank, t[k].pts, n)).join('')
       return `<tr class="border-t border-black/5">
-        <td class="px-3 py-2 font-bold whitespace-nowrap"><a class="hover:text-accent" href="/fantasy/manager/${encodeURIComponent(t.slug)}">${escapeHtml(t.displayName)}</a></td>
+        <td class="px-3 py-2 font-bold whitespace-nowrap"><a class="hover:text-accent" href="/fantasy/manager/${encodeURIComponent(t.slug)}${season ? `?season=${season}` : ''}">${escapeHtml(t.displayName)}</a></td>
         ${cells}
       </tr>`
     })
@@ -827,7 +828,7 @@ export function fantasySeasonPage(
     .map(
       (
         r
-      ) => `<tr class="border-t border-black/5 hover:bg-black/[0.03] cursor-pointer" onclick="location.href='/fantasy/manager/${encodeURIComponent(r.slug)}'">
+      ) => `<tr class="border-t border-black/5 hover:bg-black/[0.03] cursor-pointer" onclick="location.href='/fantasy/manager/${encodeURIComponent(r.slug)}${year ? `?season=${year}` : ''}'">
         <td class="px-3 py-2 tbl-rank font-bold">${r.finish}</td>
         <td class="px-3 py-2 font-bold" data-val="${escapeHtml(r.displayName)}">${escapeHtml(r.displayName)}
           <div class="text-[11px] text-muted font-normal">${escapeHtml(r.teamName || '')}</div></td>
@@ -870,7 +871,7 @@ export function fantasySeasonPage(
         </table>
       </div>
       <p class="text-xs text-muted">W-L is all-play: each week your best-ball score is a win or loss against every other team. No playoffs. Tap a <span class="text-accent whitespace-nowrap">?</span> on PF/week or Grade for how those are calculated.</p>
-      ${fantasyHeatmap(heatmap)}`
+      ${fantasyHeatmap(heatmap, year)}`
       }`
           : emptyIngest()
       }
@@ -1146,14 +1147,29 @@ export function fantasyRankingsPage(
 
 export function fantasyManagerPage(
   gm: GmAllTimeRow,
+  team: ManagerTeamPlayer[],
   draftPicks: (DraftPickRow & { season: number })[],
   wire: (WireRow & { season: number })[],
   missed: (WireRow & { season: number })[],
   seasons: SeasonSummary[],
   showMissed: boolean,
-  clerkKey?: string
+  clerkKey?: string,
+  seasonRow: GmSeasonRow | null = null
 ): string {
+  const viewSeason = seasonRow?.season
+  const visiblePicks = viewSeason
+    ? draftPicks.filter((pick) => pick.season === viewSeason)
+    : draftPicks
+  const visibleWire = viewSeason ? wire.filter((row) => row.season === viewSeason) : wire
+  const visibleMissed = viewSeason ? missed.filter((row) => row.season === viewSeason) : missed
+  const teamRows = team
+    .map(
+      (player) =>
+        `<tr class="border-t border-black/5"><td class="px-3 py-2">${playerLink(player.playerId, player.playerName, player.position, viewSeason)}</td><td class="px-3 py-2">${posChip(player.position)}</td><td class="px-3 py-2">${player.source === 'auction' ? 'Auction' : `Added W${player.addWeek ?? '—'}`}</td></tr>`
+    )
+    .join('')
   const yearRows = gm.years
+    .filter((year) => !viewSeason || year.season === viewSeason)
     .map(
       (
         y
@@ -1169,25 +1185,30 @@ export function fantasyManagerPage(
     )
     .join('')
   const body = `
-    ${nav('all', seasons)}
+    ${nav(viewSeason ? 'season' : 'all', seasons, viewSeason)}
     <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
-      <a href="/fantasy" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← All-time</a>
+      <a href="${viewSeason ? `/fantasy/season/${viewSeason}` : '/fantasy'}" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← ${viewSeason ? `${viewSeason} standings` : 'All-time'}</a>
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 class="text-4xl font-bold tracking-tighter">${escapeHtml(gm.displayName)}</h2>
-          <p class="text-muted">${gm.seasons} seasons · ${pct(gm.winPct)} · ${record(gm.wins, gm.losses, gm.ties)}</p>
+          <h2 class="text-4xl font-bold tracking-tighter">${escapeHtml(gm.displayName)}${viewSeason ? ` · ${viewSeason}` : ''}</h2>
+          <p class="text-muted">${viewSeason ? `${record(seasonRow.wins, seasonRow.losses, seasonRow.ties)} · ${pct(seasonRow.winPct)} · ${seasonRow.projected ? 'projected' : 'actual'} · ${escapeHtml(seasonRow.teamName || 'Current roster')}` : `${gm.seasons} seasons · ${pct(gm.winPct)} · ${record(gm.wins, gm.losses, gm.ties)}`}</p>
         </div>
         <div class="flex items-center gap-4">
-          ${sparkSvg(gm.sparkline)}
-          <a href="/fantasy/manager/${encodeURIComponent(gm.slug)}/timeline" class="text-accent font-bold text-sm hover:underline">Evolution →</a>
+          ${viewSeason ? '' : sparkSvg(gm.sparkline)}
+          <a href="/fantasy/manager/${encodeURIComponent(gm.slug)}/timeline${viewSeason ? `?season=${viewSeason}` : ''}" class="text-accent font-bold text-sm hover:underline">Evolution →</a>
         </div>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('PF/week', TIPS.pfWeek)}</div><div class="text-2xl font-bold">${fmt(gm.pfPerWeek)}</div></div>
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">Avg finish</div><div class="text-2xl font-bold">${fmt(gm.avgFinish)}</div></div>
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Grade', TIPS.draftGrade)}</div><div class="text-2xl font-bold mt-1">${gradePill(gm.draftGrade, gm.draftProjected)}</div></div>
-        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Wire FPTS', TIPS.wire)}</div><div class="text-2xl font-bold">${fmt(gm.wireFpts, 0)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('PF/week', TIPS.pfWeek)}</div><div class="text-2xl font-bold">${fmt(viewSeason ? seasonRow.pfPerWeek : gm.pfPerWeek)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${viewSeason ? 'Finish' : 'Avg finish'}</div><div class="text-2xl font-bold">${viewSeason ? seasonRow.finish : fmt(gm.avgFinish)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Grade', TIPS.draftGrade)}</div><div class="text-2xl font-bold mt-1">${gradePill(viewSeason ? seasonRow.draftGrade : gm.draftGrade, viewSeason ? seasonRow.draftProjected : gm.draftProjected)}</div></div>
+        <div class="card-paper rounded-lg p-4"><div class="text-[9px] uppercase tracking-widest text-muted">${withTip('Wire FPTS', TIPS.wire)}</div><div class="text-2xl font-bold">${fmt(viewSeason ? seasonRow.wireFpts : gm.wireFpts, 0)}</div></div>
       </div>
+      ${
+        viewSeason
+          ? `<section class="card-paper rounded-lg overflow-x-auto"><div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">${viewSeason} current team</h3><p class="text-xs text-muted">Roster reconstructed from the season draft and settled transactions. Click a player for season-specific scoring and information.</p></div><table class="w-min min-w-full text-sm"><thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Player</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Pos</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Acquired</th></tr></thead><tbody>${teamRows || '<tr><td class="px-3 py-3 text-muted" colspan="3">No roster snapshot is available.</td></tr>'}</tbody></table></section>`
+          : ''
+      }
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
@@ -1202,17 +1223,17 @@ export function fantasyManagerPage(
           <tbody>${yearRows}</tbody>
         </table>
       </div>
-      <h3 class="text-xl font-bold tracking-tighter">Auction picks</h3>
+      <h3 class="text-xl font-bold tracking-tighter">${viewSeason ? `${viewSeason} auction picks` : 'Auction picks'}</h3>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
             ${sortTh('Year', 0)}${sortTh('#', 1)}${sortTh('GM', 2, 'str')}${sortTh('Player', 3, 'str')}
             ${sortTh('Pos', 4, 'str')}${sortTh('$', 5)}${sortTh('FPTS', 6)}${sortTh('Pts/$', 7, 'num', TIPS.ptsPerDollar)}${sortTh('Surplus', 8, 'num', TIPS.surplus)}${sortTh('PFF', 9)}
           </tr></thead>
-          <tbody>${pickRowsHtml(draftPicks, true)}</tbody>
+          <tbody>${pickRowsHtml(visiblePicks, !viewSeason, viewSeason)}</tbody>
         </table>
       </div>
-      <h3 class="text-xl font-bold tracking-tighter">Wire hits</h3>
+      <h3 class="text-xl font-bold tracking-tighter">${viewSeason ? `${viewSeason} wire hits` : 'Wire hits'}</h3>
       <div class="card-paper rounded-lg overflow-x-auto">
         <table class="w-min min-w-full text-sm">
           <thead class="bg-black/[0.03]"><tr>
@@ -1223,7 +1244,7 @@ export function fantasyManagerPage(
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">$</th>
             <th class="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-muted">FPTS</th>
           </tr></thead>
-          <tbody>${wire
+          <tbody>${visibleWire
             .map(
               (r) => `<tr class="border-t border-black/5">
                 <td class="px-3 py-2">${r.season}</td>
@@ -1237,17 +1258,17 @@ export function fantasyManagerPage(
             .join('')}</tbody>
         </table>
       </div>
-      <p class="text-sm"><a class="text-accent font-bold" href="/fantasy/manager/${encodeURIComponent(gm.slug)}?missed=1">${showMissed ? 'Hide' : 'Show'} bids that missed (${missed.length})</a></p>
+      <p class="text-sm"><a class="text-accent font-bold" href="/fantasy/manager/${encodeURIComponent(gm.slug)}${viewSeason ? `?season=${viewSeason}&` : '?'}missed=1">${showMissed ? 'Hide' : 'Show'} bids that missed (${visibleMissed.length})</a></p>
       ${
         showMissed
           ? `<div class="card-paper rounded-lg overflow-x-auto">
                <table class="w-min min-w-full text-sm">
-                 <tbody>${missed
-                   .map(
-                     (r) =>
-                       `<tr class="border-t border-black/5 text-muted"><td class="px-3 py-2">${r.season} W${r.addWeek}</td><td class="px-3 py-2">${playerLink(r.playerId, r.playerName, null, r.season)}</td><td class="px-3 py-2">$${r.waiverBid}</td></tr>`
-                   )
-                   .join('')}</tbody>
+                <tbody>${visibleMissed
+                  .map(
+                    (r) =>
+                      `<tr class="border-t border-black/5 text-muted"><td class="px-3 py-2">${r.season} W${r.addWeek}</td><td class="px-3 py-2">${playerLink(r.playerId, r.playerName, null, r.season)}</td><td class="px-3 py-2">$${r.waiverBid}</td></tr>`
+                  )
+                  .join('')}</tbody>
                </table>
              </div>`
           : ''
