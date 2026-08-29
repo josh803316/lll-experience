@@ -36,7 +36,7 @@ async function clerkLogin(page: Page) {
 }
 
 test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
-  test.setTimeout(240_000)
+  test.setTimeout(360_000)
   await clerkLogin(page)
 
   await expect(page.getByRole('heading', { name: 'Choose an App' })).toBeVisible({ timeout: 15000 })
@@ -86,6 +86,21 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
   await page.goto(`${SITE_URL}/fantasy/rankings`)
   await expect(page.getByRole('heading', { name: 'Finish over time' })).toBeVisible()
 
+  await page.goto(`${SITE_URL}/fantasy/evolution?season=2025`, { timeout: 60000 })
+  await expect(page.getByRole('heading', { name: 'Evolution', exact: true })).toBeVisible()
+  await expect(page.getByText('retrospective actuals').first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Team strength over time' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Risers' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Fallers' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Transaction decision leaderboard' })
+  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'How this view works' })).toBeVisible()
+  await page.locator('select').selectOption('2026')
+  await page.waitForURL('**/fantasy/evolution?season=2026', { timeout: 60000 })
+  await expect(page.getByText('current blended projections').first()).toBeVisible()
+  await expect(page.getByText('Projected all-play rank')).toBeVisible()
+
   await page.goto(`${SITE_URL}/fantasy/manager/tim`)
   await expect(page.getByRole('heading', { name: 'Tim' })).toBeVisible()
 
@@ -112,6 +127,9 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Team evolution' })).toBeVisible()
   await expect(page.getByText(/current blended projections/i)).toBeVisible()
   await expect(page.locator('body')).toContainText(/projected/i)
+  await page.goto(`${SITE_URL}/fantasy/manager/tim/timeline`, { timeout: 60000 })
+  await expect(page.getByRole('heading', { name: 'Team evolution' })).toBeVisible()
+  await expect(page.locator('body')).toContainText('Juwan Johnson')
 
   await page.goto(`${SITE_URL}/fantasy/2026/chat`, { timeout: 60000 })
   await expect(page.getByText('Season 2026 message board')).toBeVisible()

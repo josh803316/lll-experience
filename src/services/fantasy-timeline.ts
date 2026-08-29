@@ -94,6 +94,61 @@ export interface FantasyTimelineInput {
   projected: boolean
 }
 
+export interface FantasyEvolutionPoint extends FantasyTimelinePoint {
+  projectedWins: number
+  projectedLosses: number
+  projectedTies: number
+  projectedWinPct: number
+  projectedRank: number
+  standingsRank: number
+  standingsChange: number
+}
+
+export interface TimelineDecisionPlayer {
+  playerId: string
+  playerName: string
+  points: number
+  kind: 'add' | 'drop'
+}
+
+export interface TimelineDecision {
+  transactionId: string
+  week: number
+  type: string
+  rosterId: number
+  slug: string
+  displayName: string
+  addedPoints: number
+  droppedPoints: number
+  netDelta: number
+  choiceBonus: number
+  doubleNegative: number
+  label:
+    | 'Choice bonus'
+    | 'Double negative'
+    | 'FA hit'
+    | 'Winning move'
+    | 'Opportunity cost'
+    | 'Neutral'
+  players: TimelineDecisionPlayer[]
+}
+
+export interface EvolutionMovement {
+  rosterId: number
+  slug: string
+  displayName: string
+  fromRank: number
+  toRank: number
+  change: number
+}
+
+export interface FantasyEvolutionResult {
+  points: FantasyEvolutionPoint[]
+  decisions: TimelineDecision[]
+  risers: EvolutionMovement[]
+  fallers: EvolutionMovement[]
+}
+
 function rankDescending(values: number[]): number[] {
   const indexed = values.map((value, index) => ({ value, index }))
   indexed.sort((a, b) => b.value - a.value)
@@ -271,6 +326,29 @@ function insight(valueRank: number, strengthRank: number, count: number): string
   return 'Balanced build'
 }
 
+function rankRecords(records: { winPct: number; fpts: number }[]): number[] {
+  const indexed = records.map((record, index) => ({ ...record, index }))
+  indexed.sort((a, b) => b.winPct - a.winPct || b.fpts - a.fpts)
+  const ranks = new Array<number>(records.length)
+  for (let index = 0; index < indexed.length; index++) {
+    const previous = indexed[index - 1]
+    const same =
+      previous && previous.winPct === indexed[index].winPct && previous.fpts === indexed[index].fpts
+    ranks[indexed[index].index] = same ? ranks[previous.index] : index + 1
+  }
+  return ranks
+}
+
+function postTransactionPoints(
+  playerId: string,
+  week: number,
+  weeklyPoints: TimelinePlayerWeek[]
+): number {
+  return weeklyPoints
+    .filter((row) => row.playerId === playerId && row.week >= week)
+    .reduce((sum, row) => sum + row.points, 0)
+}
+
 export function buildFantasyTimeline(input: FantasyTimelineInput): FantasyTimelinePoint[] {
   const snapshots = replayRosterSnapshots(
     input.rosters,
@@ -395,4 +473,209 @@ export function buildFantasyTimeline(input: FantasyTimelineInput): FantasyTimeli
     }
   }
   return out
+}
+
+export function buildFantasyEvolution(input: FantasyTimelineInput): FantasyEvolutionResult {
+  const basePoints = buildFantasyTimeline(input)
+  const snapshots = replayRosterSnapshots(
+    input.rosters,
+    input.draftPicks,
+    input.transactions,
+    input.maxWeek,
+    input.playerNames
+  )
+  const points = pointMap(input.weeklyPoints)
+  const sourceWeeks = [...new Set(input.weeklyPoints.map((row) => row.week))].sort((a, b) => a - b)
+  const byKey = new Map(basePoints.map((point) => [`${point.week}|${point.rosterId}`, point]))
+  const evolution: FantasyEvolutionPoint[] = []
+  const previousStandings = new Map<number, number>()
+
+  for (const snapshot of snapshots) {
+    const weeklyScores = new Map<number, Map<number, number>>()
+    for (const roster of input.rosters) {
+      const rosterScores = new Map<number, number>()
+      const playerIds = snapshot.rosters.get(roster.rosterId) ?? []
+      for (const week of sourceWeeks) {
+        rosterScores.set(
+          week,
+          lineupPoints(playerIds, week, points, input.playerPositions, input.rosterPositions)
+        )
+      }
+      weeklyScores.set(roster.rosterId, rosterScores)
+    }
+
+    const projectedRecords = input.rosters.map((roster) => {
+      const scores = weeklyScores.get(roster.rosterId) ?? new Map()
+      const record = { wins: 0, losses: 0, ties: 0, fpts: 0 }
+      for (const week of sourceWeeks) {
+        const score = scores.get(week) ?? 0
+        const roomScores = input.rosters.map(
+          (other) => weeklyScores.get(other.rosterId)?.get(week) ?? 0
+        )
+        const opponentScores = input.rosters
+          .filter((other) => other.rosterId !== roster.rosterId)
+          .map((other) => weeklyScores.get(other.rosterId)?.get(week) ?? 0)
+        if (roomScores.length > 1 && roomScores.every((value) => value === 0)) {
+          continue
+        }
+        record.fpts += score
+        for (const opponent of opponentScores) {
+          if (opponent < score) {
+            record.wins++
+          } else if (opponent > score) {
+            record.losses++
+          } else {
+            record.ties++
+          }
+        }
+      }
+      return record
+    })
+    const projectedRanks = rankRecords(
+      projectedRecords.map((record) => ({
+        winPct: winPct(record.wins, record.losses, record.ties),
+        fpts: record.fpts,
+      }))
+    )
+
+    for (let index = 0; index < input.rosters.length; index++) {
+      const roster = input.rosters[index]
+      const base = byKey.get(`${snapshot.week}|${roster.rosterId}`)
+      if (!base) {
+        continue
+      }
+      const projectedRecord = projectedRecords[index]
+      const standingsRank = base.performanceRank || projectedRanks[index]
+      evolution.push({
+        ...base,
+        projectedWins: projectedRecord.wins,
+        projectedLosses: projectedRecord.losses,
+        projectedTies: projectedRecord.ties,
+        projectedWinPct: winPct(projectedRecord.wins, projectedRecord.losses, projectedRecord.ties),
+        projectedRank: projectedRanks[index],
+        standingsRank,
+        standingsChange:
+          snapshot.week === 0
+            ? 0
+            : (previousStandings.get(roster.rosterId) ?? standingsRank) - standingsRank,
+      })
+      previousStandings.set(roster.rosterId, standingsRank)
+    }
+  }
+
+  const decisionGroups = new Map<string, TimelineEvent[]>()
+  const transactionEventsById = new Map<string, TimelineEvent[]>()
+  const transactionOrder = new Map(
+    orderedTransactions(input.transactions).map((transaction, index) => [
+      transaction.transactionId,
+      index,
+    ])
+  )
+  for (const snapshot of snapshots) {
+    for (const event of snapshot.events) {
+      const key = `${event.transactionId}|${event.rosterId}`
+      const group = decisionGroups.get(key) ?? []
+      group.push(event)
+      decisionGroups.set(key, group)
+      const allEvents = transactionEventsById.get(event.transactionId) ?? []
+      allEvents.push(event)
+      transactionEventsById.set(event.transactionId, allEvents)
+    }
+  }
+  const decisions: TimelineDecision[] = []
+  for (const events of decisionGroups.values()) {
+    const first = events[0]
+    const adds = events.filter((event) => event.kind === 'add')
+    const drops = events.filter((event) => event.kind === 'drop')
+    const addedPoints = adds.reduce(
+      (sum, event) => sum + postTransactionPoints(event.playerId, first.week, input.weeklyPoints),
+      0
+    )
+    const droppedPoints = drops.reduce(
+      (sum, event) => sum + postTransactionPoints(event.playerId, first.week, input.weeklyPoints),
+      0
+    )
+    const choiceBonus = adds
+      .filter((add) =>
+        [...transactionEventsById.values()].some((events) =>
+          events.some(
+            (event) =>
+              event.kind === 'drop' &&
+              event.playerId === add.playerId &&
+              event.rosterId !== first.rosterId &&
+              (event.transactionId === first.transactionId ||
+                (transactionOrder.get(event.transactionId) ?? Infinity) <
+                  (transactionOrder.get(first.transactionId) ?? Infinity))
+          )
+        )
+      )
+      .reduce(
+        (sum, event) => sum + postTransactionPoints(event.playerId, first.week, input.weeklyPoints),
+        0
+      )
+    const doubleNegative = Math.max(0, droppedPoints - addedPoints)
+    const netDelta = addedPoints - droppedPoints
+    let label: TimelineDecision['label'] = 'Neutral'
+    if (choiceBonus > 0 && netDelta > 0) {
+      label = 'Choice bonus'
+    } else if (doubleNegative > 0) {
+      label = 'Double negative'
+    } else if (adds.length > 0 && drops.length === 0 && addedPoints > 0) {
+      label = 'FA hit'
+    } else if (netDelta > 0) {
+      label = 'Winning move'
+    } else if (netDelta < 0) {
+      label = 'Opportunity cost'
+    }
+    decisions.push({
+      transactionId: first.transactionId,
+      week: first.week,
+      type: first.type,
+      rosterId: first.rosterId,
+      slug: first.rosterId
+        ? (input.rosters.find((r) => r.rosterId === first.rosterId)?.slug ?? '')
+        : '',
+      displayName: input.rosters.find((r) => r.rosterId === first.rosterId)?.displayName ?? '',
+      addedPoints,
+      droppedPoints,
+      netDelta,
+      choiceBonus,
+      doubleNegative,
+      label,
+      players: events.map((event) => ({
+        playerId: event.playerId,
+        playerName: event.playerName,
+        points: postTransactionPoints(event.playerId, first.week, input.weeklyPoints),
+        kind: event.kind,
+      })),
+    })
+  }
+  decisions.sort((a, b) => b.netDelta - a.netDelta || a.week - b.week)
+
+  const finalWeek = Math.max(...snapshots.map((snapshot) => snapshot.week), 0)
+  const priorWeek = Math.max(0, finalWeek - 1)
+  const current = evolution.filter((point) => point.week === finalWeek)
+  const prior = new Map(
+    evolution
+      .filter((point) => point.week === priorWeek)
+      .map((point) => [point.rosterId, point.standingsRank])
+  )
+  const movements = current
+    .map((point) => ({
+      rosterId: point.rosterId,
+      slug: point.slug,
+      displayName: point.displayName,
+      fromRank: prior.get(point.rosterId) ?? point.standingsRank,
+      toRank: point.standingsRank,
+      change: (prior.get(point.rosterId) ?? point.standingsRank) - point.standingsRank,
+    }))
+    .filter((movement) => movement.change !== 0)
+  return {
+    points: evolution,
+    decisions,
+    risers: movements.filter((movement) => movement.change > 0).sort((a, b) => b.change - a.change),
+    fallers: movements
+      .filter((movement) => movement.change < 0)
+      .sort((a, b) => a.change - b.change),
+  }
 }

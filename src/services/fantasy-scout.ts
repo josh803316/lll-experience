@@ -39,7 +39,13 @@ import {
   projectedWeeklyScores,
   starterSlots,
 } from './fantasy-projections.js'
-import { buildFantasyTimeline, type FantasyTimelinePoint } from './fantasy-timeline.js'
+import {
+  buildFantasyEvolution,
+  buildFantasyTimeline,
+  type FantasyEvolutionResult,
+  type FantasyTimelineInput,
+  type FantasyTimelinePoint,
+} from './fantasy-timeline.js'
 
 export interface SeasonSummary {
   season: number
@@ -162,6 +168,12 @@ export interface FantasyTimelineData {
   manager: { slug: string; displayName: string }
   points: FantasyTimelinePoint[]
   room: FantasyTimelinePoint[]
+}
+
+export interface FantasyEvolutionData extends FantasyEvolutionResult {
+  season: number
+  projected: boolean
+  strengthBasis: 'retrospective actuals' | 'current projections'
 }
 
 function pffCategory(position: string | null): string | null {
@@ -654,10 +666,10 @@ function buildHeatmap(ctx: Ctx, year: number): HeatmapTeam[] {
   return out
 }
 
-function buildTimeline(ctx: Ctx, year: number): FantasyTimelinePoint[] {
+function timelineInputForContext(ctx: Ctx, year: number): FantasyTimelineInput | null {
   const league = ctx.leagues.find((l) => l.season === year)
   if (!league) {
-    return []
+    return null
   }
   const draft = ctx.drafts.find((d) => d.sleeperLeagueId === league.sleeperLeagueId)
   const leagueRosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId)
@@ -710,12 +722,20 @@ function buildTimeline(ctx: Ctx, year: number): FantasyTimelinePoint[] {
       waiverBid: tx.waiverBid,
       createdAtMs: tx.createdAtMs,
     }))
+  for (const tx of transactions) {
+    for (const playerId of [...Object.keys(tx.adds ?? {}), ...Object.keys(tx.drops ?? {})]) {
+      if (!playerPositions.has(playerId)) {
+        playerPositions.set(playerId, ctx.playerById.get(playerId)?.position ?? null)
+      }
+      playerNames.set(playerId, playerName(ctx, playerId))
+    }
+  }
   const maxWeek = Math.max(
     0,
     ...ctx.matchups.filter((m) => m.sleeperLeagueId === league.sleeperLeagueId).map((m) => m.week),
     ...weeklyPoints.map((row) => row.week)
   )
-  return buildFantasyTimeline({
+  return {
     rosters: leagueRosters.map((roster) => {
       const id = ident(ctx, roster.sleeperUserId, roster.teamName)
       return { rosterId: roster.rosterId, slug: id.slug, displayName: id.displayName }
@@ -731,7 +751,26 @@ function buildTimeline(ctx: Ctx, year: number): FantasyTimelinePoint[] {
     draftGradeByRoster,
     maxWeek,
     projected: !hasActual && weeklyPoints.length > 0,
-  })
+  }
+}
+
+function buildTimeline(ctx: Ctx, year: number): FantasyTimelinePoint[] {
+  const input = timelineInputForContext(ctx, year)
+  return input ? buildFantasyTimeline(input) : []
+}
+
+function buildEvolution(ctx: Ctx, year: number): FantasyEvolutionData | null {
+  const input = timelineInputForContext(ctx, year)
+  if (!input) {
+    return null
+  }
+  const result = buildFantasyEvolution(input)
+  return {
+    ...result,
+    season: year,
+    projected: input.projected,
+    strengthBasis: input.projected ? 'current projections' : 'retrospective actuals',
+  }
 }
 
 function timelineDataForContext(
@@ -809,6 +848,12 @@ export const FantasyScout = {
     return ctx.leagues
       .map((league) => timelineDataForContext(ctx, slug, league.season))
       .filter((data): data is FantasyTimelineData => data !== null)
+  },
+
+  async evolution(season?: number): Promise<FantasyEvolutionData | null> {
+    const ctx = await loadContext()
+    const selectedSeason = season ?? ctx.leagues.at(-1)?.season
+    return selectedSeason ? buildEvolution(ctx, selectedSeason) : null
   },
 
   async draft(year: number): Promise<{

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  buildFantasyEvolution,
   buildFantasyTimeline,
   replayRosterSnapshots,
   type TimelineDraftPick,
@@ -163,5 +164,84 @@ describe('fantasy roster timeline', () => {
     expect(weekOne?.strengthDelta).toBe(12)
     expect(weekOne?.strengthBasis).toBe('current projections')
     expect(weekOne?.performanceRank).toBe(0)
+  })
+
+  test('resolves transaction-only names and scores decisions from the move week forward', () => {
+    const input = {
+      rosters: [
+        { rosterId: 1, slug: 'one', displayName: 'One' },
+        { rosterId: 2, slug: 'two', displayName: 'Two' },
+        { rosterId: 3, slug: 'three', displayName: 'Three' },
+      ],
+      draftPicks: [
+        { playerId: 'a', rosterId: 1, position: 'QB' },
+        { playerId: 'b', rosterId: 2, position: 'QB' },
+        { playerId: 'c', rosterId: 3, position: 'QB' },
+        { playerId: 'd', rosterId: 2, position: 'QB' },
+      ],
+      transactions: [
+        tx({
+          transactionId: 'trade',
+          type: 'trade',
+          adds: { d: 1, a: 2 },
+          drops: { a: 1, d: 2 },
+        }),
+      ],
+      playerPositions: new Map([
+        ['a', 'QB'],
+        ['b', 'QB'],
+        ['c', 'QB'],
+        ['d', 'QB'],
+      ]),
+      playerNames: new Map([
+        ['a', 'Player A'],
+        ['b', 'Player B'],
+        ['c', 'Player C'],
+        ['d', 'Juwan Johnson'],
+      ]),
+      rosterPositions: ['QB'],
+      weeklyPoints: [
+        { week: 1, playerId: 'a', points: 5 },
+        { week: 1, playerId: 'b', points: 10 },
+        { week: 1, playerId: 'c', points: 1 },
+        { week: 1, playerId: 'd', points: 20 },
+      ],
+      actualMatchups: [],
+      draftSurplusByRoster: new Map([
+        [1, 0],
+        [2, 0],
+        [3, 0],
+      ]),
+      draftGradeByRoster: new Map([
+        [1, 'C'],
+        [2, 'C'],
+        [3, 'C'],
+      ]),
+      maxWeek: 1,
+      projected: true,
+    }
+
+    const evolution = buildFantasyEvolution(input)
+    const weekOne = evolution.points.filter((point) => point.week === 1)
+    const oneDecision = evolution.decisions.find((decision) => decision.rosterId === 1)
+    const twoDecision = evolution.decisions.find((decision) => decision.rosterId === 2)
+
+    expect(
+      weekOne.find((point) => point.rosterId === 1)?.events.find((event) => event.playerId === 'd')
+        ?.playerName
+    ).toBe('Juwan Johnson')
+    expect(oneDecision?.addedPoints).toBe(20)
+    expect(oneDecision?.droppedPoints).toBe(5)
+    expect(oneDecision?.netDelta).toBe(15)
+    expect(oneDecision?.choiceBonus).toBe(20)
+    expect(oneDecision?.label).toBe('Choice bonus')
+    expect(twoDecision?.doubleNegative).toBe(15)
+    expect(twoDecision?.label).toBe('Double negative')
+    expect(weekOne.find((point) => point.rosterId === 1)?.projectedWins).toBe(2)
+    expect(weekOne.find((point) => point.rosterId === 1)?.projectedRank).toBe(1)
+    expect(evolution.risers[0]?.slug).toBe('one')
+    expect(evolution.risers[0]?.change).toBe(1)
+    expect(evolution.fallers[0]?.slug).toBe('two')
+    expect(evolution.fallers[0]?.change).toBe(-1)
   })
 })

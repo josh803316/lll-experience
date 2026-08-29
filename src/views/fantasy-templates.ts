@@ -1,5 +1,6 @@
 import type {
   DraftPickRow,
+  FantasyEvolutionData,
   FantasyTimelineData,
   GmAllTimeRow,
   GmSeasonRow,
@@ -8,7 +9,7 @@ import type {
   SeasonSummary,
   WireRow,
 } from '../services/fantasy-scout.js'
-import type { FantasyTimelinePoint } from '../services/fantasy-timeline.js'
+import type { FantasyEvolutionPoint, FantasyTimelinePoint } from '../services/fantasy-timeline.js'
 import { baseLayout, escapeHtml } from './templates.js'
 
 function fmt(n: number, digits = 1): string {
@@ -645,6 +646,7 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
         ${tab(y ? `/fantasy/${y}/chat` : '/fantasy', 'board', 'Board')}
         ${tab('/fantasy/bargains', 'bargains', 'Bargains')}
         ${tab('/fantasy/rankings', 'rankings', 'Over time')}
+        ${tab(y ? `/fantasy/evolution?season=${y}` : '/fantasy/evolution', 'evolution', 'Evolution')}
       </nav>
       <div class="header-rule"></div>
     </header>`
@@ -1483,6 +1485,149 @@ function timelinePerformanceBars(points: FantasyTimelinePoint[]): string {
     )
     .join('')
   return `<div class="flex items-end gap-1 px-1 pb-5 border-b border-black/10">${bars}</div>`
+}
+
+function evolutionChart(
+  points: FantasyEvolutionPoint[],
+  key: 'strengthPoints' | 'standingsRank'
+): string {
+  const weeks = [...new Set(points.map((point) => point.week))].sort((a, b) => a - b)
+  const series = [...new Map(points.map((point) => [point.slug, point.displayName])).entries()]
+  if (weeks.length === 0 || series.length === 0) {
+    return '<p class="text-sm text-muted py-8 text-center">No evolution snapshots yet.</p>'
+  }
+  const width = 760
+  const height = 250
+  const padX = 30
+  const padY = 24
+  const values = points.map((point) => point[key])
+  const min = key === 'standingsRank' ? Math.min(...values, 1) : 0
+  const max = Math.max(...values, min + 1)
+  const colors = [
+    '#3fe1a8',
+    '#7c6bff',
+    '#ffb86b',
+    '#f178b6',
+    '#79c7ff',
+    '#c7e36f',
+    '#ff7e79',
+    '#b39cff',
+  ]
+  const xAt = (index: number) =>
+    padX + (weeks.length === 1 ? 0 : (index / (weeks.length - 1)) * (width - padX * 2))
+  const yAt = (value: number) => padY + ((value - min) / (max - min)) * (height - padY * 2)
+  const lines = series
+    .map(([slug, displayName], seriesIndex) => {
+      const rowByWeek = new Map(
+        points.filter((point) => point.slug === slug).map((point) => [point.week, point])
+      )
+      const coords = weeks
+        .map((week, index) => {
+          const point = rowByWeek.get(week)
+          return point ? `${xAt(index).toFixed(1)},${yAt(point[key]).toFixed(1)}` : null
+        })
+        .filter((value): value is string => value !== null)
+      return `<polyline fill="none" stroke="${colors[seriesIndex % colors.length]}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${coords.join(' ')}"><title>${escapeHtml(displayName)}</title></polyline>`
+    })
+    .join('')
+  const labels = weeks
+    .filter((week, index) => index === 0 || index === weeks.length - 1 || week % 4 === 0)
+    .map((week) => {
+      const index = weeks.indexOf(week)
+      return `<text x="${xAt(index).toFixed(1)}" y="${height - 4}" text-anchor="middle" fill="#8b95a8" font-size="10">W${week}</text>`
+    })
+    .join('')
+  const legend = series
+    .map(
+      ([slug, displayName], index) =>
+        `<span class="inline-flex items-center gap-1 text-[10px] text-muted"><i class="w-2 h-2 rounded-full" style="background:${colors[index % colors.length]}"></i><a class="hover:text-accent" href="/fantasy/manager/${encodeURIComponent(slug)}/timeline">${escapeHtml(displayName)}</a></span>`
+    )
+    .join('')
+  return `<svg viewBox="0 0 ${width} ${height}" class="w-full h-64" role="img" aria-label="${key === 'strengthPoints' ? 'Weekly roster strength' : 'Weekly standings rank'} chart">
+    <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" stroke="rgba(0,0,0,.12)" />
+    <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="rgba(0,0,0,.12)" />
+    ${lines}${labels}
+  </svg><div class="flex flex-wrap gap-x-3 gap-y-1 px-2">${legend}</div>`
+}
+
+function evolutionRankRows(rows: FantasyEvolutionPoint[], positive: boolean): string {
+  return rows
+    .filter((row) => (positive ? row.standingsChange > 0 : row.standingsChange < 0))
+    .slice(0, 6)
+    .map(
+      (row) =>
+        `<tr class="border-t border-black/5"><td class="px-3 py-2 font-bold">${escapeHtml(row.displayName)}</td><td class="px-3 py-2">${row.standingsChange > 0 ? '+' : ''}${row.standingsChange}</td><td class="px-3 py-2 text-muted">#${row.standingsRank} · ${record(row.projectedWins, row.projectedLosses, row.projectedTies)}</td></tr>`
+    )
+    .join('')
+}
+
+export function fantasyEvolutionPage(
+  data: FantasyEvolutionData | null,
+  seasons: SeasonSummary[],
+  clerkKey?: string
+): string {
+  const selectedSeason = data?.season ?? seasons.at(-1)?.season
+  const body = `
+    ${nav('evolution', seasons, selectedSeason)}
+    <main class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      ${
+        data
+          ? (
+              () => {
+                const finalWeek = Math.max(...data.points.map((point) => point.week), 0)
+                const current = data.points
+                  .filter((point) => point.week === finalWeek)
+                  .sort((a, b) => a.standingsRank - b.standingsRank)
+                const decisions = data.decisions
+                const decisionByRoster = new Map<number, number>()
+                for (const decision of decisions) {
+                  decisionByRoster.set(
+                    decision.rosterId,
+                    (decisionByRoster.get(decision.rosterId) ?? 0) + decision.netDelta
+                  )
+                }
+                const trackRows = current
+                  .map((point) => {
+                    const transactionValue = decisionByRoster.get(point.rosterId) ?? 0
+                    return `<tr class="border-t border-black/5"><td class="px-3 py-2">${point.standingsRank}</td><td class="px-3 py-2 font-bold"><a class="hover:text-accent" href="/fantasy/manager/${encodeURIComponent(point.slug)}/timeline?season=${data.season}">${escapeHtml(point.displayName)}</a></td><td class="px-3 py-2">${point.draftSurplus >= 0 ? '+' : ''}${fmt(point.draftSurplus, 0)}</td><td class="px-3 py-2 ${transactionValue >= 0 ? 'text-accent' : 'text-rose-300'}">${transactionValue >= 0 ? '+' : ''}${fmt(transactionValue, 0)}</td><td class="px-3 py-2">${record(point.projectedWins, point.projectedLosses, point.projectedTies)} · #${point.projectedRank}</td></tr>`
+                  })
+                  .join('')
+                const decisionRows = decisions
+                  .slice(0, 30)
+                  .map(
+                    (decision) =>
+                      `<tr class="border-t border-black/5"><td class="px-3 py-2">W${decision.week}</td><td class="px-3 py-2 font-bold">${escapeHtml(decision.displayName)}</td><td class="px-3 py-2">${decision.players.map((player) => `${player.kind === 'add' ? '+' : '−'} ${escapeHtml(player.playerName)}`).join('<br>')}</td><td class="px-3 py-2">${decision.addedPoints >= 0 ? '+' : ''}${fmt(decision.addedPoints, 0)} / −${fmt(decision.droppedPoints, 0)}</td><td class="px-3 py-2 font-bold ${decision.netDelta >= 0 ? 'text-accent' : 'text-rose-300'}">${decision.netDelta >= 0 ? '+' : ''}${fmt(decision.netDelta, 0)}</td><td class="px-3 py-2 ${decision.label === 'Choice bonus' || decision.label === 'FA hit' ? 'text-accent' : decision.label === 'Double negative' ? 'text-rose-300' : 'text-muted'}">${decision.label}</td></tr>`
+                  )
+                  .join('')
+                const seasonLinks = seasons
+                  .map(
+                    (season) =>
+                      `<option value="${season.season}" ${season.season === data.season ? 'selected' : ''}>${season.season}</option>`
+                  )
+                  .join('')
+                return `
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div><p class="text-[10px] font-bold uppercase tracking-[0.3em] text-accent">League-wide transaction lab</p><h2 class="text-4xl font-bold tracking-tighter mt-2">Evolution</h2><p class="text-sm text-muted">${data.season} · ${data.projected ? 'current blended projections' : 'retrospective actuals'} · snapshots replay settled moves before each week</p></div>
+        <label class="text-[10px] font-bold uppercase tracking-widest text-muted">Season <select class="ml-2 rounded border border-black/10 bg-transparent px-2 py-1 text-black" onchange="location.href='/fantasy/evolution?season='+this.value">${seasonLinks}</select></label>
+      </div>
+      <div class="flex flex-wrap gap-3"><a href="/fantasy/${data.season}/chat" class="card-paper rounded-lg px-4 py-3 text-sm font-bold hover:text-accent">Message board →</a><div class="card-paper rounded-lg px-4 py-3 text-sm text-muted">Basis <strong class="text-black">${data.projected ? 'Projected' : 'Actual'}</strong> · ${data.strengthBasis}</div><div class="card-paper rounded-lg px-4 py-3 text-sm text-muted">Latest snapshot <strong class="text-black">W${finalWeek}</strong> · ${current.length} teams</div></div>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <section class="card-paper rounded-lg p-4"><h3 class="font-bold mb-1">Team strength over time</h3><p class="text-xs text-muted mb-2">Full-season best-ball value of the roster held at each cutoff.</p>${evolutionChart(data.points, 'strengthPoints')}</section>
+        <section class="card-paper rounded-lg p-4"><h3 class="font-bold mb-1">Standings movement</h3><p class="text-xs text-muted mb-2">${data.projected ? 'Projected all-play rank' : 'Actual all-play rank'} at each cutoff; lower rank is better.</p>${evolutionChart(data.points, 'standingsRank')}</section>
+      </div>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <section class="card-paper rounded-lg overflow-x-auto"><div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Risers</h3><p class="text-xs text-muted">Latest rank changes from the prior snapshot.</p></div><table class="w-min min-w-full text-sm"><thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">GM</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Δ rank</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Snapshot</th></tr></thead><tbody>${evolutionRankRows(current, true) || '<tr><td class="px-3 py-3 text-muted" colspan="3">No risers yet.</td></tr>'}</tbody></table></section>
+        <section class="card-paper rounded-lg overflow-x-auto"><div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Fallers</h3><p class="text-xs text-muted">Latest rank changes from the prior snapshot.</p></div><table class="w-min min-w-full text-sm"><thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">GM</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Δ rank</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Snapshot</th></tr></thead><tbody>${evolutionRankRows(current, false) || '<tr><td class="px-3 py-3 text-muted" colspan="3">No fallers yet.</td></tr>'}</tbody></table></section>
+      </div>
+      <section class="card-paper rounded-lg overflow-x-auto"><div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Decision tracks</h3><p class="text-xs text-muted">Draft surplus and in-season transaction delta are separate. Neither is a claim about historical information available at the time.</p></div><table class="w-min min-w-full text-sm"><thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Rank</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">GM</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Draft value</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Transaction value</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Counterfactual all-play</th></tr></thead><tbody>${trackRows}</tbody></table></section>
+      <section class="card-paper rounded-lg overflow-x-auto"><div class="p-4 pb-2"><h3 class="text-xl font-bold tracking-tighter">Transaction decision leaderboard</h3><p class="text-xs text-muted">Player points from the transaction week forward, using ${data.projected ? 'current blended projections' : 'retrospective actuals'}.</p></div><table class="w-min min-w-full text-sm"><thead class="bg-black/[0.03]"><tr><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Week</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">GM</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Players</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Add / drop</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Net</th><th class="px-3 py-2 text-left text-[9px] uppercase tracking-widest text-muted">Read</th></tr></thead><tbody>${decisionRows || '<tr><td class="px-3 py-3 text-muted" colspan="6">No settled transactions.</td></tr>'}</tbody></table></section>
+      <section class="card-paper rounded-lg p-5"><h3 class="text-xl font-bold tracking-tighter">How this view works</h3><div class="grid gap-3 md:grid-cols-2 mt-3 text-sm text-muted"><p><strong class="text-black">Snapshot:</strong> Week 0 is the draft roster. For week N, settled transactions through N are replayed first, then that roster is evaluated against the whole league room.</p><p><strong class="text-black">Strength:</strong> The roster is scored across the full season using best-ball lineups. ${data.projected ? 'The source is current blended projections.' : 'The source is retrospective actual player scoring.'}</p><p><strong class="text-black">Projected all-play:</strong> Every snapshot is a counterfactual: what record would this exact roster have produced against the league room over the source weeks?</p><p><strong class="text-black">Choice bonus / double negative:</strong> A choice bonus marks a positive add that another manager dropped in the same transaction. A double negative marks dropped-player points exceeding added-player points. Values are signals, not causal proof.</p></div></section>`
+              }
+            )()
+          : '<section class="card-paper rounded-lg p-6"><h2 class="text-3xl font-bold">Evolution</h2><p class="text-sm text-muted mt-2">No league evolution data is available.</p></section>'
+      }
+    </main>`
+  return fantasyLayout(body, 'Evolution — UCSB Legacy', clerkKey)
 }
 
 export function fantasyTimelinePage(

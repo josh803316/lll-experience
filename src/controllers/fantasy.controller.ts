@@ -5,6 +5,7 @@ import {
   fantasyBargainsPage,
   fantasyDashboard,
   fantasyDraftPage,
+  fantasyEvolutionPage,
   fantasyManagerNotFound,
   fantasyManagerPage,
   fantasyPlayerCard,
@@ -58,6 +59,14 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
     const { seasons, gms } = await FantasyScout.rankings()
     const meta = await FantasyScout.listSeasons()
     return fantasyRankingsPage(seasons, gms, meta, CLERK_KEY)
+  })
+  .get('/evolution', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html'
+    const seasonRaw = Number(ctx.query.season)
+    const season = Number.isFinite(seasonRaw) && seasonRaw > 0 ? seasonRaw : undefined
+    const seasons = await FantasyScout.listSeasons()
+    const data = await FantasyScout.evolution(season)
+    return fantasyEvolutionPage(data, seasons, CLERK_KEY)
   })
   .get('/manager/:slug/timeline', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
