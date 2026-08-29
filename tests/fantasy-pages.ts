@@ -96,6 +96,33 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
     page.getByRole('heading', { name: 'Transaction decision leaderboard' })
   ).toBeVisible()
   await expect(page.getByRole('heading', { name: 'How this view works' })).toBeVisible()
+  const seriesToggle = page
+    .locator('[data-evolution-chart-container="strength"] .evolution-series-toggle')
+    .first()
+  await expect(seriesToggle).toHaveAttribute('aria-pressed', 'true')
+  const seriesId = await seriesToggle.getAttribute('data-evolution-series')
+  await seriesToggle.click()
+  await expect(seriesToggle).toHaveAttribute('aria-pressed', 'false')
+  await expect(
+    page.locator(
+      `[data-evolution-chart-container="strength"] g[data-evolution-series="${seriesId}"]`
+    )
+  ).toHaveCSS('display', 'none')
+  await seriesToggle.click()
+  const chartPoint = page
+    .locator('[data-evolution-chart-container="strength"] [data-evolution-point]')
+    .last()
+  await chartPoint.hover()
+  const tooltip = page.locator('[data-evolution-chart-container="strength"] .evolution-tooltip')
+  await expect(tooltip).toBeVisible()
+  await expect(tooltip).toContainText('W')
+  const pointSeriesId = await chartPoint.getAttribute('data-evolution-series-id')
+  const pointToggle = page.locator(
+    `[data-evolution-chart-container="strength"] .evolution-series-toggle[data-evolution-series="${pointSeriesId}"]`
+  )
+  await chartPoint.click()
+  await expect(pointToggle).toHaveAttribute('aria-pressed', 'false')
+  await pointToggle.click()
   await page.locator('select').selectOption('2026')
   await page.waitForURL('**/fantasy/evolution?season=2026', { timeout: 60000 })
   await expect(page.getByText('current blended projections').first()).toBeVisible()

@@ -123,6 +123,11 @@ export interface TimelineDecision {
   netDelta: number
   choiceBonus: number
   doubleNegative: number
+  bestBallBefore: number
+  bestBallAfter: number
+  bestBallDelta: number
+  depthBefore: Record<string, number>
+  depthAfter: Record<string, number>
   label:
     | 'Choice bonus'
     | 'Double negative'
@@ -347,6 +352,34 @@ function postTransactionPoints(
   return weeklyPoints
     .filter((row) => row.playerId === playerId && row.week >= week)
     .reduce((sum, row) => sum + row.points, 0)
+}
+
+function depthCounts(
+  playerIds: string[],
+  positions: Map<string, string | null>
+): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const playerId of playerIds) {
+    const position = positions.get(playerId) ?? 'UNK'
+    counts[position] = (counts[position] ?? 0) + 1
+  }
+  return counts
+}
+
+function restOfSeasonBestBall(
+  playerIds: string[],
+  fromWeek: number,
+  sourceWeeks: number[],
+  points: Map<string, number>,
+  positions: Map<string, string | null>,
+  rosterPositions: string[]
+): number {
+  return sourceWeeks
+    .filter((week) => week >= fromWeek)
+    .reduce(
+      (total, week) => total + lineupPoints(playerIds, week, points, positions, rosterPositions),
+      0
+    )
 }
 
 export function buildFantasyTimeline(input: FantasyTimelineInput): FantasyTimelinePoint[] {
@@ -582,6 +615,66 @@ export function buildFantasyEvolution(input: FantasyTimelineInput): FantasyEvolu
       transactionEventsById.set(event.transactionId, allEvents)
     }
   }
+  const decisionImpact = new Map<
+    string,
+    {
+      bestBallBefore: number
+      bestBallAfter: number
+      depthBefore: Record<string, number>
+      depthAfter: Record<string, number>
+    }
+  >()
+  const replayState = new Map<number, Set<string>>()
+  for (const roster of input.rosters) {
+    replayState.set(roster.rosterId, new Set())
+  }
+  for (const pick of input.draftPicks) {
+    replayState.get(pick.rosterId)?.add(pick.playerId)
+  }
+  for (const transaction of orderedTransactions(input.transactions)) {
+    const events = transactionEvents(transaction, input.playerNames)
+    const byRoster = new Map<number, TimelineEvent[]>()
+    for (const event of events) {
+      const rosterEvents = byRoster.get(event.rosterId) ?? []
+      rosterEvents.push(event)
+      byRoster.set(event.rosterId, rosterEvents)
+    }
+    for (const [rosterId, rosterEvents] of byRoster) {
+      const before = [...(replayState.get(rosterId) ?? new Set())]
+      const afterState = new Set(before)
+      for (const event of rosterEvents) {
+        if (event.kind === 'drop') {
+          afterState.delete(event.playerId)
+        } else {
+          afterState.add(event.playerId)
+        }
+      }
+      const after = [...afterState]
+      const bestBallBefore = restOfSeasonBestBall(
+        before,
+        transaction.week,
+        sourceWeeks,
+        points,
+        input.playerPositions,
+        input.rosterPositions
+      )
+      const bestBallAfter = restOfSeasonBestBall(
+        after,
+        transaction.week,
+        sourceWeeks,
+        points,
+        input.playerPositions,
+        input.rosterPositions
+      )
+      decisionImpact.set(`${transaction.transactionId}|${rosterId}`, {
+        bestBallBefore,
+        bestBallAfter,
+        depthBefore: depthCounts(before, input.playerPositions),
+        depthAfter: depthCounts(after, input.playerPositions),
+      })
+      replayState.set(rosterId, afterState)
+    }
+  }
   const decisions: TimelineDecision[] = []
   for (const events of decisionGroups.values()) {
     const first = events[0]
@@ -615,6 +708,7 @@ export function buildFantasyEvolution(input: FantasyTimelineInput): FantasyEvolu
       )
     const doubleNegative = Math.max(0, droppedPoints - addedPoints)
     const netDelta = addedPoints - droppedPoints
+    const impact = decisionImpact.get(`${first.transactionId}|${first.rosterId}`)
     let label: TimelineDecision['label'] = 'Neutral'
     if (choiceBonus > 0 && netDelta > 0) {
       label = 'Choice bonus'
@@ -641,6 +735,11 @@ export function buildFantasyEvolution(input: FantasyTimelineInput): FantasyEvolu
       netDelta,
       choiceBonus,
       doubleNegative,
+      bestBallBefore: impact?.bestBallBefore ?? 0,
+      bestBallAfter: impact?.bestBallAfter ?? 0,
+      bestBallDelta: (impact?.bestBallAfter ?? 0) - (impact?.bestBallBefore ?? 0),
+      depthBefore: impact?.depthBefore ?? {},
+      depthAfter: impact?.depthAfter ?? {},
       label,
       players: events.map((event) => ({
         playerId: event.playerId,
