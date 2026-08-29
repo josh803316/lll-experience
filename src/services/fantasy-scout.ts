@@ -14,6 +14,7 @@ import {
   fantasyPlayers,
   fantasyPlayerWeeks,
   fantasyProjections,
+  fantasyRecords,
   fantasyRosters,
   fantasyTransactions,
   pffPlayerStats,
@@ -23,6 +24,7 @@ import {
   applyDraftLetters,
   dollarOneReplacement,
   finishRanks,
+  median,
   type ScoredPick,
   scoreDraftPicks,
   type TxEvent,
@@ -175,6 +177,67 @@ export interface FantasyEvolutionData extends FantasyEvolutionResult {
   season: number
   projected: boolean
   strengthBasis: 'retrospective actuals' | 'current projections'
+}
+
+export interface H2HCell {
+  a: string
+  b: string
+  wins: number
+  losses: number
+  ties: number
+  games: number
+}
+
+export interface FantasyWeeklyScore {
+  season: number
+  week: number
+  rosterId: number
+  slug: string
+  displayName: string
+  teamName: string | null
+  points: number
+  rank: number
+}
+
+export interface FantasyRecordRow {
+  key: string
+  label: string
+  valueNum: number | null
+  valueText: string
+  holderSlug: string | null
+  holderName: string
+  season: number | null
+  week: number | null
+  detail: string
+}
+
+export interface FantasyRecordsData {
+  records: FantasyRecordRow[]
+  badges: FantasyRecordRow[]
+}
+
+export interface FantasyCohortRow {
+  cohort: 'dad' | 'kid'
+  wins: number
+  losses: number
+  ties: number
+  winPct: number
+  members: { slug: string; displayName: string; winPct: number }[]
+}
+
+export interface FantasySeasonExtras {
+  weekly: FantasyWeeklyScore[]
+  h2h: H2HCell[]
+  highWeek: number
+  leagueAverage: number
+  leagueMedian: number
+}
+
+export interface FantasyManagerExtras {
+  weekly: FantasyWeeklyScore[]
+  leagueMedian: number
+  heatmap: HeatmapTeam | null
+  h2h: H2HCell[]
 }
 
 export interface ManagerTeamPlayer {
@@ -675,6 +738,629 @@ function buildHeatmap(ctx: Ctx, year: number): HeatmapTeam[] {
   return out
 }
 
+function weeklyScores(ctx: Ctx, year?: number): FantasyWeeklyScore[] {
+  const out: FantasyWeeklyScore[] = []
+  for (const league of ctx.leagues) {
+    if (year != null && league.season !== year) {
+      continue
+    }
+    const rosters = ctx.rosters.filter((r) => r.sleeperLeagueId === league.sleeperLeagueId)
+    const rosterById = new Map(rosters.map((r) => [r.rosterId, r]))
+    const byWeek = new Map<number, typeof ctx.matchups>()
+    for (const matchup of ctx.matchups.filter(
+      (row) => row.sleeperLeagueId === league.sleeperLeagueId
+    )) {
+      const rows = byWeek.get(matchup.week) ?? []
+      rows.push(matchup)
+      byWeek.set(matchup.week, rows)
+    }
+    for (const [week, rows] of byWeek) {
+      if (rows.length < 2 || rows.every((row) => row.points === 0)) {
+        continue
+      }
+      const ranked = [...rows].sort((a, b) => b.points - a.points)
+      for (const row of rows) {
+        const roster = rosterById.get(row.rosterId)
+        const id = ident(ctx, roster?.sleeperUserId ?? null, roster?.teamName)
+        out.push({
+          season: league.season,
+          week,
+          rosterId: row.rosterId,
+          slug: id.slug,
+          displayName: id.displayName,
+          teamName: roster?.teamName ?? null,
+          points: row.points,
+          rank: ranked.findIndex((candidate) => candidate.rosterId === row.rosterId) + 1,
+        })
+      }
+    }
+  }
+  return out.sort((a, b) => a.season - b.season || a.week - b.week || a.rank - b.rank)
+}
+
+export function headToHeadFromScores(scores: FantasyWeeklyScore[]): H2HCell[] {
+  const byWeek = new Map<string, FantasyWeeklyScore[]>()
+  for (const score of scores) {
+    const key = `${score.season}|${score.week}`
+    const rows = byWeek.get(key) ?? []
+    rows.push(score)
+    byWeek.set(key, rows)
+  }
+  const cells = new Map<string, H2HCell>()
+  for (const rows of byWeek.values()) {
+    for (const a of rows) {
+      for (const b of rows) {
+        if (a.slug === b.slug) {
+          continue
+        }
+        const key = `${a.slug}|${b.slug}`
+        const current = cells.get(key) ?? {
+          a: a.slug,
+          b: b.slug,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          games: 0,
+        }
+        current.games += 1
+        if (a.points > b.points) {
+          current.wins += 1
+        } else if (a.points < b.points) {
+          current.losses += 1
+        } else {
+          current.ties += 1
+        }
+        cells.set(key, current)
+      }
+    }
+  }
+  return [...cells.values()].sort((a, b) => a.a.localeCompare(b.a) || a.b.localeCompare(b.b))
+}
+
+function recordRow(
+  key: string,
+  label: string,
+  valueNum: number | null,
+  valueText: string,
+  holderSlug: string | null,
+  holderName: string,
+  season: number | null,
+  week: number | null,
+  detail: string
+): FantasyRecordRow {
+  return { key, label, valueNum, valueText, holderSlug, holderName, season, week, detail }
+}
+
+function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
+  const scores = weeklyScores(ctx)
+  const bySlug = new Map<string, string>()
+  for (const score of scores) {
+    bySlug.set(score.slug, score.displayName)
+  }
+  for (const row of seasonRows) {
+    bySlug.set(row.slug, row.displayName)
+  }
+  const records: FantasyRecordRow[] = []
+  const highest = [...scores].sort((a, b) => b.points - a.points)[0]
+  const lowest = [...scores].sort((a, b) => a.points - b.points)[0]
+  if (highest) {
+    records.push(
+      recordRow(
+        'highest_week',
+        'Highest week ever',
+        highest.points,
+        fmtRecordNumber(highest.points),
+        highest.slug,
+        highest.displayName,
+        highest.season,
+        highest.week,
+        `${highest.displayName} posted the highest best-ball score in Week ${highest.week}, ${highest.season}.`
+      )
+    )
+  }
+  if (lowest) {
+    records.push(
+      recordRow(
+        'lowest_week',
+        'Lowest week',
+        lowest.points,
+        fmtRecordNumber(lowest.points),
+        lowest.slug,
+        lowest.displayName,
+        lowest.season,
+        lowest.week,
+        `${lowest.displayName} had the lowest recorded best-ball score in Week ${lowest.week}, ${lowest.season}.`
+      )
+    )
+  }
+
+  const scoreGroups = new Map<string, FantasyWeeklyScore[]>()
+  for (const score of scores) {
+    const key = `${score.season}|${score.week}`
+    const group = scoreGroups.get(key) ?? []
+    group.push(score)
+    scoreGroups.set(key, group)
+  }
+  let closest: { a: FantasyWeeklyScore; b: FantasyWeeklyScore; diff: number } | null = null
+  let worstAllPlay: {
+    score: FantasyWeeklyScore
+    wins: number
+    losses: number
+    ties: number
+  } | null = null
+  for (const group of scoreGroups.values()) {
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const diff = Math.abs(group[i].points - group[j].points)
+        if (diff > 0 && (!closest || diff < closest.diff)) {
+          closest = { a: group[i], b: group[j], diff }
+        }
+      }
+      const wins = group.filter((other) => group[i].points > other.points).length
+      const losses = group.filter((other) => group[i].points < other.points).length
+      const ties = group.filter((other) => group[i].points === other.points).length - 1
+      if (
+        !worstAllPlay ||
+        wins / Math.max(wins + losses + ties, 1) <
+          worstAllPlay.wins /
+            Math.max(worstAllPlay.wins + worstAllPlay.losses + worstAllPlay.ties, 1)
+      ) {
+        worstAllPlay = { score: group[i], wins, losses, ties }
+      }
+    }
+  }
+  if (closest) {
+    records.push(
+      recordRow(
+        'closest_week',
+        'Closest all-play week',
+        closest.diff,
+        fmtRecordNumber(closest.diff),
+        closest.a.slug,
+        `${closest.a.displayName} over ${closest.b.displayName}`,
+        closest.a.season,
+        closest.a.week,
+        `${closest.a.displayName} and ${closest.b.displayName} were separated by ${fmtRecordNumber(closest.diff)} points.`
+      )
+    )
+  }
+  if (worstAllPlay) {
+    records.push(
+      recordRow(
+        'worst_allplay_week',
+        'Worst all-play week',
+        worstAllPlay.wins,
+        `${worstAllPlay.wins}–${worstAllPlay.losses}`,
+        worstAllPlay.score.slug,
+        worstAllPlay.score.displayName,
+        worstAllPlay.score.season,
+        worstAllPlay.score.week,
+        `Week ${worstAllPlay.score.week} finished ${worstAllPlay.wins}–${worstAllPlay.losses} against the room.`
+      )
+    )
+  }
+
+  const liveRows = seasonRows.filter((row) => !row.projected).sort((a, b) => a.season - b.season)
+  let biggestClimb: {
+    slug: string
+    displayName: string
+    season: number
+    change: number
+    from: number
+    to: number
+  } | null = null
+  const rowsBySlug = new Map<string, GmSeasonRow[]>()
+  for (const row of liveRows) {
+    const rows = rowsBySlug.get(row.slug) ?? []
+    rows.push(row)
+    rowsBySlug.set(row.slug, rows)
+  }
+  for (const rows of rowsBySlug.values()) {
+    for (let i = 1; i < rows.length; i++) {
+      const change = rows[i - 1].finish - rows[i].finish
+      if (!biggestClimb || change > biggestClimb.change) {
+        biggestClimb = {
+          slug: rows[i].slug,
+          displayName: rows[i].displayName,
+          season: rows[i].season,
+          change,
+          from: rows[i - 1].finish,
+          to: rows[i].finish,
+        }
+      }
+    }
+  }
+  if (biggestClimb && biggestClimb.change > 0) {
+    records.push(
+      recordRow(
+        'biggest_climb',
+        'Biggest climb',
+        biggestClimb.change,
+        `+${biggestClimb.change}`,
+        biggestClimb.slug,
+        biggestClimb.displayName,
+        biggestClimb.season,
+        null,
+        `Moved from ${ordinalRecord(biggestClimb.from)} to ${ordinalRecord(biggestClimb.to)} in ${biggestClimb.season}.`
+      )
+    )
+  }
+
+  const allPicks = ctx.leagues.flatMap((league) =>
+    scoredPicksForLeague(ctx, league.sleeperLeagueId)
+  )
+  const bestDollar = [...allPicks]
+    .filter((pick) => pick.amount <= 1)
+    .sort((a, b) => b.surplus - a.surplus)[0]
+  if (bestDollar) {
+    const holder = ident(ctx, bestDollar.sleeperUserId)
+    records.push(
+      recordRow(
+        'best_dollar_pick',
+        'Best $1 pick',
+        bestDollar.surplus,
+        `+${fmtRecordNumber(bestDollar.surplus)}`,
+        holder.slug,
+        holder.displayName,
+        null,
+        null,
+        `${playerName(ctx, bestDollar.playerId)} returned ${fmtRecordNumber(bestDollar.fpts)} FPTS for $${bestDollar.amount}.`
+      )
+    )
+  }
+  const worstBust = [...allPicks]
+    .filter((pick) => pick.amount >= 40)
+    .sort((a, b) => a.surplus - b.surplus)[0]
+  if (worstBust) {
+    const holder = ident(ctx, worstBust.sleeperUserId)
+    records.push(
+      recordRow(
+        'worst_bust',
+        'Worst expensive bust',
+        worstBust.surplus,
+        fmtRecordNumber(worstBust.surplus),
+        holder.slug,
+        holder.displayName,
+        null,
+        null,
+        `${playerName(ctx, worstBust.playerId)} cost $${worstBust.amount} and finished ${fmtRecordNumber(worstBust.surplus)} below expectation.`
+      )
+    )
+  }
+  const faabBySlug = new Map<string, number>()
+  for (const row of seasonRows) {
+    faabBySlug.set(row.slug, (faabBySlug.get(row.slug) ?? 0) + row.waiverBudgetUsed)
+  }
+  const mostFaab = [...faabBySlug.entries()].sort((a, b) => b[1] - a[1])[0]
+  if (mostFaab) {
+    records.push(
+      recordRow(
+        'most_faab',
+        'Most FAAB spent',
+        mostFaab[1],
+        `$${mostFaab[1]}`,
+        mostFaab[0],
+        bySlug.get(mostFaab[0]) ?? mostFaab[0],
+        null,
+        null,
+        `${bySlug.get(mostFaab[0]) ?? mostFaab[0]} has spent the most waiver budget across the league history.`
+      )
+    )
+  }
+  const worstDraft = [...seasonRows].sort((a, b) => a.draftSurplus - b.draftSurplus)[0]
+  if (worstDraft) {
+    records.push(
+      recordRow(
+        'worst_draft_surplus',
+        'Worst draft surplus',
+        worstDraft.draftSurplus,
+        fmtRecordNumber(worstDraft.draftSurplus),
+        worstDraft.slug,
+        worstDraft.displayName,
+        worstDraft.season,
+        null,
+        `${worstDraft.displayName}'s ${worstDraft.season} auction finished below the room's spend curve.`
+      )
+    )
+  }
+  const zeroFaab = seasonRows.find((row) => row.waiverBudgetUsed === 0)
+  if (zeroFaab) {
+    records.push(
+      recordRow(
+        'zero_faab',
+        'Never used FAAB',
+        0,
+        '$0',
+        zeroFaab.slug,
+        zeroFaab.displayName,
+        zeroFaab.season,
+        null,
+        `${zeroFaab.displayName} made it through ${zeroFaab.season} without a recorded waiver bid.`
+      )
+    )
+  }
+
+  const latestSeason = Math.max(...ctx.leagues.map((league) => league.season), 0)
+  const badges: FantasyRecordRow[] = []
+  const latestLeague = ctx.leagues.find((league) => league.season === latestSeason)
+  if (latestLeague) {
+    const latestRows = seasonRows.filter((row) => row.season === latestSeason)
+    const latestPicks = scoredPicksForLeague(ctx, latestLeague.sleeperLeagueId)
+    const latestWire = wireForLeague(ctx, latestLeague.sleeperLeagueId).rows
+    const badge = (key: string, label: string, row: FantasyRecordRow) =>
+      badges.push({ ...row, key: `badge_${key}`, label, season: latestSeason })
+    const bargain = new Map<string, number>()
+    for (const pick of latestPicks.filter((pick) => pick.amount < 5)) {
+      const owner = ident(ctx, pick.sleeperUserId)
+      bargain.set(owner.slug, (bargain.get(owner.slug) ?? 0) + pick.surplus)
+    }
+    const bargainWinner = [...bargain.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (bargainWinner) {
+      badge(
+        'bargain_hunter',
+        'Bargain Hunter',
+        recordRow(
+          'badge_bargain_hunter',
+          '',
+          bargainWinner[1],
+          fmtRecordNumber(bargainWinner[1]),
+          bargainWinner[0],
+          bySlug.get(bargainWinner[0]) ?? bargainWinner[0],
+          latestSeason,
+          null,
+          'Most total surplus from picks under $5.'
+        )
+      )
+    }
+    const wireWinner = [
+      ...new Map(
+        latestWire.map((row) => [
+          row.slug,
+          latestWire.filter((x) => x.slug === row.slug).reduce((sum, x) => sum + x.fpts, 0),
+        ])
+      ).entries(),
+    ].sort((a, b) => b[1] - a[1])[0]
+    if (wireWinner) {
+      badge(
+        'wire_wizard',
+        'Wire Wizard',
+        recordRow(
+          'badge_wire_wizard',
+          '',
+          wireWinner[1],
+          fmtRecordNumber(wireWinner[1]),
+          wireWinner[0],
+          bySlug.get(wireWinner[0]) ?? wireWinner[0],
+          latestSeason,
+          null,
+          'Most points added after the auction.'
+        )
+      )
+    }
+    const lowWeeks = new Map<string, number>()
+    for (const score of scores.filter(
+      (score) => score.season === latestSeason && score.points < 130
+    )) {
+      lowWeeks.set(score.slug, (lowWeeks.get(score.slug) ?? 0) + 1)
+    }
+    const floorWinner = [...latestRows].sort(
+      (a, b) => (lowWeeks.get(a.slug) ?? 0) - (lowWeeks.get(b.slug) ?? 0)
+    )[0]
+    if (floorWinner) {
+      badge(
+        'iron_floor',
+        'Iron Floor',
+        recordRow(
+          'badge_iron_floor',
+          '',
+          lowWeeks.get(floorWinner.slug) ?? 0,
+          String(lowWeeks.get(floorWinner.slug) ?? 0),
+          floorWinner.slug,
+          floorWinner.displayName,
+          latestSeason,
+          null,
+          'Fewest weeks below 130 points.'
+        )
+      )
+    }
+    const roomChampion = [...latestRows].sort((a, b) => a.finish - b.finish)[0]
+    if (roomChampion) {
+      badge(
+        'room_champion',
+        'Room Champion',
+        recordRow(
+          'badge_room_champion',
+          '',
+          roomChampion.finish,
+          ordinalRecord(roomChampion.finish),
+          roomChampion.slug,
+          roomChampion.displayName,
+          latestSeason,
+          null,
+          'Finished first in all-play wins.'
+        )
+      )
+    }
+    const sniper = new Map<string, { surplus: number; dollars: number }>()
+    for (const pick of latestPicks) {
+      const owner = ident(ctx, pick.sleeperUserId)
+      const current = sniper.get(owner.slug) ?? { surplus: 0, dollars: 0 }
+      current.surplus += pick.surplus
+      current.dollars += pick.amount
+      sniper.set(owner.slug, current)
+    }
+    const sniperWinner = [...sniper.entries()].sort(
+      (a, b) => b[1].surplus / Math.max(b[1].dollars, 1) - a[1].surplus / Math.max(a[1].dollars, 1)
+    )[0]
+    if (sniperWinner) {
+      const ratio = sniperWinner[1].surplus / Math.max(sniperWinner[1].dollars, 1)
+      badge(
+        'auction_sniper',
+        'Auction Sniper',
+        recordRow(
+          'badge_auction_sniper',
+          '',
+          ratio,
+          fmtRecordNumber(ratio),
+          sniperWinner[0],
+          bySlug.get(sniperWinner[0]) ?? sniperWinner[0],
+          latestSeason,
+          null,
+          'Best mean surplus per dollar spent.'
+        )
+      )
+    }
+    const lateWinner = [...latestRows].sort((a, b) => b.lateFpts - a.lateFpts)[0]
+    if (lateWinner) {
+      badge(
+        'late_bloomer',
+        'Late Bloomer',
+        recordRow(
+          'badge_late_bloomer',
+          '',
+          lateWinner.lateFpts,
+          fmtRecordNumber(lateWinner.lateFpts),
+          lateWinner.slug,
+          lateWinner.displayName,
+          latestSeason,
+          null,
+          'Most points from the last three auction rounds.'
+        )
+      )
+    }
+    const rockBottom = [...scores]
+      .filter((score) => score.season === latestSeason)
+      .sort((a, b) => a.points - b.points)[0]
+    if (rockBottom) {
+      badge(
+        'rock_bottom',
+        'Rock Bottom',
+        recordRow(
+          'badge_rock_bottom',
+          '',
+          rockBottom.points,
+          fmtRecordNumber(rockBottom.points),
+          rockBottom.slug,
+          rockBottom.displayName,
+          latestSeason,
+          rockBottom.week,
+          'Held the season’s lowest recorded week.'
+        )
+      )
+    }
+    const fastStart = new Map<string, number>()
+    for (const score of scores.filter(
+      (score) => score.season === latestSeason && score.week <= 4
+    )) {
+      fastStart.set(
+        score.slug,
+        (fastStart.get(score.slug) ?? 0) + (standingsRankScore(score, scores) ?? 0)
+      )
+    }
+    const fastWinner = [...fastStart.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (fastWinner) {
+      badge(
+        'fast_start',
+        'Fast Start',
+        recordRow(
+          'badge_fast_start',
+          '',
+          fastWinner[1],
+          String(fastWinner[1]),
+          fastWinner[0],
+          bySlug.get(fastWinner[0]) ?? fastWinner[0],
+          latestSeason,
+          4,
+          'Best all-play record through Week 4.'
+        )
+      )
+    }
+  }
+  const badgeLabels: [string, string][] = [
+    ['bargain_hunter', 'Bargain Hunter'],
+    ['wire_wizard', 'Wire Wizard'],
+    ['iron_floor', 'Iron Floor'],
+    ['auction_sniper', 'Auction Sniper'],
+    ['late_bloomer', 'Late Bloomer'],
+    ['rock_bottom', 'Rock Bottom'],
+    ['fast_start', 'Fast Start'],
+    ['room_champion', 'Room Champion'],
+  ]
+  for (const [key, label] of badgeLabels) {
+    if (!badges.some((badge) => badge.key === `badge_${key}`)) {
+      badges.push(
+        recordRow(
+          `badge_${key}`,
+          label,
+          null,
+          '—',
+          null,
+          '—',
+          latestSeason || null,
+          null,
+          'This badge will fill as qualifying league data is recorded.'
+        )
+      )
+    }
+  }
+  return { records, badges }
+}
+
+function standingsRankScore(
+  score: FantasyWeeklyScore,
+  scores: FantasyWeeklyScore[]
+): number | null {
+  const peers = scores.filter((row) => row.season === score.season && row.week === score.week)
+  return peers.length > 1 ? peers.length - score.rank : null
+}
+
+function fmtRecordNumber(value: number): string {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 1, minimumFractionDigits: 1 })
+}
+
+function ordinalRecord(value: number): string {
+  const mod100 = value % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${value}th`
+  const suffix = value % 10 === 1 ? 'st' : value % 10 === 2 ? 'nd' : value % 10 === 3 ? 'rd' : 'th'
+  return `${value}${suffix}`
+}
+
+function cohortSummary(rows: GmAllTimeRow[]): FantasyCohortRow[] {
+  const result: FantasyCohortRow[] = []
+  for (const cohort of ['dad', 'kid'] as const) {
+    const members = rows
+      .filter((row) => canonicalManager(row.sleeperUserId)?.cohort === cohort)
+      .map((row) => ({
+        slug: row.slug,
+        displayName: row.displayName,
+        winPct: row.winPct,
+      }))
+    const wins = rows
+      .filter((row) => members.some((member) => member.slug === row.slug))
+      .reduce((sum, row) => sum + row.wins, 0)
+    const losses = rows
+      .filter((row) => members.some((member) => member.slug === row.slug))
+      .reduce((sum, row) => sum + row.losses, 0)
+    const ties = rows
+      .filter((row) => members.some((member) => member.slug === row.slug))
+      .reduce((sum, row) => sum + row.ties, 0)
+    result.push({ cohort, wins, losses, ties, winPct: winPct(wins, losses, ties), members })
+  }
+  return result
+}
+
+function weeklyExtras(scores: FantasyWeeklyScore[]): FantasySeasonExtras {
+  const points = scores.map((score) => score.points)
+  return {
+    weekly: scores,
+    h2h: headToHeadFromScores(scores),
+    highWeek: points.length > 0 ? Math.max(...points) : 0,
+    leagueAverage:
+      points.length > 0 ? points.reduce((sum, point) => sum + point, 0) / points.length : 0,
+    leagueMedian: median(points),
+  }
+}
+
 function timelineInputForContext(ctx: Ctx, year: number): FantasyTimelineInput | null {
   const league = ctx.leagues.find((l) => l.season === year)
   if (!league) {
@@ -817,16 +1503,37 @@ export const FantasyScout = {
     })
   },
 
-  async allTime(): Promise<{ seasons: SeasonSummary[]; gms: GmAllTimeRow[] }> {
+  async allTime(): Promise<{
+    seasons: SeasonSummary[]
+    gms: GmAllTimeRow[]
+    cohorts: FantasyCohortRow[]
+    records: FantasyRecordsData
+    biggestWeek: FantasyWeeklyScore | null
+  }> {
     const ctx = await loadContext()
-    const seasons = await this.listSeasons()
+    const seasons = ctx.leagues.map((l) => {
+      const draft = ctx.drafts.find((d) => d.sleeperLeagueId === l.sleeperLeagueId)
+      return {
+        season: l.season,
+        sleeperLeagueId: l.sleeperLeagueId,
+        status: l.status,
+        name: l.name,
+        teamCount: ctx.rosters.filter((r) => r.sleeperLeagueId === l.sleeperLeagueId).length,
+        draftStatus: draft?.status ?? null,
+      }
+    })
     const rows = buildSeasonRows(ctx)
+    const gms = rollupAllTime(
+      rows,
+      seasons.map((s) => s.season)
+    )
+    const weekly = weeklyScores(ctx)
     return {
       seasons,
-      gms: rollupAllTime(
-        rows,
-        seasons.map((s) => s.season)
-      ),
+      gms,
+      cohorts: cohortSummary(gms),
+      records: buildRecords(ctx, rows),
+      biggestWeek: [...weekly].sort((a, b) => b.points - a.points)[0] ?? null,
     }
   },
 
@@ -834,13 +1541,31 @@ export const FantasyScout = {
     summary: SeasonSummary | null
     standings: GmSeasonRow[]
     heatmap: HeatmapTeam[]
+    extras: FantasySeasonExtras
   }> {
     const ctx = await loadContext()
-    const seasons = (await this.listSeasons()).filter((s) => s.season === year)
+    const seasons = ctx.leagues
+      .map((l) => {
+        const draft = ctx.drafts.find((d) => d.sleeperLeagueId === l.sleeperLeagueId)
+        return {
+          season: l.season,
+          sleeperLeagueId: l.sleeperLeagueId,
+          status: l.status,
+          name: l.name,
+          teamCount: ctx.rosters.filter((r) => r.sleeperLeagueId === l.sleeperLeagueId).length,
+          draftStatus: draft?.status ?? null,
+        }
+      })
+      .filter((s) => s.season === year)
     const standings = buildSeasonRows(ctx)
       .filter((r) => r.season === year)
       .sort((a, b) => a.finish - b.finish)
-    return { summary: seasons[0] ?? null, standings, heatmap: buildHeatmap(ctx, year) }
+    return {
+      summary: seasons[0] ?? null,
+      standings,
+      heatmap: buildHeatmap(ctx, year),
+      extras: weeklyExtras(weeklyScores(ctx, year)),
+    }
   },
 
   async timeline(slug: string, year?: number): Promise<FantasyTimelineData | null> {
@@ -863,6 +1588,74 @@ export const FantasyScout = {
     const ctx = await loadContext()
     const selectedSeason = season ?? ctx.leagues.at(-1)?.season
     return selectedSeason ? buildEvolution(ctx, selectedSeason) : null
+  },
+
+  async headToHead(season?: number): Promise<H2HCell[]> {
+    const ctx = await loadContext()
+    return headToHeadFromScores(weeklyScores(ctx, season))
+  },
+
+  async records(): Promise<FantasyRecordsData> {
+    const ctx = await loadContext()
+    const rows = buildSeasonRows(ctx)
+    let stored: (typeof fantasyRecords.$inferSelect)[] = []
+    try {
+      stored = await ctx.db.select().from(fantasyRecords)
+    } catch (error) {
+      console.warn('[fantasy] records rollup unavailable; computing records live', error)
+    }
+    if (stored.length === 0) {
+      return buildRecords(ctx, rows)
+    }
+    const managers = new Map(rows.map((row) => [row.slug, row.displayName]))
+    const records = stored
+      .filter((row) => !row.key.startsWith('badge_'))
+      .map((row) => ({
+        key: row.key,
+        label: row.label,
+        valueNum: row.valueNum,
+        valueText: row.valueText ?? '—',
+        holderSlug: row.holderSlug,
+        holderName: managers.get(row.holderSlug ?? '') ?? row.holderSlug ?? '—',
+        season: row.season,
+        week: row.week,
+        detail: row.detail ?? '',
+      }))
+    const badges = stored
+      .filter((row) => row.key.startsWith('badge_'))
+      .map((row) => ({
+        key: row.key,
+        label: row.label,
+        valueNum: row.valueNum,
+        valueText: row.valueText ?? '—',
+        holderSlug: row.holderSlug,
+        holderName: managers.get(row.holderSlug ?? '') ?? row.holderSlug ?? '—',
+        season: row.season,
+        week: row.week,
+        detail: row.detail ?? '',
+      }))
+    return { records, badges }
+  },
+
+  async refreshRecords(): Promise<number> {
+    const ctx = await loadContext()
+    const data = buildRecords(ctx, buildSeasonRows(ctx))
+    const rows = [...data.records, ...data.badges].map((row) => ({
+      key: row.key,
+      label: row.label,
+      valueNum: row.valueNum,
+      valueText: row.valueText,
+      holderSlug: row.holderSlug,
+      season: row.season,
+      week: row.week,
+      detail: row.detail,
+      computedAt: new Date(),
+    }))
+    await ctx.db.delete(fantasyRecords)
+    if (rows.length > 0) {
+      await ctx.db.insert(fantasyRecords).values(rows)
+    }
+    return rows.length
   },
 
   async draft(year: number): Promise<{
@@ -1003,6 +1796,7 @@ export const FantasyScout = {
     draftPicks: (DraftPickRow & { season: number })[]
     wire: (WireRow & { season: number })[]
     missed: (WireRow & { season: number })[]
+    extras: FantasyManagerExtras
   }> {
     const ctx = await loadContext()
     const seasonNums = ctx.leagues.map((l) => l.season)
@@ -1012,7 +1806,15 @@ export const FantasyScout = {
       ? (seasonRows.find((row) => row.season === season && row.slug === slug) ?? null)
       : null
     if (!gm) {
-      return { gm: null, season: selectedSeason, team: [], draftPicks: [], wire: [], missed: [] }
+      return {
+        gm: null,
+        season: selectedSeason,
+        team: [],
+        draftPicks: [],
+        wire: [],
+        missed: [],
+        extras: { weekly: [], leagueMedian: 0, heatmap: null, h2h: [] },
+      }
     }
     const pff = await pffMap(ctx.db, season ? [season] : seasonNums)
     const draftPicks: (DraftPickRow & { season: number })[] = []
@@ -1100,7 +1902,25 @@ export const FantasyScout = {
         }
       }
     }
-    return { gm, season: selectedSeason, team, draftPicks, wire, missed }
+    const selectedYear = season ?? ctx.leagues.at(-1)?.season
+    const weekly = selectedYear ? weeklyScores(ctx, selectedYear) : []
+    const heatmap = selectedYear
+      ? (buildHeatmap(ctx, selectedYear).find((row) => row.slug === slug) ?? null)
+      : null
+    return {
+      gm,
+      season: selectedSeason,
+      team,
+      draftPicks,
+      wire,
+      missed,
+      extras: {
+        weekly,
+        leagueMedian: median(weekly.map((row) => row.points)),
+        heatmap,
+        h2h: headToHeadFromScores(weeklyScores(ctx)),
+      },
+    }
   },
 
   async playerCard(playerId: string, seasonHint?: number): Promise<PlayerCardData | null> {
