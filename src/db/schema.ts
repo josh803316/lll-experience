@@ -1,16 +1,16 @@
 import {
-  text,
-  timestamp,
+  bigint,
+  boolean,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
   pgTable,
   serial,
-  integer,
-  boolean,
-  bigint,
-  jsonb,
+  text,
+  timestamp,
   unique,
-  index,
-  doublePrecision,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -19,7 +19,7 @@ export const users = pgTable('users', {
   firstName: text('first_name'),
   lastName: text('last_name'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+})
 
 export const apps = pgTable('apps', {
   id: serial('id').primaryKey(),
@@ -28,15 +28,15 @@ export const apps = pgTable('apps', {
   description: text('description'),
   isActive: boolean('is_active').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+})
 
 export const draftPicks = pgTable('draft_picks', {
   id: serial('id').primaryKey(),
   userId: integer('user_id')
-    .references(() => users.id, {onDelete: 'cascade'})
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
+    .references(() => apps.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   pickNumber: integer('pick_number').notNull(),
@@ -46,49 +46,51 @@ export const draftPicks = pgTable('draft_picks', {
   doubleScorePick: boolean('double_score_pick').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+})
 
 export const draftablePlayers = pgTable('draftable_players', {
   id: serial('id').primaryKey(),
   appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
+    .references(() => apps.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   rank: integer('rank').notNull(),
   playerName: text('player_name').notNull(),
   school: text('school').notNull(),
   position: text('position').notNull(),
-});
+})
 
 export const draftSettings = pgTable('draft_settings', {
   id: serial('id').primaryKey(),
   appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
+    .references(() => apps.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   draftStartedAt: timestamp('draft_started_at'),
-});
+})
 
 /** Persisted mock simulation state so reload/restart keeps current reveal progress. */
 export const draftMockState = pgTable('draft_mock_state', {
   id: serial('id').primaryKey(),
   appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
+    .references(() => apps.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   revealedCount: integer('revealed_count').notNull().default(0),
-  nextRevealAtMs: bigint('next_reveal_at_ms', {mode: 'number'}).notNull(),
+  nextRevealAtMs: bigint('next_reveal_at_ms', { mode: 'number' }).notNull(),
   picksJson: jsonb('picks_json')
-    .$type<Array<{pickNumber: number; playerName: string; teamName: string; position: string | null}>>()
+    .$type<
+      Array<{ pickNumber: number; playerName: string; teamName: string; position: string | null }>
+    >()
     .notNull(),
-});
+})
 
 export const officialDraftResults = pgTable(
   'official_draft_results',
   {
     id: serial('id').primaryKey(),
     appId: integer('app_id')
-      .references(() => apps.id, {onDelete: 'cascade'})
+      .references(() => apps.id, { onDelete: 'cascade' })
       .notNull(),
     year: integer('year').notNull(),
     round: integer('round'),
@@ -104,12 +106,15 @@ export const officialDraftResults = pgTable(
     idxOfficialDraftResultsAppYearPick: index('idx_official_draft_results_app_year_pick').on(
       t.appId,
       t.year,
-      t.pickNumber,
+      t.pickNumber
     ),
-    idxOfficialDraftResultsYearTeam: index('idx_official_draft_results_year_team').on(t.year, t.teamName),
+    idxOfficialDraftResultsYearTeam: index('idx_official_draft_results_year_team').on(
+      t.year,
+      t.teamName
+    ),
     idxOfficialDraftResultsPlayer: index('idx_official_draft_results_player').on(t.playerName),
-  }),
-);
+  })
+)
 
 /**
  * Cached LLM-generated analysis for a draft pick.
@@ -120,7 +125,7 @@ export const pickWriteups = pgTable(
   {
     id: serial('id').primaryKey(),
     appId: integer('app_id')
-      .references(() => apps.id, {onDelete: 'cascade'})
+      .references(() => apps.id, { onDelete: 'cascade' })
       .notNull(),
     year: integer('year').notNull(),
     pickNumber: integer('pick_number').notNull(),
@@ -135,13 +140,13 @@ export const pickWriteups = pgTable(
   },
   (t) => ({
     uniqApp_year_pick: unique().on(t.appId, t.year, t.pickNumber),
-  }),
-);
+  })
+)
 
 export const draftHistoricalWinners = pgTable('draft_historical_winners', {
   id: serial('id').primaryKey(),
   appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
+    .references(() => apps.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   rank: integer('rank').notNull(),
@@ -149,58 +154,58 @@ export const draftHistoricalWinners = pgTable('draft_historical_winners', {
   email: text('email'),
   score: integer('score'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+})
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
 
 export const chatGroups = pgTable('chat_groups', {
   id: serial('id').primaryKey(),
   appId: integer('app_id')
-    .references(() => apps.id, {onDelete: 'cascade'})
+    .references(() => apps.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   name: text('name').notNull(),
   createdBy: integer('created_by')
-    .references(() => users.id, {onDelete: 'cascade'})
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   isDefault: boolean('is_default').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+})
 
 export const chatGroupMembers = pgTable('chat_group_members', {
   id: serial('id').primaryKey(),
   groupId: integer('group_id')
-    .references(() => chatGroups.id, {onDelete: 'cascade'})
+    .references(() => chatGroups.id, { onDelete: 'cascade' })
     .notNull(),
   userId: integer('user_id')
-    .references(() => users.id, {onDelete: 'cascade'})
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   joinedAt: timestamp('joined_at').defaultNow().notNull(),
-});
+})
 
 export const chatMessages = pgTable('chat_messages', {
   id: serial('id').primaryKey(),
   groupId: integer('group_id')
-    .references(() => chatGroups.id, {onDelete: 'cascade'})
+    .references(() => chatGroups.id, { onDelete: 'cascade' })
     .notNull(),
   userId: integer('user_id')
-    .references(() => users.id, {onDelete: 'cascade'})
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   content: text('content').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+})
 
 export const chatMessageReactions = pgTable('chat_message_reactions', {
   id: serial('id').primaryKey(),
   messageId: integer('message_id')
-    .references(() => chatMessages.id, {onDelete: 'cascade'})
+    .references(() => chatMessages.id, { onDelete: 'cascade' })
     .notNull(),
   userId: integer('user_id')
-    .references(() => users.id, {onDelete: 'cascade'})
+    .references(() => users.id, { onDelete: 'cascade' })
     .notNull(),
   emoji: text('emoji').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+})
 
 // ─── Draft Analyzer ──────────────────────────────────────────────────────────
 
@@ -211,14 +216,14 @@ export const experts = pgTable('experts', {
   organization: text('organization'),
   photoUrl: text('photo_url'),
   bio: text('bio'),
-});
+})
 
 export const expertRankings = pgTable(
   'expert_rankings',
   {
     id: serial('id').primaryKey(),
     expertId: integer('expert_id')
-      .references(() => experts.id, {onDelete: 'cascade'})
+      .references(() => experts.id, { onDelete: 'cascade' })
       .notNull(),
     year: integer('year').notNull(),
     playerName: text('player_name').notNull(),
@@ -230,8 +235,8 @@ export const expertRankings = pgTable(
     idxExpertRankingsYear: index('idx_expert_rankings_year').on(t.year),
     idxExpertRankingsExpertYear: index('idx_expert_rankings_expert_year').on(t.expertId, t.year),
     idxExpertRankingsPlayer: index('idx_expert_rankings_player').on(t.playerName),
-  }),
-);
+  })
+)
 
 export const teamDraftAnalysis = pgTable('team_draft_analysis', {
   id: serial('id').primaryKey(),
@@ -241,18 +246,18 @@ export const teamDraftAnalysis = pgTable('team_draft_analysis', {
   performanceScore: integer('performance_score'), // 0-100 (aggregated performance vs expectation)
   valueScore: integer('value_score'), // 0-100 (surplus value vs draft slot)
   overallGrade: text('overall_grade'),
-});
+})
 
 export const expertTeamGrades = pgTable('expert_team_grades', {
   id: serial('id').primaryKey(),
   expertId: integer('expert_id')
-    .references(() => experts.id, {onDelete: 'cascade'})
+    .references(() => experts.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   teamName: text('team_name').notNull(),
   grade: text('grade').notNull(),
   commentary: text('commentary'),
-});
+})
 
 export const playerPerformanceRatings = pgTable(
   'player_performance_ratings',
@@ -268,24 +273,27 @@ export const playerPerformanceRatings = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => ({
-    idxPlayerPerformanceCareerPlayer: index('idx_player_performance_career_player').on(t.isCareerRating, t.playerName),
+    idxPlayerPerformanceCareerPlayer: index('idx_player_performance_career_player').on(
+      t.isCareerRating,
+      t.playerName
+    ),
     idxPlayerPerformancePlayerEvalYear: index('idx_player_performance_player_eval_year').on(
       t.playerName,
-      t.evaluationYear,
+      t.evaluationYear
     ),
-  }),
-);
+  })
+)
 
 export const expertAccuracyScores = pgTable('expert_accuracy_scores', {
   id: serial('id').primaryKey(),
   expertId: integer('expert_id')
-    .references(() => experts.id, {onDelete: 'cascade'})
+    .references(() => experts.id, { onDelete: 'cascade' })
     .notNull(),
   year: integer('year').notNull(),
   accuracyDelta: integer('accuracy_delta'), // Difference between predicted and LLL actual
   rankingSuccess: integer('ranking_success'), // Percentile accuracy
   gradeSuccess: integer('grade_success'),
-});
+})
 
 export const draftTimelineEvents = pgTable('draft_timeline_events', {
   id: serial('id').primaryKey(),
@@ -296,7 +304,7 @@ export const draftTimelineEvents = pgTable('draft_timeline_events', {
   content: text('content'),
   playerName: text('player_name'),
   teamName: text('team_name'),
-});
+})
 
 export const pffPlayerStats = pgTable(
   'pff_player_stats',
@@ -314,8 +322,8 @@ export const pffPlayerStats = pgTable(
   },
   (t) => ({
     uniqPlayerSeasonCat: unique().on(t.playerName, t.season, t.category),
-  }),
-);
+  })
+)
 
 /**
  * Per-player career PFF summary, sourced from Tim's pff_summary_2016_2025.xlsx
@@ -343,8 +351,8 @@ export const pffCareerSummary = pgTable(
   (t) => ({
     uniqPffPlayerSide: unique().on(t.playerName, t.side),
     idxPffCareerFranchisePos: index('idx_pff_career_franchise_pos').on(t.franchisePosition),
-  }),
-);
+  })
+)
 
 /**
  * Per-player best-contract market signal, sourced from Tim's
@@ -366,9 +374,11 @@ export const playerContractSignal = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (t) => ({
-    idxContractSignalFranchisePos: index('idx_contract_signal_franchise_pos').on(t.franchisePosition),
-  }),
-);
+    idxContractSignalFranchisePos: index('idx_contract_signal_franchise_pos').on(
+      t.franchisePosition
+    ),
+  })
+)
 
 /**
  * Per-contract dollar data for drafted players. Populated additively
@@ -397,8 +407,8 @@ export const playerContracts = pgTable(
   },
   (t) => ({
     uniqPlayerYearSource: unique().on(t.playerName, t.yearSigned, t.source),
-  }),
-);
+  })
+)
 
 // ── Analyzer result cache ───────────────────────────────────────────────────
 // Computed leaderboard payloads stored as JSON so routes serve a single indexed
@@ -408,17 +418,17 @@ export const playerContracts = pgTable(
 export const analyzerCache = pgTable('analyzer_cache', {
   key: text('key').primaryKey(), // e.g. 'experts-bundle'
   payload: jsonb('payload').notNull(),
-  dataVersion: bigint('data_version', {mode: 'number'}).notNull(),
+  dataVersion: bigint('data_version', { mode: 'number' }).notNull(),
   computedAt: timestamp('computed_at').defaultNow().notNull(),
-});
+})
 
 // Single-row counter bumped by triggers on every write to a source table.
 // The cache row is fresh iff its data_version equals the current version.
 export const analyzerDataVersion = pgTable('analyzer_data_version', {
   id: integer('id').primaryKey().default(1),
-  version: bigint('version', {mode: 'number'}).notNull().default(1),
+  version: bigint('version', { mode: 'number' }).notNull().default(1),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+})
 
 // ── UCSB Legacy (Sleeper fantasy GM lab) ─────────────────────────────────────
 
@@ -438,22 +448,22 @@ export const fantasyLeagues = pgTable(
   },
   (t) => ({
     idxFantasyLeaguesSeason: index('idx_fantasy_leagues_season').on(t.season),
-  }),
-);
+  })
+)
 
 export const fantasyManagers = pgTable('fantasy_managers', {
   id: serial('id').primaryKey(),
   slug: text('slug').notNull().unique(),
   displayName: text('display_name').notNull(),
   sleeperUserId: text('sleeper_user_id').notNull().unique(),
-});
+})
 
 export const fantasyRosters = pgTable(
   'fantasy_rosters',
   {
     id: serial('id').primaryKey(),
     sleeperLeagueId: text('sleeper_league_id')
-      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .references(() => fantasyLeagues.sleeperLeagueId, { onDelete: 'cascade' })
       .notNull(),
     rosterId: integer('roster_id').notNull(),
     sleeperUserId: text('sleeper_user_id'),
@@ -469,27 +479,27 @@ export const fantasyRosters = pgTable(
   (t) => ({
     uniqFantasyRoster: unique().on(t.sleeperLeagueId, t.rosterId),
     idxFantasyRostersUser: index('idx_fantasy_rosters_user').on(t.sleeperUserId),
-  }),
-);
+  })
+)
 
 export const fantasyDrafts = pgTable('fantasy_drafts', {
   draftId: text('draft_id').primaryKey(),
   sleeperLeagueId: text('sleeper_league_id')
-    .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+    .references(() => fantasyLeagues.sleeperLeagueId, { onDelete: 'cascade' })
     .notNull(),
   type: text('type').notNull(),
   status: text('status').notNull(),
   budget: integer('budget'),
   rounds: integer('rounds'),
   settings: jsonb('settings').$type<Record<string, unknown>>(),
-});
+})
 
 export const fantasyDraftPicks = pgTable(
   'fantasy_draft_picks',
   {
     id: serial('id').primaryKey(),
     draftId: text('draft_id')
-      .references(() => fantasyDrafts.draftId, {onDelete: 'cascade'})
+      .references(() => fantasyDrafts.draftId, { onDelete: 'cascade' })
       .notNull(),
     pickNo: integer('pick_no').notNull(),
     round: integer('round').notNull(),
@@ -503,15 +513,15 @@ export const fantasyDraftPicks = pgTable(
   (t) => ({
     uniqFantasyDraftPick: unique().on(t.draftId, t.pickNo),
     idxFantasyDraftPicksPlayer: index('idx_fantasy_draft_picks_player').on(t.playerId),
-  }),
-);
+  })
+)
 
 export const fantasyMatchups = pgTable(
   'fantasy_matchups',
   {
     id: serial('id').primaryKey(),
     sleeperLeagueId: text('sleeper_league_id')
-      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .references(() => fantasyLeagues.sleeperLeagueId, { onDelete: 'cascade' })
       .notNull(),
     week: integer('week').notNull(),
     rosterId: integer('roster_id').notNull(),
@@ -522,15 +532,15 @@ export const fantasyMatchups = pgTable(
   (t) => ({
     uniqFantasyMatchup: unique().on(t.sleeperLeagueId, t.week, t.rosterId),
     idxFantasyMatchupsWeek: index('idx_fantasy_matchups_week').on(t.sleeperLeagueId, t.week),
-  }),
-);
+  })
+)
 
 export const fantasyPlayerWeeks = pgTable(
   'fantasy_player_weeks',
   {
     id: serial('id').primaryKey(),
     sleeperLeagueId: text('sleeper_league_id')
-      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .references(() => fantasyLeagues.sleeperLeagueId, { onDelete: 'cascade' })
       .notNull(),
     week: integer('week').notNull(),
     rosterId: integer('roster_id').notNull(),
@@ -539,16 +549,19 @@ export const fantasyPlayerWeeks = pgTable(
   },
   (t) => ({
     uniqFantasyPlayerWeek: unique().on(t.sleeperLeagueId, t.week, t.rosterId, t.playerId),
-    idxFantasyPlayerWeeksPlayer: index('idx_fantasy_player_weeks_player').on(t.playerId, t.sleeperLeagueId),
-  }),
-);
+    idxFantasyPlayerWeeksPlayer: index('idx_fantasy_player_weeks_player').on(
+      t.playerId,
+      t.sleeperLeagueId
+    ),
+  })
+)
 
 export const fantasyTransactions = pgTable(
   'fantasy_transactions',
   {
     transactionId: text('transaction_id').primaryKey(),
     sleeperLeagueId: text('sleeper_league_id')
-      .references(() => fantasyLeagues.sleeperLeagueId, {onDelete: 'cascade'})
+      .references(() => fantasyLeagues.sleeperLeagueId, { onDelete: 'cascade' })
       .notNull(),
     week: integer('week').notNull(),
     type: text('type').notNull(),
@@ -557,13 +570,25 @@ export const fantasyTransactions = pgTable(
     adds: jsonb('adds').$type<Record<string, number> | null>(),
     drops: jsonb('drops').$type<Record<string, number> | null>(),
     waiverBid: integer('waiver_bid'),
-    createdAtMs: bigint('created_at_ms', {mode: 'number'}),
+    createdAtMs: bigint('created_at_ms', { mode: 'number' }),
   },
   (t) => ({
     idxFantasyTxLeagueWeek: index('idx_fantasy_tx_league_week').on(t.sleeperLeagueId, t.week),
     idxFantasyTxType: index('idx_fantasy_tx_type').on(t.type, t.status),
-  }),
-);
+  })
+)
+
+export const fantasyRecords = pgTable('fantasy_records', {
+  key: text('key').primaryKey(),
+  label: text('label').notNull(),
+  valueNum: doublePrecision('value_num'),
+  valueText: text('value_text'),
+  holderSlug: text('holder_slug').references(() => fantasyManagers.slug),
+  season: integer('season'),
+  week: integer('week'),
+  detail: text('detail'),
+  computedAt: timestamp('computed_at').defaultNow().notNull(),
+})
 
 export const fantasyPlayers = pgTable(
   'fantasy_players',
@@ -577,8 +602,8 @@ export const fantasyPlayers = pgTable(
   },
   (t) => ({
     idxFantasyPlayersName: index('idx_fantasy_players_name').on(t.fullName),
-  }),
-);
+  })
+)
 
 /** RotoWire weekly counting stats via Sleeper, scored with UCSB settings. */
 export const fantasyProjections = pgTable(
@@ -597,5 +622,5 @@ export const fantasyProjections = pgTable(
   (t) => ({
     uniqFantasyProjection: unique().on(t.season, t.week, t.playerId, t.source),
     idxFantasyProjPlayer: index('idx_fantasy_proj_player').on(t.season, t.playerId),
-  }),
-);
+  })
+)

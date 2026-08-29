@@ -1,129 +1,133 @@
-import {and, eq, inArray, ne, sql} from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import {
   CANONICAL_MANAGERS,
   managerForSleeperUser,
   SLEEPER_ID_ALIASES,
   UCSB_LEGACY_LEAGUE_ID,
-} from '../config/fantasy-managers.js';
-import {getDB} from '../db/index.js';
+} from '../config/fantasy-managers.js'
+import { getDB } from '../db/index.js'
 import {
   fantasyDraftPicks,
   fantasyDrafts,
   fantasyLeagues,
   fantasyManagers,
   fantasyMatchups,
-  fantasyPlayerWeeks,
   fantasyPlayers,
+  fantasyPlayerWeeks,
   fantasyProjections,
   fantasyRosters,
   fantasyTransactions,
-} from '../db/schema.js';
+} from '../db/schema.js'
+import { fetchEspnWeeklyProjections } from './espn-projections.js'
+import { type SourceProjRow, scoreStats } from './fantasy-projections.js'
+import { FantasyScout } from './fantasy-scout.js'
+import { fetchFantasyProsWeeklyProjections } from './fantasypros-projections.js'
 import {
   combineFpts,
-  sleeperClient,
   type SleeperLeague,
   type SleeperNflPlayer,
   type SleeperUser,
-} from './sleeper-client.js';
-import {scoreStats, type SourceProjRow} from './fantasy-projections.js';
-import {fetchEspnWeeklyProjections} from './espn-projections.js';
-import {fetchFantasyProsWeeklyProjections} from './fantasypros-projections.js';
+  sleeperClient,
+} from './sleeper-client.js'
 
-const MAX_WEEK = 18;
-const CHUNK = 200;
+const MAX_WEEK = 18
+const CHUNK = 200
 
-type Db = ReturnType<typeof getDB>;
+type Db = ReturnType<typeof getDB>
 
 export interface IngestResult {
-  leagues: number;
-  rosters: number;
-  picks: number;
-  matchups: number;
-  playerWeeks: number;
-  transactions: number;
-  players: number;
-  projections: number;
-  seasons: number[];
+  leagues: number
+  rosters: number
+  picks: number
+  matchups: number
+  playerWeeks: number
+  transactions: number
+  players: number
+  projections: number
+  records: number
+  seasons: number[]
 }
 
 function playerFullName(p: SleeperNflPlayer, playerId: string): string {
   if (p.full_name) {
-    return p.full_name;
+    return p.full_name
   }
-  const joined = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim();
-  return joined || playerId;
+  const joined = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim()
+  return joined || playerId
 }
 
 async function insertChunks<T>(rows: T[], write: (chunk: T[]) => Promise<unknown>): Promise<void> {
   for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
+    const chunk = rows.slice(i, i + CHUNK)
     if (chunk.length > 0) {
-      await write(chunk);
+      await write(chunk)
     }
   }
 }
 
 async function upsertManagers(db: Db, usersByLeague: SleeperUser[][]): Promise<void> {
-  const aliasIds = Object.keys(SLEEPER_ID_ALIASES);
+  const aliasIds = Object.keys(SLEEPER_ID_ALIASES)
   if (aliasIds.length > 0) {
-    await db.delete(fantasyManagers).where(inArray(fantasyManagers.sleeperUserId, aliasIds));
+    await db.delete(fantasyManagers).where(inArray(fantasyManagers.sleeperUserId, aliasIds))
   }
   for (const m of CANONICAL_MANAGERS) {
     await db
       .update(fantasyManagers)
-      .set({slug: `tmp-${m.sleeperUserId}`})
-      .where(and(eq(fantasyManagers.slug, m.slug), ne(fantasyManagers.sleeperUserId, m.sleeperUserId)));
+      .set({ slug: `tmp-${m.sleeperUserId}` })
+      .where(
+        and(eq(fantasyManagers.slug, m.slug), ne(fantasyManagers.sleeperUserId, m.sleeperUserId))
+      )
   }
 
-  const seen = new Map<string, {slug: string; displayName: string}>();
-  const slugs = new Set<string>();
+  const seen = new Map<string, { slug: string; displayName: string }>()
+  const slugs = new Set<string>()
   for (const m of CANONICAL_MANAGERS) {
-    seen.set(m.sleeperUserId, {slug: m.slug, displayName: m.displayName});
-    slugs.add(m.slug);
+    seen.set(m.sleeperUserId, { slug: m.slug, displayName: m.displayName })
+    slugs.add(m.slug)
   }
   for (const users of usersByLeague) {
     for (const u of users) {
       if (seen.has(u.user_id) || SLEEPER_ID_ALIASES[u.user_id]) {
-        continue;
+        continue
       }
-      const ident = managerForSleeperUser(u.user_id, u.display_name || u.username);
+      const ident = managerForSleeperUser(u.user_id, u.display_name || u.username)
       if (slugs.has(ident.slug)) {
-        continue;
+        continue
       }
-      seen.set(u.user_id, ident);
-      slugs.add(ident.slug);
+      seen.set(u.user_id, ident)
+      slugs.add(ident.slug)
     }
   }
   const rows = [...seen.entries()].map(([sleeperUserId, ident]) => ({
     slug: ident.slug,
     displayName: ident.displayName,
     sleeperUserId,
-  }));
+  }))
   await insertChunks(rows, (chunk) =>
     db
       .insert(fantasyManagers)
       .values(chunk)
       .onConflictDoUpdate({
         target: fantasyManagers.sleeperUserId,
-        set: {slug: sql`excluded.slug`, displayName: sql`excluded.display_name`},
-      }),
-  );
+        set: { slug: sql`excluded.slug`, displayName: sql`excluded.display_name` },
+      })
+  )
 }
 
 async function ingestLeague(
   db: Db,
-  league: SleeperLeague,
+  league: SleeperLeague
 ): Promise<{
-  rosters: number;
-  picks: number;
-  matchups: number;
-  playerWeeks: number;
-  transactions: number;
-  users: SleeperUser[];
-  playerIds: string[];
-  scoring: Record<string, unknown> | null;
+  rosters: number
+  picks: number
+  matchups: number
+  playerWeeks: number
+  transactions: number
+  users: SleeperUser[]
+  playerIds: string[]
+  scoring: Record<string, unknown> | null
 }> {
-  const season = Number(league.season);
+  const season = Number(league.season)
   await db
     .insert(fantasyLeagues)
     .values({
@@ -151,16 +155,16 @@ async function ingestLeague(
         rosterPositions: league.roster_positions ?? [],
         updatedAt: new Date(),
       },
-    });
+    })
 
   const [users, rosters, drafts] = await Promise.all([
     sleeperClient.getUsers(league.league_id),
     sleeperClient.getRosters(league.league_id),
     sleeperClient.getDrafts(league.league_id),
-  ]);
+  ])
 
   const rosterRows = rosters.map((r) => {
-    const owner = users.find((u) => u.user_id === r.owner_id);
+    const owner = users.find((u) => u.user_id === r.owner_id)
     return {
       sleeperLeagueId: league.league_id,
       rosterId: r.roster_id,
@@ -173,8 +177,8 @@ async function ingestLeague(
       fptsAgainst: combineFpts(r.settings?.fpts_against, r.settings?.fpts_against_decimal),
       waiverBudgetUsed: r.settings?.waiver_budget_used ?? 0,
       waiverPosition: r.settings?.waiver_position ?? null,
-    };
-  });
+    }
+  })
   await insertChunks(rosterRows, (chunk) =>
     db
       .insert(fantasyRosters)
@@ -192,11 +196,11 @@ async function ingestLeague(
           waiverBudgetUsed: sql`excluded.waiver_budget_used`,
           waiverPosition: sql`excluded.waiver_position`,
         },
-      }),
-  );
+      })
+  )
 
-  let pickCount = 0;
-  const playerIds = new Set<string>();
+  let pickCount = 0
+  const playerIds = new Set<string>()
   for (const draft of drafts) {
     await db
       .insert(fantasyDrafts)
@@ -218,13 +222,13 @@ async function ingestLeague(
           rounds: draft.settings?.rounds ?? null,
           settings: draft.settings ?? {},
         },
-      });
+      })
 
-    const picks = await sleeperClient.getDraftPicks(draft.draft_id);
-    pickCount += picks.length;
+    const picks = await sleeperClient.getDraftPicks(draft.draft_id)
+    pickCount += picks.length
     for (const pick of picks) {
       if (pick.player_id) {
-        playerIds.add(pick.player_id);
+        playerIds.add(pick.player_id)
       }
     }
     const pickRows = picks.map((pick) => ({
@@ -237,7 +241,7 @@ async function ingestLeague(
       amount: Number(pick.metadata?.amount ?? 0) || 0,
       position: pick.metadata?.position ?? null,
       isKeeper: Boolean(pick.is_keeper),
-    }));
+    }))
     await insertChunks(pickRows, (chunk) =>
       db
         .insert(fantasyDraftPicks)
@@ -253,19 +257,19 @@ async function ingestLeague(
             position: sql`excluded.position`,
             isKeeper: sql`excluded.is_keeper`,
           },
-        }),
-    );
+        })
+    )
   }
 
-  const matchupRows: (typeof fantasyMatchups.$inferInsert)[] = [];
-  const playerWeekRows: (typeof fantasyPlayerWeeks.$inferInsert)[] = [];
-  const txRows: (typeof fantasyTransactions.$inferInsert)[] = [];
+  const matchupRows: (typeof fantasyMatchups.$inferInsert)[] = []
+  const playerWeekRows: (typeof fantasyPlayerWeeks.$inferInsert)[] = []
+  const txRows: (typeof fantasyTransactions.$inferInsert)[] = []
 
   for (let week = 0; week <= MAX_WEEK; week++) {
     const [matchups, txs] = await Promise.all([
       week === 0 ? Promise.resolve([]) : sleeperClient.getMatchups(league.league_id, week),
       sleeperClient.getTransactions(league.league_id, week),
-    ]);
+    ])
     for (const m of matchups) {
       matchupRows.push({
         sleeperLeagueId: league.league_id,
@@ -274,7 +278,7 @@ async function ingestLeague(
         matchupId: m.matchup_id,
         points: m.custom_points ?? m.points ?? 0,
         starters: m.starters ?? [],
-      });
+      })
       for (const [playerId, pointsVal] of Object.entries(m.players_points ?? {})) {
         playerWeekRows.push({
           sleeperLeagueId: league.league_id,
@@ -282,7 +286,7 @@ async function ingestLeague(
           rosterId: m.roster_id,
           playerId,
           points: typeof pointsVal === 'number' ? pointsVal : Number(pointsVal) || 0,
-        });
+        })
       }
     }
     for (const tx of txs) {
@@ -297,7 +301,7 @@ async function ingestLeague(
         drops: tx.drops,
         waiverBid: tx.settings?.waiver_bid ?? null,
         createdAtMs: tx.created ?? null,
-      });
+      })
     }
   }
 
@@ -312,8 +316,8 @@ async function ingestLeague(
           points: sql`excluded.points`,
           starters: sql`excluded.starters`,
         },
-      }),
-  );
+      })
+  )
   await insertChunks(playerWeekRows, (chunk) =>
     db
       .insert(fantasyPlayerWeeks)
@@ -325,9 +329,9 @@ async function ingestLeague(
           fantasyPlayerWeeks.rosterId,
           fantasyPlayerWeeks.playerId,
         ],
-        set: {points: sql`excluded.points`},
-      }),
-  );
+        set: { points: sql`excluded.points` },
+      })
+  )
   await insertChunks(txRows, (chunk) =>
     db
       .insert(fantasyTransactions)
@@ -344,8 +348,8 @@ async function ingestLeague(
           waiverBid: sql`excluded.waiver_bid`,
           createdAtMs: sql`excluded.created_at_ms`,
         },
-      }),
-  );
+      })
+  )
 
   return {
     rosters: rosters.length,
@@ -356,11 +360,11 @@ async function ingestLeague(
     users,
     playerIds: [...playerIds],
     scoring: league.scoring_settings ?? null,
-  };
+  }
 }
 
 async function refreshPlayers(db: Db): Promise<number> {
-  const all = await sleeperClient.getPlayers();
+  const all = await sleeperClient.getPlayers()
   const rows = Object.entries(all).map(([id, p]) => ({
     playerId: p.player_id || id,
     fullName: playerFullName(p, id),
@@ -368,7 +372,7 @@ async function refreshPlayers(db: Db): Promise<number> {
     team: p.team ?? null,
     fantasyPositions: p.fantasy_positions ?? null,
     updatedAt: new Date(),
-  }));
+  }))
   await insertChunks(rows, (chunk) =>
     db
       .insert(fantasyPlayers)
@@ -382,34 +386,38 @@ async function refreshPlayers(db: Db): Promise<number> {
           fantasyPositions: sql`excluded.fantasy_positions`,
           updatedAt: sql`excluded.updated_at`,
         },
-      }),
-  );
-  return rows.length;
+      })
+  )
+  return rows.length
 }
 
-async function poolMap<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
-  let i = 0;
-  const workers = Array.from({length: Math.min(limit, Math.max(items.length, 1))}, async () => {
+async function poolMap<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  let i = 0
+  const workers = Array.from({ length: Math.min(limit, Math.max(items.length, 1)) }, async () => {
     while (i < items.length) {
-      const idx = i++;
-      await fn(items[idx]);
+      const idx = i++
+      await fn(items[idx])
     }
-  });
-  await Promise.all(workers);
+  })
+  await Promise.all(workers)
 }
 
 async function ingestSeasonProjections(
   db: Db,
   season: number,
   playerIds: string[],
-  scoring: Record<string, unknown> | null,
+  scoring: Record<string, unknown> | null
 ): Promise<number> {
   if (playerIds.length === 0) {
-    return 0;
+    return 0
   }
-  const counts: number[] = [];
+  const counts: number[] = []
   await poolMap(playerIds, 8, async (playerId) => {
-    const weeks = await sleeperClient.getPlayerWeeklyProjections(playerId, season);
+    const weeks = await sleeperClient.getPlayerWeeklyProjections(playerId, season)
     const rows = weeks
       .filter((w) => w.stats && (w.category == null || w.category === 'proj') && w.week)
       .map((w) => ({
@@ -421,12 +429,12 @@ async function ingestSeasonProjections(
         stats: w.stats as Record<string, number>,
         pts: scoreStats(scoring, w.stats),
         updatedAt: new Date(),
-      }));
+      }))
     if (rows.length === 0) {
-      counts.push(0);
-      return;
+      counts.push(0)
+      return
     }
-    counts.push(rows.length);
+    counts.push(rows.length)
     await insertChunks(rows, (chunk) =>
       db
         .insert(fantasyProjections)
@@ -444,21 +452,21 @@ async function ingestSeasonProjections(
             pts: sql`excluded.pts`,
             updatedAt: sql`excluded.updated_at`,
           },
-        }),
-    );
-  });
-  return counts.reduce((s, c) => s + c, 0);
+        })
+    )
+  })
+  return counts.reduce((s, c) => s + c, 0)
 }
 
 async function insertProjectionRows(db: Db, rows: SourceProjRow[]): Promise<number> {
   if (rows.length === 0) {
-    return 0;
+    return 0
   }
-  const uniq = new Map<string, SourceProjRow>();
+  const uniq = new Map<string, SourceProjRow>()
   for (const r of rows) {
-    uniq.set(`${r.season}|${r.week}|${r.playerId}|${r.source}`, r);
+    uniq.set(`${r.season}|${r.week}|${r.playerId}|${r.source}`, r)
   }
-  const withTs = [...uniq.values()].map((r) => ({...r, updatedAt: new Date()}));
+  const withTs = [...uniq.values()].map((r) => ({ ...r, updatedAt: new Date() }))
   await insertChunks(withTs, (chunk) =>
     db
       .insert(fantasyProjections)
@@ -476,18 +484,18 @@ async function insertProjectionRows(db: Db, rows: SourceProjRow[]): Promise<numb
           pts: sql`excluded.pts`,
           updatedAt: sql`excluded.updated_at`,
         },
-      }),
-  );
-  return rows.length;
+      })
+  )
+  return rows.length
 }
 
 export async function ingestSleeperLeague(
   startLeagueId: string = process.env.SLEEPER_LEAGUE_ID || UCSB_LEGACY_LEAGUE_ID,
-  opts: {refreshPlayers?: boolean; refreshProjections?: boolean} = {},
+  opts: { refreshPlayers?: boolean; refreshProjections?: boolean } = {}
 ): Promise<IngestResult> {
-  const db = getDB();
-  const seasons: number[] = [];
-  const usersByLeague: SleeperUser[][] = [];
+  const db = getDB()
+  const seasons: number[] = []
+  const usersByLeague: SleeperUser[][] = []
   const totals: IngestResult = {
     leagues: 0,
     rosters: 0,
@@ -497,69 +505,90 @@ export async function ingestSleeperLeague(
     transactions: 0,
     players: 0,
     projections: 0,
+    records: 0,
     seasons,
-  };
-  const projectionJobs: {season: number; playerIds: string[]; scoring: Record<string, unknown> | null; status: string}[] =
-    [];
+  }
+  const projectionJobs: {
+    season: number
+    playerIds: string[]
+    scoring: Record<string, unknown> | null
+    status: string
+  }[] = []
 
-  let leagueId: string | null = startLeagueId;
-  const seen = new Set<string>();
+  let leagueId: string | null = startLeagueId
+  const seen = new Set<string>()
   while (leagueId && !seen.has(leagueId)) {
-    seen.add(leagueId);
-    const league = await sleeperClient.getLeague(leagueId);
+    seen.add(leagueId)
+    const league = await sleeperClient.getLeague(leagueId)
     if (!league) {
-      break;
+      break
     }
-    console.log(`[sleeper-ingest] ${league.season} ${league.name} ${league.league_id} (${league.status})`);
-    const result = await ingestLeague(db, league);
-    usersByLeague.push(result.users);
-    seasons.push(Number(league.season));
-    totals.leagues += 1;
-    totals.rosters += result.rosters;
-    totals.picks += result.picks;
-    totals.matchups += result.matchups;
-    totals.playerWeeks += result.playerWeeks;
-    totals.transactions += result.transactions;
+    console.log(
+      `[sleeper-ingest] ${league.season} ${league.name} ${league.league_id} (${league.status})`
+    )
+    const result = await ingestLeague(db, league)
+    usersByLeague.push(result.users)
+    seasons.push(Number(league.season))
+    totals.leagues += 1
+    totals.rosters += result.rosters
+    totals.picks += result.picks
+    totals.matchups += result.matchups
+    totals.playerWeeks += result.playerWeeks
+    totals.transactions += result.transactions
     if (league.status !== 'complete') {
       projectionJobs.push({
         season: Number(league.season),
         playerIds: result.playerIds,
         scoring: result.scoring,
         status: league.status,
-      });
+      })
     }
-    leagueId = league.previous_league_id;
+    leagueId = league.previous_league_id
   }
 
-  await upsertManagers(db, usersByLeague);
+  await upsertManagers(db, usersByLeague)
 
   if (opts.refreshPlayers !== false) {
-    console.log('[sleeper-ingest] refreshing NFL player cache…');
-    totals.players = await refreshPlayers(db);
+    console.log('[sleeper-ingest] refreshing NFL player cache…')
+    totals.players = await refreshPlayers(db)
   }
 
   if (opts.refreshProjections !== false) {
     for (const job of projectionJobs) {
-      console.log(`[sleeper-ingest] ${job.season} weekly projections for ${job.playerIds.length} drafted players…`);
-      const sleeperIds = new Set(job.playerIds);
-      totals.projections += await ingestSeasonProjections(db, job.season, job.playerIds, job.scoring);
+      console.log(
+        `[sleeper-ingest] ${job.season} weekly projections for ${job.playerIds.length} drafted players…`
+      )
+      const sleeperIds = new Set(job.playerIds)
+      totals.projections += await ingestSeasonProjections(
+        db,
+        job.season,
+        job.playerIds,
+        job.scoring
+      )
       try {
-        const espn = await fetchEspnWeeklyProjections(job.season, job.scoring, sleeperIds);
-        console.log(`[sleeper-ingest] ${job.season} ESPN weekly rows ${espn.length}`);
-        totals.projections += await insertProjectionRows(db, espn);
+        const espn = await fetchEspnWeeklyProjections(job.season, job.scoring, sleeperIds)
+        console.log(`[sleeper-ingest] ${job.season} ESPN weekly rows ${espn.length}`)
+        totals.projections += await insertProjectionRows(db, espn)
       } catch (err) {
-        console.log('[sleeper-ingest] ESPN projections failed', err instanceof Error ? err.message : err);
+        console.log(
+          '[sleeper-ingest] ESPN projections failed',
+          err instanceof Error ? err.message : err
+        )
       }
       try {
-        const fp = await fetchFantasyProsWeeklyProjections(job.season, job.scoring, sleeperIds);
-        console.log(`[sleeper-ingest] ${job.season} FantasyPros weekly rows ${fp.length}`);
-        totals.projections += await insertProjectionRows(db, fp);
+        const fp = await fetchFantasyProsWeeklyProjections(job.season, job.scoring, sleeperIds)
+        console.log(`[sleeper-ingest] ${job.season} FantasyPros weekly rows ${fp.length}`)
+        totals.projections += await insertProjectionRows(db, fp)
       } catch (err) {
-        console.log('[sleeper-ingest] FantasyPros projections failed', err instanceof Error ? err.message : err);
+        console.log(
+          '[sleeper-ingest] FantasyPros projections failed',
+          err instanceof Error ? err.message : err
+        )
       }
     }
   }
 
-  seasons.sort((a, b) => a - b);
-  return totals;
+  totals.records = await FantasyScout.refreshRecords()
+  seasons.sort((a, b) => a - b)
+  return totals
 }

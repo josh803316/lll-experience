@@ -12,6 +12,7 @@ import {
   fantasyPlayerNotFound,
   fantasyPlayerPage,
   fantasyRankingsPage,
+  fantasyRecordsPage,
   fantasySeasonPage,
   fantasyTimelineOverviewPage,
   fantasyTimelinePage,
@@ -24,15 +25,15 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
   .onBeforeHandle((ctx) => authGuard(ctx))
   .get('/', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
-    const { seasons, gms } = await FantasyScout.allTime()
-    return fantasyDashboard(gms, seasons, CLERK_KEY)
+    const data = await FantasyScout.allTime()
+    return fantasyDashboard(data, CLERK_KEY)
   })
   .get('/season/:year', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
     const year = Number(ctx.params.year)
     const seasons = await FantasyScout.listSeasons()
-    const { summary, standings, heatmap } = await FantasyScout.season(year)
-    return fantasySeasonPage(summary, standings, seasons, heatmap, CLERK_KEY)
+    const { summary, standings, heatmap, extras } = await FantasyScout.season(year)
+    return fantasySeasonPage(summary, standings, seasons, heatmap, CLERK_KEY, extras)
   })
   .get('/draft/:year', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
@@ -68,6 +69,12 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
     const data = await FantasyScout.evolution(season)
     return fantasyEvolutionPage(data, seasons, CLERK_KEY)
   })
+  .get('/records', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html'
+    const data = await FantasyScout.records()
+    const seasons = await FantasyScout.listSeasons()
+    return fantasyRecordsPage(data, seasons, CLERK_KEY)
+  })
   .get('/manager/:slug/timeline', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
     if (ctx.query.season === 'all') {
@@ -99,6 +106,7 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
       draftPicks,
       wire,
       missed,
+      extras,
     } = await FantasyScout.manager(ctx.params.slug, season)
     if (!gm) {
       return fantasyManagerNotFound(ctx.params.slug, CLERK_KEY)
@@ -113,7 +121,8 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
       seasons,
       showMissed,
       CLERK_KEY,
-      seasonRow
+      seasonRow,
+      extras
     )
   })
   .get('/player/:id/card', async (ctx) => {

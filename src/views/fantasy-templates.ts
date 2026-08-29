@@ -1,7 +1,14 @@
+import { CANONICAL_MANAGERS } from '../config/fantasy-managers.js'
 import type {
   DraftPickRow,
+  FantasyCohortRow,
   FantasyEvolutionData,
+  FantasyManagerExtras,
+  FantasyRecordRow,
+  FantasyRecordsData,
+  FantasySeasonExtras,
   FantasyTimelineData,
+  FantasyWeeklyScore,
   GmAllTimeRow,
   GmSeasonRow,
   HeatmapTeam,
@@ -156,11 +163,11 @@ function howWeScore(): string {
       <h2 class="text-sm font-bold uppercase tracking-widest text-accent">How we score</h2>
       <dl class="grid gap-4 md:grid-cols-3 text-sm">
         <div class="score-col score-col-mint">
-          <dt class="font-bold flex items-center gap-2">${NAV_ICONS.season} PF/week</dt>
+          <dt class="font-bold flex items-center gap-2">${NAV_ICONS.season} ${withTip('PF/week', TIPS.pfWeek)}</dt>
           <dd class="text-muted mt-1">Points for per week — your average best-ball score. We add the points you put up each week and divide by weeks played. 2023 is not adjusted for 2QB / 6 teams.</dd>
         </div>
         <div class="score-col score-col-violet">
-          <dt class="font-bold flex items-center gap-2">${NAV_ICONS.all} Draft grade</dt>
+          <dt class="font-bold flex items-center gap-2">${NAV_ICONS.all} ${withTip('Draft grade', TIPS.draftGrade)}</dt>
           <dd class="text-muted mt-1">Each pick’s surplus is vs expected production at that spend <em>and position</em> in this auction (not “pts per dollar,” which makes $1 hits look like genius and Allen look like a bust). Ranked A–F among GMs. <strong class="text-accent font-bold">proj</strong> blends RotoWire + ESPN + FantasyPros weekly stats through UCSB scoring until real weeks land.</dd>
         </div>
         <div class="score-col score-col-gold">
@@ -426,6 +433,80 @@ export function fantasyLayout(
         clip: rect(0,0,0,0);
         border: 0;
       }
+      .theme-sleeper {
+        background:
+          radial-gradient(1100px 520px at 12% -8%, rgba(63,225,168,.10), transparent 60%),
+          radial-gradient(900px 500px at 88% -4%, rgba(124,107,255,.12), transparent 62%),
+          #0b0e13;
+        min-height:100vh;
+      }
+      body:has(.theme-sleeper) { background:#0b0e13; }
+      .fx-header { position:sticky; top:0; z-index:30; background:rgba(11,14,19,.86); backdrop-filter:blur(16px); border-bottom:1px solid rgba(255,255,255,.06); }
+      .fx-header-inner, .fx-tabs, .fx-main, .fx-footer { max-width:1280px; margin:0 auto; }
+      .fx-header-inner { padding:16px 28px 0; display:flex; align-items:flex-start; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+      .fx-brand { width:42px; height:42px; border-radius:13px; background:linear-gradient(140deg,#3fe1a8,#7c6bff); box-shadow:0 0 26px rgba(63,225,168,.32); flex:0 0 42px; }
+      .fx-eyebrow, .fx-label, .fx-number { font-family:'JetBrains Mono',monospace; }
+      .fx-eyebrow { color:#7c6bff; font-size:9px; font-weight:700; letter-spacing:.28em; }
+      .fx-league-title, .fx-h1, .fx-h2, .fx-h3, .fx-hero-name, .fx-hero-value { font-family:Archivo,sans-serif; letter-spacing:-.04em; }
+      .fx-league-title { margin:3px 0 0; font-size:30px; line-height:1; font-weight:900; color:#f4f7fb; }
+      .fx-subtitle { margin:5px 0 0; color:#8b95a8; font-size:12px; }
+      .fx-season-pills { display:flex; gap:4px; flex-wrap:wrap; }
+      .fx-season-link { display:inline-flex; padding:5px 11px; border:1px solid rgba(255,255,255,.08); border-radius:8px; color:#8b95a8; font:700 11px 'JetBrains Mono',monospace; }
+      .fx-season-link:hover, .fx-season-link-active { color:#3fe1a8; border-color:rgba(63,225,168,.55); background:rgba(63,225,168,.14); }
+      .fx-tabs { display:flex; gap:26px; padding:14px 28px 0; overflow-x:auto; }
+      .fx-tab { padding:0 0 12px; color:#8b95a8; font-size:11.5px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; white-space:nowrap; }
+      .fx-tab:hover, .fx-tab-active { color:#3fe1a8; border-bottom:2px solid #3fe1a8; }
+      .fx-main { padding:34px 28px 0; display:flex; flex-direction:column; gap:40px; }
+      .fx-card { background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(19,24,32,0)),#131820; border:1px solid rgba(255,255,255,.07); border-radius:18px; }
+      .fx-spotlights { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; }
+      .fx-spotlight { padding:20px 22px; }
+      .fx-h1 { margin:0; color:#f4f7fb; font-size:36px; line-height:1; font-weight:900; }
+      .fx-h2 { margin:0; color:#f4f7fb; font-size:24px; line-height:1; font-weight:800; }
+      .fx-h3 { margin:0; color:#f4f7fb; font-size:17px; line-height:1.1; font-weight:800; }
+      .fx-muted { color:#8b95a8; }
+      .fx-section-copy { margin:6px 0 0; max-width:66ch; color:#8b95a8; font-size:13px; line-height:1.5; }
+      .fx-podium { display:grid; grid-template-columns:1fr 1.18fr 1fr; gap:16px; align-items:end; }
+      .fx-podium-card { padding:6px 20px 22px; text-align:center; }
+      .fx-podium-body { display:flex; flex-direction:column; align-items:center; gap:10px; padding-top:32px; }
+      .fx-avatar { display:inline-flex; align-items:center; justify-content:center; border-radius:34%; font:700 13px 'JetBrains Mono',monospace; }
+      .fx-ladder { overflow:hidden; }
+      .fx-ladder-head, .fx-ladder-row { display:grid; gap:12px; align-items:center; grid-template-columns:44px 1fr 84px 96px 74px 58px 64px; }
+      .fx-ladder-head { padding:11px 20px; background:rgba(255,255,255,.025); color:#8b95a8; font:700 9px 'JetBrains Mono',monospace; letter-spacing:.16em; }
+      .fx-ladder-row { padding:13px 20px; border-top:1px solid rgba(255,255,255,.045); color:#f4f7fb; transition:background .14s; }
+      .fx-ladder-row:hover { background:rgba(63,225,168,.055); }
+      .fx-rank { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:9px; background:rgba(255,255,255,.05); color:#8b95a8; font:700 11px 'JetBrains Mono',monospace; }
+      .fx-rank-top { background:rgba(63,225,168,.12); color:#3fe1a8; }
+      .fx-bar { height:4px; border-radius:9px; background:rgba(255,255,255,.07); overflow:hidden; }
+      .fx-panel { padding:22px 26px 26px; }
+      .fx-cohort-bar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:rgba(0,0,0,.35); }
+      .fx-chip { display:inline-flex; gap:6px; padding:5px 11px; border-radius:999px; color:#e6ebf3; font-size:11.5px; font-weight:600; }
+      .fx-sort { padding:6px 13px; border:1px solid rgba(255,255,255,.09); border-radius:999px; background:transparent; color:#8b95a8; font-size:11px; font-weight:700; cursor:pointer; }
+      .fx-sort-active { border-color:rgba(63,225,168,.55); background:rgba(63,225,168,.14); color:#3fe1a8; }
+      .fx-table-wrap { overflow-x:auto; border-radius:18px; }
+      .fx-form { display:flex; align-items:flex-end; justify-content:center; gap:3px; height:22px; }
+      .fx-form-bar { width:7px; min-height:9px; border-radius:3px; }
+      .fx-heat-grid { min-width:660px; display:flex; flex-direction:column; gap:5px; }
+      .fx-heat-row { display:grid; grid-template-columns:150px repeat(7,1fr); gap:5px; align-items:stretch; }
+      .fx-heat-cell { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:7px 4px; border-radius:8px; font:700 11.5px 'JetBrains Mono',monospace; }
+      .fx-matrix { min-width:760px; display:flex; flex-direction:column; gap:3px; }
+      .fx-matrix-row { display:grid; grid-template-columns:86px repeat(12,1fr); gap:3px; }
+      .fx-matrix-cell { display:flex; align-items:center; justify-content:center; min-height:30px; border-radius:6px; font:700 10.5px 'JetBrains Mono',monospace; }
+      .fx-two-up { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+      .fx-section-card { padding:22px; }
+      .fx-bars { display:flex; align-items:flex-end; gap:4px; height:132px; }
+      .fx-week-bar { flex:1; min-width:5px; border-radius:4px 4px 2px 2px; }
+      .fx-ledger-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.028); border:1px solid rgba(255,255,255,.05); }
+      .fx-rival { display:grid; grid-template-columns:78px 1fr 62px; gap:10px; align-items:center; }
+      .fx-records { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+      .fx-record { padding:22px; min-height:160px; display:flex; flex-direction:column; gap:4px; }
+      .fx-shame-row { display:flex; align-items:center; gap:16px; padding:15px 22px; border-top:1px solid rgba(255,255,255,.05); }
+      .fx-footer { margin-top:40px; padding:22px 28px; border-top:1px solid rgba(255,255,255,.06); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; color:#5c667a; font-size:11.5px; }
+      @media (max-width:720px) {
+        .fx-header-inner, .fx-tabs, .fx-main, .fx-footer { padding-left:16px; padding-right:16px; }
+        .fx-podium { grid-template-columns:1fr; }
+        .fx-podium-card:first-child { order:-1; }
+        .fx-ladder-head, .fx-ladder-row { grid-template-columns:34px minmax(170px,1fr) 76px 80px 66px 52px 58px; }
+      }
     </style>
     <script>
       (function () {
@@ -610,7 +691,7 @@ export function fantasyLayout(
   return baseLayout(
     `<div class="theme-sleeper min-h-screen">
       <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
       ${styles}
       ${content}
     </div>`,
@@ -623,35 +704,31 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
   const latest = seasons.at(-1)?.season
   const y = year ?? latest
   const tab = (href: string, key: string, label: string) =>
-    `<a href="${href}" class="pb-2 text-[11px] font-bold uppercase tracking-[0.2em] ${active === key ? 'tab-active' : 'text-muted hover:text-accent'}">${NAV_ICONS[key] ?? ''}${label}</a>`
+    `<a href="${href}" class="fx-tab ${active === key ? 'fx-tab-active' : ''}">${escapeHtml(label)}</a>`
   const yearLinks = seasons
     .map(
       (s) =>
-        `<a href="/fantasy/season/${s.season}" class="px-2 py-1 text-[10px] font-bold rounded ${year !== undefined && s.season === year ? 'text-accent bg-black/5' : 'text-muted hover:text-black'}">${s.season}</a>`
+        `<a href="/fantasy/season/${s.season}" class="fx-season-link ${year !== undefined && s.season === year ? 'fx-season-link-active' : ''}">${s.season}</a>`
     )
     .join('')
   return `
-    <header class="border-b border-black/10 bg-[#0e1116]/90 backdrop-blur sticky top-0 z-30">
-      <div class="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-end justify-between gap-4">
+    <header class="fx-header">
+      <div class="fx-header-inner">
         <div class="flex items-start gap-3">
-          <span class="brand-mark mt-3" aria-hidden="true"></span>
+          <span class="fx-brand" aria-hidden="true"></span>
           <div>
-            <a href="/apps" class="text-[10px] font-bold uppercase tracking-[0.3em] text-muted hover:text-accent">← Apps</a>
-            <h1 class="text-3xl font-extrabold tracking-tight mt-1">UCSB Legacy</h1>
-            <p class="text-sm text-muted">Auction best-ball · $200 / $100 FAAB · all-play, no playoffs</p>
+            <a href="/apps" class="fx-eyebrow">SLEEPER · UCSB LEGACY</a>
+            <h1 class="fx-league-title">League HQ</h1>
+            <p class="fx-subtitle">Auction best-ball · $200 cap · $100 FAAB · all-play, no playoffs</p>
           </div>
         </div>
-        <div class="flex gap-1 flex-wrap">${yearLinks}</div>
+        <div class="fx-season-pills">${yearLinks}</div>
       </div>
-      <nav class="max-w-6xl mx-auto px-4 flex gap-6 overflow-x-auto">
-        ${tab('/fantasy', 'all', 'All-time')}
+      <nav class="fx-tabs">
+        ${tab('/fantasy', 'all', 'League HQ')}
         ${tab(y ? `/fantasy/season/${y}` : '/fantasy', 'season', 'Season')}
-        ${tab(y ? `/fantasy/draft/${y}` : '/fantasy', 'draft', 'Auction')}
-        ${tab(y ? `/fantasy/wire/${y}` : '/fantasy', 'wire', 'Wire')}
-        ${tab(y ? `/fantasy/${y}/chat` : '/fantasy', 'board', 'Board')}
-        ${tab('/fantasy/bargains', 'bargains', 'Bargains')}
-        ${tab('/fantasy/rankings', 'rankings', 'Over time')}
-        ${tab(y ? `/fantasy/evolution?season=${y}` : '/fantasy/evolution', 'evolution', 'Evolution')}
+        ${tab(y ? `/fantasy/manager/${CANONICAL_MANAGERS[0]?.slug ?? 'josh'}${y ? `?season=${y}` : ''}` : '/fantasy', 'gm', 'GM Lab')}
+        ${tab('/fantasy/records', 'room', 'Trophy Room')}
       </nav>
       <div class="header-rule"></div>
     </header>`
@@ -665,7 +742,7 @@ function emptyIngest(): string {
     </div>`
 }
 
-export function fantasyDashboard(
+function _fantasyDashboardLegacy(
   gms: GmAllTimeRow[],
   seasons: SeasonSummary[],
   clerkKey?: string
@@ -815,7 +892,7 @@ function fantasyHeatmap(teams: HeatmapTeam[], season?: number): string {
     </div>`
 }
 
-export function fantasySeasonPage(
+function _fantasySeasonPageLegacy(
   summary: SeasonSummary | null,
   standings: GmSeasonRow[],
   seasons: SeasonSummary[],
@@ -1145,7 +1222,7 @@ export function fantasyRankingsPage(
   return fantasyLayout(body, 'UCSB Legacy — Rankings', clerkKey)
 }
 
-export function fantasyManagerPage(
+function _fantasyManagerPageLegacy(
   gm: GmAllTimeRow,
   team: ManagerTeamPlayer[],
   draftPicks: (DraftPickRow & { season: number })[],
@@ -1430,6 +1507,434 @@ export function fantasyPlayerPage(
       </div>
     </main>`
   return fantasyLayout(body, `${data.name} — UCSB Legacy`, clerkKey)
+}
+
+function gmConfig(slug: string) {
+  return CANONICAL_MANAGERS.find((manager) => manager.slug === slug)
+}
+
+function gmColor(slug: string, fallback = '#3fe1a8'): string {
+  const hue = gmConfig(slug)?.hue
+  return hue == null ? fallback : `oklch(0.78 0.15 ${hue})`
+}
+
+function gmAvatar(slug: string, name: string, size = 32): string {
+  const hue = gmConfig(slug)?.hue ?? 180
+  const initials = name.slice(0, 2).toUpperCase()
+  return `<span class="fx-avatar" style="width:${size}px;height:${size}px;flex:0 0 ${size}px;border:1px solid oklch(0.55 0.13 ${hue} / .5);background:linear-gradient(140deg,oklch(.42 .10 ${hue}),oklch(.28 .06 ${hue}));color:oklch(.85 .13 ${hue});font-size:${Math.max(10, Math.round(size * 0.36))}px">${escapeHtml(initials)}</span>`
+}
+
+function rgbRamp(rank: number, count: number): { bg: string; fg: string } {
+  const t = count <= 1 ? 0 : Math.max(0, Math.min(1, (rank - 1) / (count - 1)))
+  const start = [63, 225, 168]
+  const middle = [38, 45, 58]
+  const end = [255, 122, 138]
+  const mix = (a: number[], b: number[], amount: number) =>
+    a.map((value, index) => Math.round(value + (b[index] - value) * amount))
+  const rgb = t < 0.5 ? mix(start, middle, t * 2) : mix(middle, end, (t - 0.5) * 2)
+  const luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
+  return { bg: `rgb(${rgb.join(',')})`, fg: luminance > 0.55 ? '#06130d' : '#eef2f8' }
+}
+
+function fxFooter(): string {
+  return `<footer class="fx-footer"><span>UCSB Legacy · Sleeper league 1386100455410528256 · synced nightly</span><span class="fx-number">All-play · no playoffs · best-ball PPR</span></footer>`
+}
+
+function fxRecordCard(row: FantasyRecordRow, color: string, shame = false): string {
+  if (shame) {
+    return `<div class="fx-shame-row"><strong class="fx-hero-value" style="min-width:80px;color:#ff7a8a;font-size:26px">${escapeHtml(row.valueText || '—')}</strong><div style="flex:1"><div style="font-weight:700;font-size:13.5px">${escapeHtml(row.label)}</div><div class="fx-muted" style="font-size:12px;margin-top:2px">${escapeHtml(row.detail)}</div></div><span class="fx-number" style="padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.05);font-size:11px">${escapeHtml(row.holderName)}</span></div>`
+  }
+  return `<article class="fx-card fx-record" style="background:linear-gradient(150deg,${color}18,rgba(19,24,32,0)),#131820"><span class="fx-label fx-muted" style="font-size:9px;letter-spacing:.2em">${escapeHtml(row.label)}</span><strong class="fx-hero-value" style="margin-top:8px;color:${color};font-size:42px">${escapeHtml(row.valueText || '—')}</strong><span style="font-weight:700;font-size:15px;margin-top:8px">${escapeHtml(row.holderName)}</span><span class="fx-muted" style="font-size:12.5px;line-height:1.5">${escapeHtml(row.detail)}</span></article>`
+}
+
+function fxFocusScript(): string {
+  return `<script>
+    window.fxFocusBump = function(slug) {
+      document.querySelectorAll('[data-fx-bump]').forEach(function(line) {
+        var active = !slug || line.getAttribute('data-fx-bump') === slug;
+        line.style.opacity = active ? '1' : '.12';
+        line.style.strokeWidth = active ? '3' : '1.5';
+      });
+      document.querySelectorAll('[data-fx-bump-label]').forEach(function(label) {
+        label.style.opacity = !slug || label.getAttribute('data-fx-bump-label') === slug ? '1' : '.25';
+      });
+    };
+    window.fxSortLadder = function(key) {
+      var box = document.querySelector('[data-fx-ladder]');
+      if (!box) return;
+      var rows = Array.from(box.querySelectorAll('[data-fx-row]'));
+      rows.sort(function(a,b) {
+        var av = parseFloat(a.getAttribute('data-' + key) || '0');
+        var bv = parseFloat(b.getAttribute('data-' + key) || '0');
+        return bv - av;
+      });
+      rows.forEach(function(row, index) {
+        var rank = row.querySelector('[data-fx-rank]');
+        if (rank) rank.textContent = String(index + 1);
+        box.appendChild(row);
+      });
+      document.querySelectorAll('[data-fx-sort]').forEach(function(btn) {
+        btn.classList.toggle('fx-sort-active', btn.getAttribute('data-fx-sort') === key);
+      });
+    };
+  </script>`
+}
+
+export function fantasyDashboard(
+  data: {
+    seasons: SeasonSummary[]
+    gms: GmAllTimeRow[]
+    cohorts: FantasyCohortRow[]
+    records: FantasyRecordsData
+    biggestWeek: FantasyWeeklyScore | null
+  },
+  clerkKey?: string
+): string {
+  const { seasons, gms } = data
+  const byWin = [...gms].sort((a, b) => b.winPct - a.winPct || b.fpts - a.fpts)
+  const top = byWin.slice(0, 3)
+  const maxBy = (key: 'pfPerWeek' | 'draftSurplus' | 'wireFpts') =>
+    [...gms].sort((a, b) => b[key] - a[key])[0]
+  const pointsKing = maxBy('pfPerWeek')
+  const draftKing = maxBy('draftSurplus')
+  const wireKing = maxBy('wireFpts')
+  const latest = seasons.at(-1)?.season
+  const pctText = (value: number) => pct(value)
+  const spotlight = (
+    label: string,
+    value: string,
+    unit: string,
+    who: string,
+    sub: string,
+    color: string
+  ) =>
+    `<article class="fx-card fx-spotlight" style="background:linear-gradient(160deg,${color}18,rgba(19,24,32,0)),#131820"><div style="display:flex;justify-content:space-between"><span class="fx-label fx-muted" style="font-size:9px;letter-spacing:.2em">${label}</span><span style="width:8px;height:8px;border-radius:50%;background:${color}"></span></div><div style="display:flex;align-items:baseline;gap:7px;margin-top:14px"><strong class="fx-hero-value" style="font-size:38px;color:${color}">${value}</strong><span class="fx-number fx-muted" style="font-size:11px">${unit}</span></div><div style="margin-top:9px;font-size:13px;font-weight:700">${escapeHtml(who)}</div><div class="fx-muted" style="font-size:11.5px;margin-top:2px">${escapeHtml(sub)}</div></article>`
+  const biggest = data.biggestWeek
+  const spotlights = [
+    spotlight(
+      'POINTS KING',
+      pointsKing ? fmt(pointsKing.pfPerWeek) : '—',
+      'PF/WK',
+      pointsKing?.displayName ?? '—',
+      'Highest career best-ball points per week',
+      '#3fe1a8'
+    ),
+    spotlight(
+      'DRAFT ROI',
+      draftKing
+        ? `${draftKing.draftSurplus >= 0 ? '+' : ''}${fmt(draftKing.draftSurplus, 0)}`
+        : '—',
+      'SURPLUS',
+      draftKing?.displayName ?? '—',
+      'Best auction value against the room spend curve',
+      '#7c6bff'
+    ),
+    spotlight(
+      'WIRE WIZARD',
+      wireKing ? fmt(wireKing.wireFpts, 0) : '—',
+      'FPTS',
+      wireKing?.displayName ?? '—',
+      'Points scored by waiver and free-agent adds',
+      '#5aa9ff'
+    ),
+    spotlight(
+      'BIGGEST WEEK',
+      biggest ? fmt(biggest.points) : '—',
+      biggest ? `W${biggest.week} · ${biggest.season}` : 'FPTS',
+      biggest?.displayName ?? '—',
+      'Highest single best-ball week on record',
+      '#f0b429'
+    ),
+  ].join('')
+  const podium = [top[1], top[0], top[2]]
+    .filter(Boolean)
+    .map((g, _index) => {
+      const rank = byWin.indexOf(g) + 1
+      const first = rank === 1
+      const color = first ? '#f0b429' : rank === 2 ? '#d5deea' : '#e09a5a'
+      return `<article class="fx-card fx-podium-card" style="${first ? 'border-color:rgba(63,225,168,.35);box-shadow:0 0 44px rgba(63,225,168,.12);' : ''}"><div style="display:flex;justify-content:center;margin-bottom:-25px;position:relative"><span class="fx-number" style="padding:6px 15px;border-radius:999px;background:${color}22;border:1px solid ${color}88;color:${color};font-size:11px">${rank}${rank === 1 ? 'st' : rank === 2 ? 'nd' : 'rd'}</span></div><div class="fx-podium-body"><div>${gmAvatar(g.slug, g.displayName, first ? 68 : 54)}</div><strong class="fx-hero-name" style="font-size:${first ? 26 : 21}px">${escapeHtml(g.displayName)}</strong><strong class="fx-hero-value" style="font-size:${first ? 30 : 24}px;color:${first ? '#3fe1a8' : color}">${pctText(g.winPct)}</strong><span class="fx-number fx-muted" style="font-size:11px">${record(g.wins, g.losses, g.ties)} all-play</span><div style="display:flex;gap:16px;margin-top:8px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);width:100%;justify-content:center"><span><b class="fx-number">${fmt(g.pfPerWeek)}</b><small class="fx-label fx-muted" style="display:block;font-size:9px">PF/WK</small></span><span><b class="fx-number">${g.sparkline.filter((f) => f > 0 && f <= 3).length}</b><small class="fx-label fx-muted" style="display:block;font-size:9px">TOP 3s</small></span><span><b class="fx-number" style="color:${color}">${escapeHtml(g.draftGrade)}</b><small class="fx-label fx-muted" style="display:block;font-size:9px">DRAFT</small></span></div></div></article>`
+    })
+    .join('')
+  const cohortCards = data.cohorts.map((cohort) => {
+    const color = cohort.cohort === 'dad' ? '#3fe1a8' : '#7c6bff'
+    const _label = cohort.cohort === 'dad' ? 'DADS' : 'KIDS'
+    return `<div style="display:flex;flex-wrap:wrap;gap:6px;${cohort.cohort === 'kid' ? 'justify-content:flex-end' : ''}">${cohort.members.map((member) => `<span class="fx-chip" style="background:${color}14;border:1px solid ${color}33">${escapeHtml(member.displayName)} <b class="fx-number">${pct(member.winPct)}</b></span>`).join('')}</div>`
+  })
+  const dad = data.cohorts.find((cohort) => cohort.cohort === 'dad')
+  const kid = data.cohorts.find((cohort) => cohort.cohort === 'kid')
+  const dadPct = dad?.winPct ?? 0
+  const kidPct = kid?.winPct ?? 0
+  const share = dadPct + kidPct || 1
+  const ladder = byWin
+    .map(
+      (g, index) =>
+        `<div class="fx-ladder-row" data-fx-row data-win="${g.winPct}" data-pf="${g.pfPerWeek}" data-draft="${g.draftSurplus}" data-wire="${g.wireFpts}" onclick="fxFocusBump('${escapeHtml(g.slug)}')"><span class="fx-rank ${index < 3 ? 'fx-rank-top' : ''}" data-fx-rank>${index + 1}</span><div style="display:flex;align-items:center;gap:11px;min-width:0">${gmAvatar(g.slug, g.displayName, 32)}<div style="min-width:0"><a href="/fantasy/manager/${encodeURIComponent(g.slug)}" style="font-weight:700;font-size:14px" onclick="event.stopPropagation()">${escapeHtml(g.displayName)}</a><div class="fx-muted" style="font-size:10.5px">${g.seasons} seasons · avg finish ${fmt(g.avgFinish)} · ${gmConfig(g.slug)?.cohort ?? 'other'}</div></div></div><div style="text-align:right"><span class="fx-number" style="font-weight:700">${pct(g.winPct)}</span><span class="fx-bar" style="display:block;margin-top:5px"><span style="display:block;width:${Math.max(6, Math.min(100, ((g.winPct - 0.36) / 0.28) * 100)).toFixed(1)}%;height:100%;background:${gmColor(g.slug)}"></span></span></div><span class="fx-number" style="font-size:12px;color:#c5ccd8">${record(g.wins, g.losses, g.ties)}</span><span class="fx-number" style="font-size:13px;text-align:right">${fmt(g.pfPerWeek)}</span><span style="text-align:center">${gradePill(g.draftGrade, g.draftProjected)}</span><span class="fx-number" style="font-size:12.5px;text-align:right;color:#5aa9ff">${fmt(g.wireFpts, 0)}</span></div>`
+    )
+    .join('')
+  const x0 = 76
+  const x1 = 856
+  const y = (finish: number) => 28 + ((finish - 1) * 250) / 11
+  const bump = byWin
+    .map((g) => {
+      const points = g.sparkline
+        .map((finish, index) =>
+          finish > 0
+            ? `${(x0 + index * ((x1 - x0) / Math.max(seasons.length - 1, 1))).toFixed(1)},${y(finish).toFixed(1)}`
+            : null
+        )
+        .filter(Boolean)
+      if (points.length === 0) return ''
+      const color = gmColor(g.slug)
+      return `<polyline data-fx-bump="${escapeHtml(g.slug)}" points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="${byWin.indexOf(g) < 3 ? 3 : 1.5}" stroke-opacity="${byWin.indexOf(g) < 3 ? 1 : 0.55}" stroke-linecap="round" stroke-linejoin="round"></polyline>`
+    })
+    .join('')
+  const bumpLabels = byWin
+    .map((g) => {
+      const last = [...g.sparkline]
+        .map((f, i) => ({ f, i }))
+        .filter((v) => v.f > 0)
+        .at(-1)
+      return last
+        ? `<text data-fx-bump-label="${escapeHtml(g.slug)}" x="${(x0 + last.i * ((x1 - x0) / Math.max(seasons.length - 1, 1)) + 12).toFixed(1)}" y="${(y(last.f) + 4).toFixed(1)}" fill="${gmColor(g.slug)}" font-family="Inter,sans-serif" font-size="11" font-weight="700">${escapeHtml(g.displayName)}</text>`
+        : ''
+    })
+    .join('')
+  const badges = data.records.badges.length > 0 ? data.records.badges : []
+  const body = `${nav('all', seasons, latest)}
+    <main class="fx-main">
+      <section class="fx-spotlights">${spotlights}</section>
+      <section><h2 class="fx-h2">The all-time podium</h2><p class="fx-section-copy">Every week your best-ball score plays every other GM — so this is the record that can't be schedule-lucky.</p><div class="fx-podium" style="margin-top:20px">${podium || '<div class="fx-card fx-panel">No scored seasons yet.</div>'}</div></section>
+      <section class="fx-card fx-panel"><div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap"><div><h2 class="fx-h2" style="font-size:20px">Dads vs. Kids</h2><p class="fx-section-copy">Pooled all-play record; <strong>other</strong> cohort members are excluded from both bars.</p></div><span class="fx-number" style="padding:6px 11px;border-radius:999px;color:#f0b429;background:#f0b42922">NEW</span></div><div style="display:flex;justify-content:space-between;margin-top:18px"><strong class="fx-hero-value" style="font-size:32px;color:#3fe1a8">${pct(dadPct)} <small class="fx-label" style="font-size:13px">DADS</small></strong><strong class="fx-hero-value" style="font-size:32px;color:#7c6bff"><small class="fx-label" style="font-size:13px">KIDS</small> ${pct(kidPct)}</strong></div><div class="fx-cohort-bar" style="margin-top:10px"><span style="width:${((dadPct / share) * 100).toFixed(1)}%;background:linear-gradient(90deg,#2bbd8b,#3fe1a8)"></span><span style="width:${((kidPct / share) * 100).toFixed(1)}%;background:linear-gradient(90deg,#7c6bff,#a596ff)"></span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:18px">${cohortCards.join('')}</div></section>
+      <section><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap"><h2 class="fx-h2">All-play ladder</h2><div style="display:flex;gap:5px"><button class="fx-sort fx-sort-active" data-fx-sort="win" onclick="fxSortLadder('win')">Win%</button><button class="fx-sort" data-fx-sort="pf" onclick="fxSortLadder('pf')">PF/wk</button><button class="fx-sort" data-fx-sort="draft" onclick="fxSortLadder('draft')">Draft</button><button class="fx-sort" data-fx-sort="wire" onclick="fxSortLadder('wire')">Wire</button></div></div><div class="fx-card fx-ladder" data-fx-ladder><div class="fx-ladder-head"><span>#</span><span>GM</span><span style="text-align:right">WIN%</span><span>ALL-PLAY</span><span style="text-align:right">PF/WK</span><span style="text-align:center">DRAFT</span><span style="text-align:right">WIRE</span></div>${ladder}</div></section>
+      <section><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap"><div><h2 class="fx-h2">The climb</h2><p class="fx-section-copy">Finishing position by season. Click a GM in the ladder to isolate their line.</p></div><button class="fx-sort" onclick="fxFocusBump('')">Show all</button></div><div class="fx-card" style="padding:24px 20px 16px;background:linear-gradient(180deg,#141a23,#10151c)"><svg viewBox="0 0 980 320" style="width:100%;height:auto;display:block"><g>${[1, 3, 5, 7, 9, 11].map((rank) => `<line x1="52" x2="880" y1="${y(rank)}" y2="${y(rank)}" stroke="rgba(255,255,255,.05)"></line><text x="40" y="${y(rank) + 4}" text-anchor="end" fill="#5c667a" font-family="JetBrains Mono,monospace" font-size="10">${ordinal(rank)}</text>`).join('')}${seasons.map((season, index) => `<text x="${x0 + index * ((x1 - x0) / Math.max(seasons.length - 1, 1))}" y="312" text-anchor="middle" fill="#8b95a8" font-family="JetBrains Mono,monospace" font-size="11">${season.season}</text>`).join('')}${bump}${bumpLabels}</g></svg></div></section>
+      <section><h2 class="fx-h2">Trophy case</h2><p class="fx-section-copy" style="margin-bottom:18px">Earned automatically from ingest. Argument-settling and permanently on your profile.</p><div class="fx-records">${badges.map((badge, index) => fxRecordCard(badge, ['#3fe1a8', '#5aa9ff', '#f0b429', '#7c6bff', '#3fe1a8', '#ff7a8a', '#5aa9ff', '#f0b429'][index % 8])).join('')}</div></section>
+      ${howWeScore()}
+    </main>${fxFooter()}${fxFocusScript()}`
+  return fantasyLayout(body, 'UCSB Legacy — League HQ', clerkKey)
+}
+
+export function fantasySeasonPage(
+  summary: SeasonSummary | null,
+  standings: GmSeasonRow[],
+  seasons: SeasonSummary[],
+  heatmap: HeatmapTeam[] = [],
+  clerkKey?: string,
+  extras: FantasySeasonExtras = {
+    weekly: [],
+    h2h: [],
+    highWeek: 0,
+    leagueAverage: 0,
+    leagueMedian: 0,
+  }
+): string {
+  const year = summary?.season
+  const weekly = extras.weekly
+  const weeksBySlug = new Map<string, FantasyWeeklyScore[]>()
+  for (const score of weekly) {
+    const list = weeksBySlug.get(score.slug) ?? []
+    list.push(score)
+    weeksBySlug.set(score.slug, list)
+  }
+  const form = (slug: string) =>
+    (weeksBySlug.get(slug) ?? [])
+      .slice(-3)
+      .map((score) => {
+        const color =
+          score.rank <= Math.max(1, Math.ceil((summary?.teamCount ?? standings.length) / 3))
+            ? '#3fe1a8'
+            : score.rank <= Math.ceil(((summary?.teamCount ?? standings.length) * 2) / 3)
+              ? '#7c6bff'
+              : '#ff7a8a'
+        const height = Math.max(9, Math.min(29, 34 - score.rank * 2))
+        return `<span class="fx-form-bar" style="height:${height}px;background:${color}" title="Week ${score.week}: ${fmt(score.points)} FPTS · rank ${score.rank}"></span>`
+      })
+      .join('')
+  const rows = standings
+    .map(
+      (row) =>
+        `<div class="fx-ladder-row" style="grid-template-columns:40px 1fr 78px 82px 90px 80px 92px" onclick="location.href='/fantasy/manager/${encodeURIComponent(row.slug)}?season=${year ?? ''}'"><span class="fx-rank ${row.finish <= 3 ? 'fx-rank-top' : ''}">${row.finish}</span><div style="display:flex;align-items:center;gap:11px;min-width:0">${gmAvatar(row.slug, row.displayName, 32)}<div style="min-width:0"><div style="font-weight:700;font-size:14px">${escapeHtml(row.displayName)}</div><div class="fx-muted" style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(row.teamName ?? '')}</div></div></div><span class="fx-number" style="text-align:right;font-weight:700">${pct(row.winPct)}</span><span class="fx-number" style="text-align:right;color:#c5ccd8">${record(row.wins, row.losses, row.ties)}</span><span class="fx-number" style="text-align:right;color:#c5ccd8">${fmt(row.fpts, 0)}</span><span class="fx-number" style="text-align:right">${fmt(row.pfPerWeek)}</span><span class="fx-form">${form(row.slug)}</span></div>`
+    )
+    .join('')
+  const heatKeys = ['ovr', 'qb', 'rb', 'wr', 'te', 'flex', 'def'] as const
+  const heat = heatmap
+    .map(
+      (team) =>
+        `<div class="fx-heat-row"><span style="display:flex;align-items:center;gap:9px;font-weight:600;font-size:13px">${gmAvatar(team.slug, team.displayName, 24)}${escapeHtml(team.displayName)}</span>${heatKeys
+          .map((key) => {
+            const ramp = rgbRamp(team[key].rank, heatmap.length)
+            return `<span class="fx-heat-cell" style="background:${ramp.bg};color:${ramp.fg}" title="${escapeHtml(team.displayName)} ${key.toUpperCase()}: ${ordinal(team[key].rank)} · ${fmt(team[key].pts)} FPTS">${ordinal(team[key].rank)}<b style="font-size:9.5px;opacity:.72">${fmt(team[key].pts, 0)}</b></span>`
+          })
+          .join('')}</div>`
+    )
+    .join('')
+  const names = standings.map((row) => row.displayName)
+  const h2hMap = new Map(extras.h2h.map((cell) => [`${cell.a}|${cell.b}`, cell]))
+  const matrix = standings
+    .map(
+      (row) =>
+        `<div class="fx-matrix-row" style="grid-template-columns:86px repeat(${Math.max(names.length, 1)},1fr)"><span style="display:flex;align-items:center;font-size:12px;font-weight:600">${escapeHtml(row.displayName)}</span>${standings
+          .map((opponent) => {
+            if (row.slug === opponent.slug)
+              return '<span class="fx-matrix-cell" style="background:rgba(255,255,255,.03);color:#39424f">·</span>'
+            const cell = h2hMap.get(`${row.slug}|${opponent.slug}`)
+            const wins = cell?.wins ?? 0
+            const losses = cell?.losses ?? 0
+            const games = cell?.games ?? 0
+            const share = games ? wins / games : 0.5
+            const ramp = rgbRamp(
+              Math.round(
+                1 +
+                  (1 - Math.max(0, Math.min(1, (share - 0.28) / 0.44))) *
+                    Math.max(names.length - 1, 1)
+              ),
+              names.length
+            )
+            return `<span class="fx-matrix-cell" style="background:${ramp.bg};color:${ramp.fg}" title="${escapeHtml(row.displayName)} vs ${escapeHtml(opponent.displayName)}: ${wins}-${losses}">${wins}-${losses}</span>`
+          })
+          .join('')}</div>`
+    )
+    .join('')
+  const preDraft = summary?.draftStatus === 'pre_draft' || summary?.status === 'pre_draft'
+  const body = `${nav('season', seasons, year)}<main class="fx-main"><section style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap"><div><div class="fx-eyebrow" style="margin-bottom:6px">SEASON ${year ?? '—'} · WEEK ${weekly.length > 0 ? Math.max(...weekly.map((score) => score.week)) : 0}</div><h2 class="fx-h1">Standings</h2><p class="fx-section-copy">${summary?.teamCount ?? 0} teams · ${escapeHtml(summary?.status ?? 'no data')}</p></div><div style="display:flex;gap:10px;flex-wrap:wrap">${[
+    ['HIGH WEEK', extras.highWeek, '#3fe1a8'],
+    ['LEAGUE AVG', extras.leagueAverage, '#f4f7fb'],
+    [
+      'FAAB LEFT',
+      summary
+        ? Math.max(
+            0,
+            100 -
+              standings.reduce((sum, row) => sum + row.waiverBudgetUsed, 0) /
+                Math.max(standings.length, 1)
+          )
+        : 0,
+      '#5aa9ff',
+    ],
+  ]
+    .map(
+      ([label, value, color]) =>
+        `<div class="fx-card" style="padding:11px 16px;min-width:112px;border-radius:13px"><div class="fx-label fx-muted" style="font-size:9px">${label}</div><div class="fx-hero-value" style="font-size:21px;color:${color}">${typeof value === 'number' && value > 0 ? fmt(value) : '—'}</div></div>`
+    )
+    .join(
+      ''
+    )}</div></section>${preDraft && standings.every((row) => row.wins === 0 && row.fpts === 0) ? '<div class="fx-card fx-panel fx-muted">Draft opens on Sleeper — this page fills after ingest.</div>' : `<section class="fx-card fx-ladder"><div class="fx-ladder-head" style="grid-template-columns:40px 1fr 78px 82px 90px 80px 92px"><span>#</span><span>GM · TEAM</span><span>WIN%</span><span>W–L</span><span>PF</span><span>PF/WK</span><span>FORM</span></div>${rows}</section>`}<section><h2 class="fx-h2">Positional heat map</h2><p class="fx-section-copy">${heatmap.some((team) => team.projected) ? 'Projected weekly best-ball. ' : ''}Best-ball depth counts on byes. Mint is first in the room, coral is last. FLEX is the leftover RB/WR/TE.</p><div class="fx-card fx-panel" style="overflow-x:auto;margin-top:16px"><div class="fx-heat-grid"><div class="fx-heat-row fx-label fx-muted" style="font-size:9px;letter-spacing:.16em"><span>GM</span>${heatKeys.map((key) => `<span style="text-align:center">${key.toUpperCase()}</span>`).join('')}</div>${heat || '<div class="fx-muted">No heat map data yet.</div>'}</div></div></section><section><h2 class="fx-h2">Who owns who</h2><p class="fx-section-copy">Read across: mint means the row GM beats the column GM more often than not.</p><div class="fx-card fx-panel" style="overflow-x:auto;margin-top:16px"><div class="fx-matrix"><div class="fx-matrix-row" style="grid-template-columns:86px repeat(${Math.max(names.length, 1)},1fr)"><span></span>${standings.map((row) => `<span class="fx-number fx-muted" style="text-align:center;font-size:9px">${escapeHtml(row.displayName.slice(0, 2).toUpperCase())}</span>`).join('')}</div>${matrix}</div></div></section></main>${fxFooter()}`
+  return fantasyLayout(body, `UCSB Legacy — ${year ?? 'Season'}`, clerkKey)
+}
+
+export function fantasyManagerPage(
+  gm: GmAllTimeRow,
+  team: ManagerTeamPlayer[],
+  draftPicks: (DraftPickRow & { season: number })[],
+  wire: (WireRow & { season: number })[],
+  missed: (WireRow & { season: number })[],
+  seasons: SeasonSummary[],
+  showMissed: boolean,
+  clerkKey?: string,
+  seasonRow: GmSeasonRow | null = null,
+  extras: FantasyManagerExtras = { weekly: [], leagueMedian: 0, heatmap: null, h2h: [] }
+): string {
+  const year = seasonRow?.season
+  const visiblePicks = year ? draftPicks.filter((pick) => pick.season === year) : draftPicks
+  const visibleWire = year ? wire.filter((row) => row.season === year) : wire
+  const weeks = extras.weekly.filter((score) => score.slug === gm.slug)
+  const rivals = extras.h2h
+    .filter((cell) => cell.a === gm.slug)
+    .map((cell) => {
+      const opponent = extras.weekly.find((score) => score.slug === cell.b)
+      const total = cell.games || 1
+      return `<div class="fx-rival"><span style="font-size:12.5px;font-weight:600">${escapeHtml(opponent?.displayName ?? cell.b)}</span><span style="display:flex;height:9px;border-radius:9px;overflow:hidden;background:rgba(255,255,255,.06)"><span style="width:${((cell.wins / total) * 100).toFixed(1)}%;background:#3fe1a8"></span><span style="width:${((cell.losses / total) * 100).toFixed(1)}%;background:#ff7a8a"></span></span><span class="fx-number" style="text-align:right;color:${cell.wins >= cell.losses ? '#3fe1a8' : '#ff7a8a'}">${cell.wins}–${cell.losses}</span></div>`
+    })
+    .join('')
+  const shapeKeys = ['qb', 'rb', 'wr', 'te', 'flex', 'def'] as const
+  const shape = extras.heatmap
+    ? shapeKeys
+        .map((key) => {
+          const rank = extras.heatmap?.[key].rank ?? 0
+          const ramp = rgbRamp(rank, 12)
+          return `<div><div style="display:flex;justify-content:space-between;margin-bottom:5px"><span class="fx-label" style="font-size:11px;color:#c5ccd8">${key.toUpperCase()}</span><span class="fx-number" style="font-size:11px;color:${ramp.bg}">${ordinal(rank)} of 12</span></div><span class="fx-bar" style="height:8px;display:block"><span style="display:block;height:100%;width:${(((12 - rank) / 11) * 92 + 8).toFixed(0)}%;background:${ramp.bg}"></span></span></div>`
+        })
+        .join('')
+    : '<span class="fx-muted">No roster-shape data yet.</span>'
+  const teamRows = team
+    .map(
+      (player) =>
+        `<div class="fx-ledger-row">${playerLink(player.playerId, player.playerName, player.position, year)}<span class="fx-number fx-muted">${player.source === 'auction' ? 'Auction' : `Added W${player.addWeek ?? '—'}`}</span></div>`
+    )
+    .join('')
+  const currentTeam = year
+    ? `<section class="fx-card fx-section-card"><h3 class="fx-h3">${year} current team</h3><p class="fx-section-copy" style="font-size:12px">Roster reconstructed from the season draft and settled transactions. Click a player for season-specific scoring and information.</p><div style="display:flex;flex-direction:column;gap:9px;margin-top:16px">${teamRows || '<span class="fx-muted">No roster snapshot is available.</span>'}</div></section>`
+    : ''
+  const pickRows = visiblePicks
+    .map(
+      (pick) =>
+        `<div class="fx-ledger-row">${posChip(pick.position)}<span style="flex:1;font-weight:600;font-size:13.5px">${playerLink(pick.playerId, pick.playerName, pick.position, year)}</span><span class="fx-number fx-muted">$${pick.amount}</span><span class="fx-number" style="min-width:56px;text-align:right;color:${pick.surplus >= 0 ? '#3fe1a8' : '#ff7a8a'}">${pick.surplus >= 0 ? '+' : ''}${fmt(pick.surplus)}</span></div>`
+    )
+    .join('')
+  const weekBars = weeks
+    .map(
+      (week) =>
+        `<span class="fx-week-bar" style="height:${Math.max(4, Math.min(100, (week.points / Math.max(...weeks.map((item) => item.points), 1)) * 100)).toFixed(1)}%;background:${week.points >= extras.leagueMedian ? 'linear-gradient(180deg,#3fe1a8,#3fe1a866)' : 'rgba(139,149,168,.4)'}" title="Week ${week.week}: ${fmt(week.points)} FPTS"></span>`
+    )
+    .join('')
+  const body = `${nav(year ? 'season' : 'all', seasons, year)}<main class="fx-main"><div style="display:flex;gap:7px;flex-wrap:wrap">${CANONICAL_MANAGERS.map((manager) => `<a class="fx-sort ${manager.slug === gm.slug ? 'fx-sort-active' : ''}" href="/fantasy/manager/${encodeURIComponent(manager.slug)}${year ? `?season=${year}` : ''}">${escapeHtml(manager.displayName)}</a>`).join('')}</div><section class="fx-card fx-panel" style="border-radius:22px;background:linear-gradient(130deg,oklch(.4 .11 ${gmConfig(gm.slug)?.hue ?? 180} / .22),rgba(19,24,32,0)),#131820;display:flex;gap:28px;align-items:center;flex-wrap:wrap"><div>${gmAvatar(gm.slug, gm.displayName, 96)}</div><div style="flex:1;min-width:220px"><div class="fx-label fx-muted" style="font-size:10px">${gmConfig(gm.slug)?.cohort ?? 'other'} · ${year ? `SEASON ${year}` : `${gm.seasons} SEASONS`}</div><h2 class="fx-hero-name" style="font-size:44px;margin:6px 0 0">${escapeHtml(gm.displayName)}${year ? ` · ${year}` : ''}</h2><div style="margin-top:6px;font-size:14px;color:#c5ccd8">${escapeHtml(seasonRow?.teamName ?? 'All-time profile')}</div><p class="fx-muted" style="font-size:13.5px;max-width:60ch;line-height:1.55">${escapeHtml(`${gm.displayName} has an all-play mark of ${record(year && seasonRow ? seasonRow.wins : gm.wins, year && seasonRow ? seasonRow.losses : gm.losses, year && seasonRow ? seasonRow.ties : gm.ties)}. Draft grade ${year && seasonRow ? seasonRow.draftGrade : gm.draftGrade}, with ${fmt(year && seasonRow ? seasonRow.wireFpts : gm.wireFpts, 0)} wire points.`)}</p></div><div style="display:grid;grid-template-columns:repeat(2,minmax(96px,1fr));gap:10px">${[
+    ['WIN%', year && seasonRow ? pct(seasonRow.winPct) : pct(gm.winPct), '#3fe1a8'],
+    ['PF/WK', fmt(year && seasonRow ? seasonRow.pfPerWeek : gm.pfPerWeek), '#f4f7fb'],
+    ['DRAFT', year && seasonRow ? seasonRow.draftGrade : gm.draftGrade, '#7c6bff'],
+    ['WIRE', fmt(year && seasonRow ? seasonRow.wireFpts : gm.wireFpts, 0), '#5aa9ff'],
+  ]
+    .map(
+      ([label, value, color]) =>
+        `<div class="fx-card" style="padding:12px 14px;background:rgba(0,0,0,.32);border-radius:13px"><div class="fx-label fx-muted" style="font-size:9px">${label}</div><div class="fx-hero-value" style="font-size:22px;color:${color}">${value}</div></div>`
+    )
+    .join(
+      ''
+    )}</div></section>${currentTeam}<section class="fx-two-up"><div class="fx-card fx-section-card"><h3 class="fx-h3">Roster shape</h3><p class="fx-section-copy" style="font-size:12px;margin-bottom:18px">League rank by position, from the same source as the Season heat map.</p><div style="display:flex;flex-direction:column;gap:13px">${shape}</div></div><div class="fx-card fx-section-card"><h3 class="fx-h3">Weekly output</h3><p class="fx-section-copy" style="font-size:12px;margin-bottom:18px">Best-ball points by week. Dashed line is the league median.</p><div class="fx-bars">${weekBars || '<span class="fx-muted">No scored weeks yet.</span>'}</div></div></section><section class="fx-two-up"><div class="fx-card fx-section-card"><h3 class="fx-h3" style="margin-bottom:16px">${year ? `${year} auction picks` : 'Auction ledger'}</h3><div style="display:flex;flex-direction:column;gap:9px">${pickRows || '<span class="fx-muted">No auction picks yet.</span>'}</div></div><div class="fx-card fx-section-card"><h3 class="fx-h3">Rivalries</h3><p class="fx-section-copy" style="font-size:12px;margin-bottom:16px">All-play record against every other GM, all-time.</p><div style="display:flex;flex-direction:column;gap:8px">${rivals || '<span class="fx-muted">No head-to-head data yet.</span>'}</div></div></section><section class="fx-card fx-panel"><h3 class="fx-h3">${year ? `${year} wire activity` : 'Wire activity'}</h3><div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">${visibleWire.map((row) => `<div class="fx-ledger-row"><span class="fx-number fx-muted">W${row.addWeek}–${row.dropWeek}</span>${playerLink(row.playerId, row.playerName, null, row.season)}<span class="fx-number" style="margin-left:auto;color:#5aa9ff">${fmt(row.fpts, 0)} FPTS</span></div>`).join('') || '<span class="fx-muted">No wire adds yet.</span>'}</div>${showMissed ? `<p class="fx-muted" style="margin-top:14px">Missed bids: ${missed.length}</p>` : ''}</section></main>${fxFooter()}`
+  return fantasyLayout(body, `${gm.displayName} — UCSB Legacy`, clerkKey)
+}
+
+export function fantasyRecordsPage(
+  data: FantasyRecordsData,
+  seasons: SeasonSummary[],
+  clerkKey?: string
+): string {
+  const recordKeys = [
+    'highest_week',
+    'longest_top3_streak',
+    'best_dollar_pick',
+    'most_faab',
+    'closest_week',
+    'biggest_climb',
+  ]
+  const emptyRecord = (key: string, label: string): FantasyRecordRow => ({
+    key,
+    label,
+    valueNum: null,
+    valueText: '—',
+    holderSlug: null,
+    holderName: '—',
+    season: null,
+    week: null,
+    detail: 'This record will fill as qualifying league data is recorded.',
+  })
+  const records = recordKeys.map(
+    (key) =>
+      data.records.find((record) => record.key === key) ??
+      emptyRecord(key, key.replaceAll('_', ' '))
+  )
+  const shameKeys = [
+    'lowest_week',
+    'worst_bust',
+    'worst_allplay_week',
+    'zero_faab',
+    'worst_draft_surplus',
+  ]
+  const shame = shameKeys.map(
+    (key) =>
+      data.records.find((record) => record.key === key) ??
+      emptyRecord(key, key.replaceAll('_', ' '))
+  )
+  const body = `${nav('room', seasons)}<main class="fx-main"><div><div class="fx-eyebrow" style="color:#f0b429;margin-bottom:6px">RECORD BOOK</div><h2 class="fx-h1">Trophy Room</h2><p class="fx-section-copy">Every superlative the ingest can prove. Screenshot-ready — that is the whole point.</p></div><section class="fx-records">${records.map((row, index) => fxRecordCard(row, ['#f0b429', '#3fe1a8', '#7c6bff', '#5aa9ff', '#f4f7fb', '#3fe1a8'][index % 6])).join('') || '<div class="fx-card fx-panel fx-muted">Records will appear after the first scored ingest.</div>'}</section><section><h3 class="fx-h2" style="font-size:20px;margin-bottom:14px">Hall of shame</h3><div class="fx-card" style="border-color:rgba(255,122,138,.18);background:linear-gradient(150deg,rgba(255,122,138,.07),rgba(19,24,32,0)),#131820">${shame.map((row) => fxRecordCard(row, '#ff7a8a', true)).join('') || '<div class="fx-panel fx-muted">No shame records yet.</div>'}</div></section></main>${fxFooter()}`
+  return fantasyLayout(body, 'UCSB Legacy — Trophy Room', clerkKey)
 }
 
 export function fantasyPlayerNotFound(id: string, clerkKey?: string): string {
