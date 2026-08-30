@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import {
+  CANONICAL_MANAGERS,
   canonicalManager,
   managerForSleeperUser,
   normPlayerName,
@@ -222,6 +223,10 @@ export interface FantasyCohortRow {
   losses: number
   ties: number
   winPct: number
+  crossWins: number
+  crossLosses: number
+  crossTies: number
+  crossWinPct: number
   members: { slug: string; displayName: string; winPct: number }[]
 }
 
@@ -1325,7 +1330,40 @@ function ordinalRecord(value: number): string {
   return `${value}${suffix}`
 }
 
-function cohortSummary(rows: GmAllTimeRow[]): FantasyCohortRow[] {
+function cohortSummary(rows: GmAllTimeRow[], scores: FantasyWeeklyScore[]): FantasyCohortRow[] {
+  const cohortBySlug = new Map(CANONICAL_MANAGERS.map((manager) => [manager.slug, manager.cohort]))
+  const cross = new Map<'dad' | 'kid', { wins: number; losses: number; ties: number }>([
+    ['dad', { wins: 0, losses: 0, ties: 0 }],
+    ['kid', { wins: 0, losses: 0, ties: 0 }],
+  ])
+  const scoresByWeek = new Map<string, FantasyWeeklyScore[]>()
+  for (const score of scores) {
+    const key = `${score.season}|${score.week}`
+    const week = scoresByWeek.get(key) ?? []
+    week.push(score)
+    scoresByWeek.set(key, week)
+  }
+  for (const week of scoresByWeek.values()) {
+    const dads = week.filter((score) => cohortBySlug.get(score.slug) === 'dad')
+    const kids = week.filter((score) => cohortBySlug.get(score.slug) === 'kid')
+    for (const dad of dads) {
+      for (const kid of kids) {
+        const dadResult = cross.get('dad')
+        const kidResult = cross.get('kid')
+        if (!dadResult || !kidResult) continue
+        if (dad.points > kid.points) {
+          dadResult.wins += 1
+          kidResult.losses += 1
+        } else if (dad.points < kid.points) {
+          dadResult.losses += 1
+          kidResult.wins += 1
+        } else {
+          dadResult.ties += 1
+          kidResult.ties += 1
+        }
+      }
+    }
+  }
   const result: FantasyCohortRow[] = []
   for (const cohort of ['dad', 'kid'] as const) {
     const members = rows
@@ -1344,7 +1382,19 @@ function cohortSummary(rows: GmAllTimeRow[]): FantasyCohortRow[] {
     const ties = rows
       .filter((row) => members.some((member) => member.slug === row.slug))
       .reduce((sum, row) => sum + row.ties, 0)
-    result.push({ cohort, wins, losses, ties, winPct: winPct(wins, losses, ties), members })
+    const crossResult = cross.get(cohort) ?? { wins: 0, losses: 0, ties: 0 }
+    result.push({
+      cohort,
+      wins,
+      losses,
+      ties,
+      winPct: winPct(wins, losses, ties),
+      crossWins: crossResult.wins,
+      crossLosses: crossResult.losses,
+      crossTies: crossResult.ties,
+      crossWinPct: winPct(crossResult.wins, crossResult.losses, crossResult.ties),
+      members,
+    })
   }
   return result
 }
@@ -1531,7 +1581,7 @@ export const FantasyScout = {
     return {
       seasons,
       gms,
-      cohorts: cohortSummary(gms),
+      cohorts: cohortSummary(gms, weekly),
       records: buildRecords(ctx, rows),
       biggestWeek: [...weekly].sort((a, b) => b.points - a.points)[0] ?? null,
     }

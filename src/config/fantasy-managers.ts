@@ -55,14 +55,14 @@ export const CANONICAL_MANAGERS: CanonicalManager[] = [
     slug: 'brian',
     displayName: 'Brian',
     sleeperUserId: '1000431218392915968',
-    cohort: 'dad',
+    cohort: 'kid',
     hue: 22,
   },
   {
     slug: 'austin',
     displayName: 'Austin',
     sleeperUserId: '1125564516407881728',
-    cohort: 'dad',
+    cohort: 'kid',
     hue: 96,
   },
   // Connor = 2024 DawgsOnTop15. Andrew’s 2024/25 account was drewmadness / bigsweatyfarts;
@@ -78,7 +78,7 @@ export const CANONICAL_MANAGERS: CanonicalManager[] = [
     slug: 'andrew',
     displayName: 'Andrew',
     sleeperUserId: '1398842100069490688',
-    cohort: 'dad',
+    cohort: 'kid',
     hue: 286,
   },
   {

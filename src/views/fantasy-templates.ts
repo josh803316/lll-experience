@@ -1729,8 +1729,8 @@ export function fantasyDashboard(
     .join('')
   const cohortCards = data.cohorts.map((cohort) => {
     const color = cohort.cohort === 'dad' ? '#3fe1a8' : '#7c6bff'
-    const _label = cohort.cohort === 'dad' ? 'DADS' : 'KIDS'
-    return `<div style="display:flex;flex-wrap:wrap;gap:6px;${cohort.cohort === 'kid' ? 'justify-content:flex-end' : ''}">${cohort.members.map((member) => `<span class="fx-chip" style="background:${color}14;border:1px solid ${color}33">${escapeHtml(member.displayName)} <b class="fx-number">${pct(member.winPct)}</b></span>`).join('')}</div>`
+    const label = cohort.cohort === 'dad' ? 'DADS' : 'KIDS'
+    return `<div><div style="display:flex;justify-content:${cohort.cohort === 'kid' ? 'flex-end' : 'flex-start'};gap:8px;align-items:baseline;margin-bottom:8px"><span class="fx-label" style="font-size:9px;color:${color}">${label} H2H</span><span class="fx-number" style="font-size:10px;color:${color}" title="${escapeHtml(`Head-to-head all-play record versus the ${cohort.cohort === 'dad' ? 'Kids' : 'Dads'} cohort`)}">${pct(cohort.crossWinPct)} · ${record(cohort.crossWins, cohort.crossLosses, cohort.crossTies)}</span></div><div style="display:flex;flex-wrap:wrap;gap:6px;${cohort.cohort === 'kid' ? 'justify-content:flex-end' : ''}">${cohort.members.map((member) => `<span class="fx-chip" style="background:${color}14;border:1px solid ${color}33">${escapeHtml(member.displayName)} <b class="fx-number" title="${escapeHtml(`All-time all-play winning percentage for ${member.displayName}`)}">${pct(member.winPct)}</b></span>`).join('')}</div></div>`
   })
   const dad = data.cohorts.find((cohort) => cohort.cohort === 'dad')
   const kid = data.cohorts.find((cohort) => cohort.cohort === 'kid')
