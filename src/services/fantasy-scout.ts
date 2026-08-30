@@ -1092,8 +1092,13 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
     const latestRows = seasonRows.filter((row) => row.season === latestSeason)
     const latestPicks = scoredPicksForLeague(ctx, latestLeague.sleeperLeagueId)
     const latestWire = wireForLeague(ctx, latestLeague.sleeperLeagueId).rows
+    const scoredBadgeSeason =
+      [...new Set(scores.filter((score) => score.points > 0).map((score) => score.season))].sort(
+        (a, b) => b - a
+      )[0] ?? latestSeason
+    const scoredBadgeRows = seasonRows.filter((row) => row.season === scoredBadgeSeason)
     const badge = (key: string, label: string, row: FantasyRecordRow) =>
-      badges.push({ ...row, key: `badge_${key}`, label, season: latestSeason })
+      badges.push({ ...row, key: `badge_${key}`, label, season: row.season ?? latestSeason })
     const bargain = new Map<string, number>()
     for (const pick of latestPicks.filter((pick) => pick.amount < 5)) {
       const owner = ident(ctx, pick.sleeperUserId)
@@ -1144,11 +1149,11 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
     }
     const lowWeeks = new Map<string, number>()
     for (const score of scores.filter(
-      (score) => score.season === latestSeason && score.points < 130
+      (score) => score.season === scoredBadgeSeason && score.points < 130
     )) {
       lowWeeks.set(score.slug, (lowWeeks.get(score.slug) ?? 0) + 1)
     }
-    const floorWinner = [...latestRows].sort(
+    const floorWinner = [...scoredBadgeRows].sort(
       (a, b) => (lowWeeks.get(a.slug) ?? 0) - (lowWeeks.get(b.slug) ?? 0)
     )[0]
     if (floorWinner) {
@@ -1162,7 +1167,7 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
           String(lowWeeks.get(floorWinner.slug) ?? 0),
           floorWinner.slug,
           floorWinner.displayName,
-          latestSeason,
+          scoredBadgeSeason,
           null,
           'Fewest weeks below 130 points.'
         )
@@ -1234,7 +1239,7 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
       )
     }
     const rockBottom = [...scores]
-      .filter((score) => score.season === latestSeason)
+      .filter((score) => score.season === scoredBadgeSeason)
       .sort((a, b) => a.points - b.points)[0]
     if (rockBottom) {
       badge(
@@ -1247,7 +1252,7 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
           fmtRecordNumber(rockBottom.points),
           rockBottom.slug,
           rockBottom.displayName,
-          latestSeason,
+          scoredBadgeSeason,
           rockBottom.week,
           'Held the season’s lowest recorded week.'
         )
@@ -1255,7 +1260,7 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
     }
     const fastStart = new Map<string, number>()
     for (const score of scores.filter(
-      (score) => score.season === latestSeason && score.week <= 4
+      (score) => score.season === scoredBadgeSeason && score.week <= 4
     )) {
       fastStart.set(
         score.slug,
@@ -1274,7 +1279,7 @@ function buildRecords(ctx: Ctx, seasonRows: GmSeasonRow[]): FantasyRecordsData {
           String(fastWinner[1]),
           fastWinner[0],
           bySlug.get(fastWinner[0]) ?? fastWinner[0],
-          latestSeason,
+          scoredBadgeSeason,
           4,
           'Best all-play record through Week 4.'
         )
