@@ -141,6 +141,9 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
   const pfWeekTip = page.getByRole('button', { name: 'What PF/WK means' }).first()
   await pfWeekTip.click()
   await expect(page.locator('#lll-tip-pop')).toContainText('Average best-ball points')
+  const surplusTip = page.getByRole('button', { name: 'What surplus means' }).first()
+  await surplusTip.click()
+  await expect(page.locator('#lll-tip-pop')).toContainText('Green means positive value')
 
   await page.goto(`${SITE_URL}/fantasy/manager/tim/timeline?season=2025`, { timeout: 60000 })
   await expect(page.getByRole('heading', { name: 'Team evolution' })).toBeVisible()

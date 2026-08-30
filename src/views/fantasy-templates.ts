@@ -559,23 +559,27 @@ export function fantasyLayout(
           'FAAB LEFT': 'Average waiver budget remaining across teams.',
           'TOP 3S': 'Number of seasons finishing in the top three by all-play winning percentage.',
           'FORM': 'Placement in each of the last three completed weeks, shown oldest to newest.',
-          'SURPLUS': 'Fantasy points above the expected return for the auction price and position.',
+          'SURPLUS': 'Surplus is points above the expected return for the auction price and position. Green means positive value; red means below expectation, not negative fantasy points.',
           'COST': 'Auction dollars spent on the player.',
           'ACQUIRED': 'How and when the player joined the roster.',
         };
         function installMetricTips() {
-          document.querySelectorAll('.fx-label, .fx-ladder-head span').forEach(function (label) {
-            var key = (label.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
-            var tip = metricTips[key];
-            if (!tip || label.querySelector('.lll-tip')) return;
+          function addTipButton(target, tip, label) {
+            if (target.querySelector('.lll-tip')) return;
             var button = document.createElement('button');
             button.type = 'button';
             button.className = 'lll-tip';
             button.setAttribute('data-tip', tip);
-            button.setAttribute('aria-label', 'What ' + key + ' means');
+            button.setAttribute('aria-label', 'What ' + label + ' means');
             button.textContent = '?';
             button.addEventListener('click', window.lllTip);
-            label.appendChild(button);
+            target.appendChild(button);
+          }
+          document.querySelectorAll('.fx-label, .fx-ladder-head span').forEach(function (label) {
+            var key = (label.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+            var tip = metricTips[key];
+            if (!tip || label.querySelector('.lll-tip')) return;
+            addTipButton(label, tip, key);
           });
           document.querySelectorAll('.fx-ladder-row').forEach(function (row) {
             var cells = row.children;
@@ -596,8 +600,11 @@ export function fantasyLayout(
             if (numbers.length >= 2) {
               numbers[0].setAttribute('title', metricTips.COST);
               numbers[1].setAttribute('title', metricTips.SURPLUS);
+              addTipButton(numbers[0], metricTips.COST, 'cost');
+              addTipButton(numbers[1], metricTips.SURPLUS, 'surplus');
             } else if (numbers.length === 1 && /FPTS/.test(numbers[0].textContent || '')) {
               numbers[0].setAttribute('title', metricTips.WIRE);
+              addTipButton(numbers[0], metricTips.WIRE, 'wire FPTS');
             }
           });
         }
