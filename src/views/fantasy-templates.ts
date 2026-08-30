@@ -543,6 +543,69 @@ export function fantasyLayout(
           pop.style.left = left + 'px';
           pop.style.top = Math.max(8, top) + 'px';
         };
+        var metricTips = {
+          'WIN%': "All-play winning percentage: each week's best-ball score is compared with every other team.",
+          'ALL-PLAY': "All-play record: weekly wins, losses, and ties against every other team.",
+          'PF': 'Total best-ball fantasy points for the season or career.',
+          'PF/WK': 'Average best-ball points scored per week played.',
+          'DRAFT': 'Auction grade based on surplus versus expected production at the price and position.',
+          'DRAFT ROI': 'Total auction surplus versus the room spend curve, using position-aware expectations.',
+          'WIRE': 'Fantasy points scored by waiver and free-agent additions.',
+          'WIRE FPTS': 'Fantasy points scored by waiver and free-agent additions.',
+          'POINTS KING': 'Highest average best-ball points per week across the league.',
+          'BIGGEST WEEK': 'Highest single-week best-ball score recorded in the league.',
+          'HIGH WEEK': 'Highest single-week best-ball score recorded in this season.',
+          'LEAGUE AVG': 'Average best-ball points per team per week in this season.',
+          'FAAB LEFT': 'Average waiver budget remaining across teams.',
+          'TOP 3S': 'Number of seasons finishing in the top three by all-play winning percentage.',
+          'FORM': 'Placement in each of the last three completed weeks, shown oldest to newest.',
+          'SURPLUS': 'Fantasy points above the expected return for the auction price and position.',
+          'COST': 'Auction dollars spent on the player.',
+          'ACQUIRED': 'How and when the player joined the roster.',
+        };
+        function installMetricTips() {
+          document.querySelectorAll('.fx-label, .fx-ladder-head span').forEach(function (label) {
+            var key = (label.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase();
+            var tip = metricTips[key];
+            if (!tip || label.querySelector('.lll-tip')) return;
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lll-tip';
+            button.setAttribute('data-tip', tip);
+            button.setAttribute('aria-label', 'What ' + key + ' means');
+            button.textContent = '?';
+            button.addEventListener('click', window.lllTip);
+            label.appendChild(button);
+          });
+          document.querySelectorAll('.fx-ladder-row').forEach(function (row) {
+            var cells = row.children;
+            [
+              [2, 'WIN%'],
+              [3, 'ALL-PLAY'],
+              [4, 'PF/WK'],
+              [5, 'DRAFT'],
+              [6, row.querySelector('.fx-form') ? 'FORM' : 'WIRE'],
+            ].forEach(function (entry) {
+              var cell = cells[entry[0]];
+              var tip = metricTips[entry[1]];
+              if (cell && tip && !cell.getAttribute('title')) cell.setAttribute('title', tip);
+            });
+          });
+          document.querySelectorAll('.fx-ledger-row').forEach(function (row) {
+            var numbers = row.querySelectorAll(':scope > .fx-number');
+            if (numbers.length >= 2) {
+              numbers[0].setAttribute('title', metricTips.COST);
+              numbers[1].setAttribute('title', metricTips.SURPLUS);
+            } else if (numbers.length === 1 && /FPTS/.test(numbers[0].textContent || '')) {
+              numbers[0].setAttribute('title', metricTips.WIRE);
+            }
+          });
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', installMetricTips);
+        } else {
+          installMetricTips();
+        }
         document.addEventListener('click', function (e) {
           if (e.target.closest('.lll-tip') || e.target.closest('#lll-tip-pop')) return;
           var t = document.getElementById('lll-tip-pop');
@@ -733,6 +796,8 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
       <div class="header-rule"></div>
     </header>`
 }
+
+const renderNav = nav
 
 function emptyIngest(): string {
   return `
@@ -1833,6 +1898,8 @@ export function fantasyManagerPage(
   seasonRow: GmSeasonRow | null = null,
   extras: FantasyManagerExtras = { weekly: [], leagueMedian: 0, heatmap: null, h2h: [] }
 ): string {
+  const nav = (_active: string, navSeasons: SeasonSummary[], navYear?: number) =>
+    renderNav('gm', navSeasons, navYear)
   const year = seasonRow?.season
   const visiblePicks = year ? draftPicks.filter((pick) => pick.season === year) : draftPicks
   const visibleWire = year ? wire.filter((row) => row.season === year) : wire
