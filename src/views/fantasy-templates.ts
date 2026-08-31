@@ -3,6 +3,7 @@ import type {
   DraftPickRow,
   FantasyCohortRow,
   FantasyEvolutionData,
+  FantasyLiveScoringData,
   FantasyManagerExtras,
   FantasyRecordRow,
   FantasyRecordsData,
@@ -506,6 +507,8 @@ export function fantasyLayout(
         .fx-podium { grid-template-columns:1fr; }
         .fx-podium-card:first-child { order:-1; }
         .fx-ladder-head, .fx-ladder-row { grid-template-columns:34px minmax(170px,1fr) 76px 80px 66px 52px 58px; }
+        .fx-live-row { grid-template-columns:28px minmax(0,1fr) 82px !important; }
+        .fx-live-row > div:last-child { grid-column:2 / -1; }
       }
     </style>
     <script>
@@ -1619,6 +1622,32 @@ function fxRecordCard(row: FantasyRecordRow, color: string, shame = false): stri
   return `<article class="fx-card fx-record" style="background:linear-gradient(150deg,${color}18,rgba(19,24,32,0)),#131820"><span class="fx-label fx-muted" style="font-size:9px;letter-spacing:.2em">${escapeHtml(row.label)}</span><strong class="fx-hero-value" style="margin-top:8px;color:${color};font-size:42px">${escapeHtml(row.valueText || '—')}</strong><span style="font-weight:700;font-size:15px;margin-top:8px">${escapeHtml(row.holderName)}</span><span class="fx-muted" style="font-size:12.5px;line-height:1.5">${escapeHtml(row.detail)}</span></article>`
 }
 
+export function fantasyLiveScoringPanel(data?: FantasyLiveScoringData, error?: string): string {
+  const timestamp = data ? `${data.fetchedAt.replace('T', ' ').slice(0, 19)} UTC` : 'Not synced yet'
+  const rows = (data?.rows ?? [])
+    .map(
+      (row, index) =>
+        `<div class="fx-live-row" style="display:grid;grid-template-columns:32px minmax(130px,1fr) 90px minmax(180px,1.4fr);gap:12px;align-items:center;padding:11px 13px;border-top:1px solid rgba(255,255,255,.05)"><span class="fx-rank ${index < 3 ? 'fx-rank-top' : ''}">${index + 1}</span><div style="min-width:0"><div style="font-weight:700;font-size:13px">${escapeHtml(row.displayName)}</div><div class="fx-muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(row.teamName ?? '')}</div></div><strong class="fx-hero-value" style="font-size:23px;color:#3fe1a8;text-align:right">${fmt(row.points)} <small class="fx-label fx-muted" style="font-size:9px;letter-spacing:.08em">FPTS</small></strong><div class="fx-muted" style="font-size:11px;display:flex;gap:9px;flex-wrap:wrap">${
+          row.players
+            .slice(0, 3)
+            .map(
+              (player) =>
+                `${playerLink(player.playerId, player.playerName, null, data?.season)} <span class="fx-number">${fmt(player.points)}</span>`
+            )
+            .join(' · ') || 'Player scoring not available yet.'
+        }</div></div>`
+    )
+    .join('')
+  const message = error
+    ? `<p style="margin-top:14px;color:#ff7a8a;font-size:12px">${escapeHtml(error)}</p>`
+    : data && rows.length === 0
+      ? `<p class="fx-muted" style="margin-top:14px">Sleeper returned no current scoring rows for Week ${data.week}. Try again once games are underway.</p>`
+      : data
+        ? ''
+        : '<p class="fx-muted" style="margin-top:14px">Click Refresh scores to pull the latest available totals from Sleeper.</p>'
+  return `<section id="live-scoring-panel" class="fx-card fx-panel" aria-live="polite"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><div class="fx-eyebrow" style="color:#3fe1a8;margin-bottom:6px">LIVE SCORING</div><h2 class="fx-h2" style="font-size:20px">Refresh from Sleeper</h2><p class="fx-section-copy">Current best-ball totals for Week ${data?.week ?? '—'} · ${data?.seasonType ?? 'waiting for sync'}.</p></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="fx-muted fx-number" style="font-size:10px">${escapeHtml(timestamp)}</span><button type="button" class="fx-sort fx-sort-active" hx-post="/fantasy/live-sync" hx-target="#live-scoring-panel" hx-swap="outerHTML" hx-indicator="#live-scoring-spinner">Refresh scores</button><span id="live-scoring-spinner" class="htmx-indicator fx-number fx-muted" style="font-size:10px">Syncing…</span></div></div>${rows ? `<div style="margin-top:18px;border:1px solid rgba(255,255,255,.06);border-radius:13px;overflow:hidden">${rows}</div>` : ''}${message}</section>`
+}
+
 function fxFocusScript(): string {
   return `<script>
     window.fxFocusBump = function(slug) {
@@ -1774,6 +1803,7 @@ export function fantasyDashboard(
   const badges = data.records.badges.length > 0 ? data.records.badges : []
   const body = `${nav('all', seasons, latest)}
     <main class="fx-main">
+      ${fantasyLiveScoringPanel()}
       <section class="fx-spotlights">${spotlights}</section>
       <section><h2 class="fx-h2">The all-time podium</h2><p class="fx-section-copy">Every week your best-ball score plays every other GM — so this is the record that can't be schedule-lucky.</p><div class="fx-podium" style="margin-top:20px">${podium || '<div class="fx-card fx-panel">No scored seasons yet.</div>'}</div></section>
       <section class="fx-card fx-panel"><div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap"><div><h2 class="fx-h2" style="font-size:20px">Dads vs. Kids</h2><p class="fx-section-copy">Pooled all-play record; <strong>other</strong> cohort members are excluded from both bars.</p></div><span class="fx-number" style="padding:6px 11px;border-radius:999px;color:#f0b429;background:#f0b42922">NEW</span></div><div style="display:flex;justify-content:space-between;margin-top:18px"><strong class="fx-hero-value" style="font-size:32px;color:#3fe1a8">${pct(dadPct)} <small class="fx-label" style="font-size:13px">DADS</small></strong><strong class="fx-hero-value" style="font-size:32px;color:#7c6bff"><small class="fx-label" style="font-size:13px">KIDS</small> ${pct(kidPct)}</strong></div><div class="fx-cohort-bar" style="margin-top:10px"><span style="width:${((dadPct / share) * 100).toFixed(1)}%;background:linear-gradient(90deg,#2bbd8b,#3fe1a8)"></span><span style="width:${((kidPct / share) * 100).toFixed(1)}%;background:linear-gradient(90deg,#7c6bff,#a596ff)"></span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:18px">${cohortCards.join('')}</div></section>

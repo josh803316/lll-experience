@@ -6,6 +6,7 @@ import {
   fantasyDashboard,
   fantasyDraftPage,
   fantasyEvolutionPage,
+  fantasyLiveScoringPanel,
   fantasyManagerNotFound,
   fantasyManagerPage,
   fantasyPlayerCard,
@@ -27,6 +28,18 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
     ctx.set.headers['Content-Type'] = 'text/html'
     const data = await FantasyScout.allTime()
     return fantasyDashboard(data, CLERK_KEY)
+  })
+  .post('/live-sync', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html'
+    try {
+      return fantasyLiveScoringPanel(await FantasyScout.liveScoring())
+    } catch (error) {
+      console.error('[FANTASY] live sync error:', error instanceof Error ? error.message : error)
+      return fantasyLiveScoringPanel(
+        undefined,
+        'Sleeper did not return live scores. Try Refresh scores again.'
+      )
+    }
   })
   .get('/season/:year', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'

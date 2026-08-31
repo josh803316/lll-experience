@@ -45,6 +45,9 @@ test('UCSB Legacy app card and GM lab pages', async ({ page }) => {
 
   await page.waitForURL('**/fantasy**', { timeout: 30000 })
   await expect(page.getByRole('heading', { name: 'League HQ' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Refresh from Sleeper' })).toBeVisible()
+  await page.getByRole('button', { name: 'Refresh scores' }).click()
+  await expect(page.locator('#live-scoring-panel')).toContainText(/UTC|Sleeper did not return/)
   await expect(page.getByRole('link', { name: 'Josh', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Tim', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Finn', exact: true })).toBeVisible()

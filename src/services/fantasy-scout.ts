@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import {
   CANONICAL_MANAGERS,
   canonicalManager,
@@ -50,6 +50,7 @@ import {
   type FantasyTimelinePoint,
   replayRosterSnapshots,
 } from './fantasy-timeline.js'
+import { sleeperClient } from './sleeper-client.js'
 
 export interface SeasonSummary {
   season: number
@@ -198,6 +199,28 @@ export interface FantasyWeeklyScore {
   teamName: string | null
   points: number
   rank: number
+}
+
+export interface FantasyLivePlayerScore {
+  playerId: string
+  playerName: string
+  points: number
+}
+
+export interface FantasyLiveTeamScore {
+  slug: string
+  displayName: string
+  teamName: string | null
+  points: number
+  players: FantasyLivePlayerScore[]
+}
+
+export interface FantasyLiveScoringData {
+  season: number
+  week: number
+  seasonType: string
+  fetchedAt: string
+  rows: FantasyLiveTeamScore[]
 }
 
 export interface FantasyRecordRow {
@@ -1542,6 +1565,21 @@ function timelineDataForContext(
   }
 }
 
+const LIVE_SYNC_RETRY_DELAY_MS = 1000
+
+async function retryOnce<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation()
+  } catch (firstError) {
+    await new Promise((resolve) => setTimeout(resolve, LIVE_SYNC_RETRY_DELAY_MS))
+    try {
+      return await operation()
+    } catch {
+      throw firstError
+    }
+  }
+}
+
 export const FantasyScout = {
   async listSeasons(): Promise<SeasonSummary[]> {
     const ctx = await loadContext()
@@ -1589,6 +1627,95 @@ export const FantasyScout = {
       cohorts: cohortSummary(gms, weekly),
       records: buildRecords(ctx, rows),
       biggestWeek: [...weekly].sort((a, b) => b.points - a.points)[0] ?? null,
+    }
+  },
+
+  async liveScoring(): Promise<FantasyLiveScoringData> {
+    const state = await retryOnce(() => sleeperClient.getNflState())
+    const ctx = await loadContext()
+    const stateSeason = Number(state.season)
+    const league =
+      ctx.leagues.find((candidate) => candidate.season === stateSeason) ?? ctx.leagues.at(-1)
+    if (!league) {
+      throw new Error('No fantasy league is available for live scoring')
+    }
+    const week = Math.max(1, Math.min(18, Number(state.week) || 1))
+    const matchups = await retryOnce(() => sleeperClient.getMatchups(league.sleeperLeagueId, week))
+    const rosterById = new Map(
+      ctx.rosters
+        .filter((roster) => roster.sleeperLeagueId === league.sleeperLeagueId)
+        .map((roster) => [roster.rosterId, roster])
+    )
+    const matchupRows = matchups.map((matchup) => ({
+      sleeperLeagueId: league.sleeperLeagueId,
+      week,
+      rosterId: matchup.roster_id,
+      matchupId: matchup.matchup_id,
+      points: matchup.custom_points ?? matchup.points ?? 0,
+      starters: matchup.starters ?? [],
+    }))
+    const playerWeekRows = matchups.flatMap((matchup) =>
+      Object.entries(matchup.players_points ?? {}).map(([playerId, points]) => ({
+        sleeperLeagueId: league.sleeperLeagueId,
+        week,
+        rosterId: matchup.roster_id,
+        playerId,
+        points: typeof points === 'number' ? points : Number(points) || 0,
+      }))
+    )
+    if (matchupRows.length > 0) {
+      await ctx.db
+        .insert(fantasyMatchups)
+        .values(matchupRows)
+        .onConflictDoUpdate({
+          target: [fantasyMatchups.sleeperLeagueId, fantasyMatchups.week, fantasyMatchups.rosterId],
+          set: {
+            matchupId: sql`excluded.matchup_id`,
+            points: sql`excluded.points`,
+            starters: sql`excluded.starters`,
+          },
+        })
+    }
+    if (playerWeekRows.length > 0) {
+      await ctx.db
+        .insert(fantasyPlayerWeeks)
+        .values(playerWeekRows)
+        .onConflictDoUpdate({
+          target: [
+            fantasyPlayerWeeks.sleeperLeagueId,
+            fantasyPlayerWeeks.week,
+            fantasyPlayerWeeks.rosterId,
+            fantasyPlayerWeeks.playerId,
+          ],
+          set: { points: sql`excluded.points` },
+        })
+    }
+    const rows = matchups
+      .map((matchup) => {
+        const roster = rosterById.get(matchup.roster_id)
+        const identity = ident(ctx, roster?.sleeperUserId ?? null, roster?.teamName)
+        const players = Object.entries(matchup.players_points ?? {})
+          .map(([playerId, points]) => ({
+            playerId,
+            playerName: ctx.playerById.get(playerId)?.fullName ?? playerId,
+            points: typeof points === 'number' ? points : Number(points) || 0,
+          }))
+          .sort((a, b) => b.points - a.points)
+        return {
+          slug: identity.slug,
+          displayName: identity.displayName,
+          teamName: roster?.teamName ?? null,
+          points: matchup.custom_points ?? matchup.points ?? 0,
+          players,
+        }
+      })
+      .sort((a, b) => b.points - a.points)
+    return {
+      season: stateSeason || league.season,
+      week,
+      seasonType: state.season_type ?? 'regular',
+      fetchedAt: new Date().toISOString(),
+      rows,
     }
   },
 
