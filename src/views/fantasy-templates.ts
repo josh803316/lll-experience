@@ -7,6 +7,7 @@ import type {
   FantasyManagerExtras,
   FantasyRecordRow,
   FantasyRecordsData,
+  FantasyReportCardData,
   FantasySeasonExtras,
   FantasyTimelineData,
   FantasyWeeklyScore,
@@ -802,6 +803,7 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
         ${tab(y ? `/fantasy/season/${y}` : '/fantasy', 'season', 'Season')}
         ${tab(y ? `/fantasy/manager/${CANONICAL_MANAGERS[0]?.slug ?? 'josh'}${y ? `?season=${y}` : ''}` : '/fantasy', 'gm', 'GM Lab')}
         ${tab('/fantasy/records', 'room', 'Trophy Room')}
+        ${tab(y && y < new Date().getFullYear() ? `/fantasy/reportcard/${y}` : '/fantasy/reportcard/2025', 'grade', 'Grade Cortanha')}
       </nav>
       <div class="header-rule"></div>
     </header>`
@@ -2041,6 +2043,35 @@ export function fantasyRecordsPage(
   )
   const body = `${nav('room', seasons)}<main class="fx-main"><div><div class="fx-eyebrow" style="color:#f0b429;margin-bottom:6px">RECORD BOOK</div><h2 class="fx-h1">Trophy Room</h2><p class="fx-section-copy">Every superlative the ingest can prove. Screenshot-ready — that is the whole point.</p></div><section class="fx-records">${records.map((row, index) => fxRecordCard(row, ['#f0b429', '#3fe1a8', '#7c6bff', '#5aa9ff', '#f4f7fb', '#3fe1a8'][index % 6])).join('') || '<div class="fx-card fx-panel fx-muted">Records will appear after the first scored ingest.</div>'}</section><section><h3 class="fx-h2" style="font-size:20px;margin-bottom:14px">Hall of shame</h3><div class="fx-card" style="border-color:rgba(255,122,138,.18);background:linear-gradient(150deg,rgba(255,122,138,.07),rgba(19,24,32,0)),#131820">${shame.map((row) => fxRecordCard(row, '#ff7a8a', true)).join('') || '<div class="fx-panel fx-muted">No shame records yet.</div>'}</div></section></main>${fxFooter()}`
   return fantasyLayout(body, 'UCSB Legacy — Trophy Room', clerkKey)
+}
+
+export function fantasyReportCardPage(
+  data: FantasyReportCardData,
+  seasons: SeasonSummary[],
+  clerkKey?: string
+): string {
+  const delta = (value: number) => (value === 0 ? '0' : value > 0 ? `+${value}` : String(value))
+  const rows = data.rows
+    .map(
+      (row) =>
+        `<div class="fx-ladder-row" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px" onclick="location.href='/fantasy/manager/${encodeURIComponent(row.slug)}?season=${data.season}'"><span class="fx-rank ${row.actualFinish <= 3 ? 'fx-rank-top' : ''}">${row.actualFinish}</span><div style="min-width:0"><div style="font-weight:700;font-size:14px">${escapeHtml(row.displayName)}</div><div class="fx-muted" style="font-size:10px">${row.beatProjectedFinish ? 'Beat projected finish' : 'Missed projected finish'}${row.beatProjectedGrade ? ' · beat grade' : ''}</div></div><span class="fx-number" style="text-align:right">${row.projectedFinish}</span><span class="fx-number" style="text-align:right;font-weight:700">${row.actualFinish}</span><span class="fx-number" style="text-align:right;color:${row.finishDelta < 0 ? '#3fe1a8' : row.finishDelta > 0 ? '#ff7a8a' : '#8b95a8'}">${delta(row.finishDelta)}</span><span style="text-align:center">${gradePill(row.projectedGrade, true)}</span><span style="text-align:center">${gradePill(row.actualGrade)}</span><span class="fx-number" style="text-align:right;color:#8b95a8">${row.projectedSurplus >= 0 ? '+' : ''}${fmt(row.projectedSurplus, 0)}</span><span class="fx-number" style="text-align:right;color:${row.actualSurplus >= row.projectedSurplus ? '#3fe1a8' : '#ff7a8a'}">${row.actualSurplus >= 0 ? '+' : ''}${fmt(row.actualSurplus, 0)}</span><span class="fx-number" style="text-align:right">${fmt(row.actualPfPerWeek)}</span></div>`
+    )
+    .join('')
+  const body = `${nav('grade', seasons, data.season)}<main class="fx-main"><div><div class="fx-eyebrow" style="color:#7c6bff;margin-bottom:6px">OPENING DAY VS ACTUAL</div><h2 class="fx-h1">Grade Cortanha · ${data.season}</h2><p class="fx-section-copy">Draft-only projected all-play standings and draft grades (blended weekly projections × UCSB scoring) versus how the season actually finished. Lower finish is better. Negative Δ means the GM finished ahead of the opening-day projection.</p></div><section style="display:flex;gap:12px;flex-wrap:wrap">${[
+    ['CORTANHA', data.cortanhaGrade, '#7c6bff'],
+    ['AVG FINISH ERROR', fmt(data.meanAbsFinishError), '#f4f7fb'],
+    ['WITHIN 2 SPOTS', `${data.withinTwoSpots}/${data.teamCount}`, '#3fe1a8'],
+    ['BEAT PROJ FINISH', String(data.beatFinishCount), '#5aa9ff'],
+    ['BEAT PROJ GRADE', String(data.beatGradeCount), '#f0b429'],
+  ]
+    .map(
+      ([label, value, color]) =>
+        `<div class="fx-card" style="padding:14px 16px;min-width:120px"><div class="fx-label fx-muted" style="font-size:9px">${label}</div><div class="fx-hero-value" style="font-size:28px;color:${color}">${value}</div></div>`
+    )
+    .join(
+      ''
+    )}</section><section class="fx-card fx-ladder"><div class="fx-ladder-head" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px"><span>#</span><span>GM</span><span style="text-align:right">PROJ</span><span style="text-align:right">ACT</span><span style="text-align:right">Δ</span><span style="text-align:center">PROJ G</span><span style="text-align:center">ACT G</span><span style="text-align:right">PROJ +/−</span><span style="text-align:right">ACT +/−</span><span style="text-align:right">PF/WK</span></div>${rows || '<div class="fx-panel fx-muted">Need historical projections for this season before Cortanha can be graded.</div>'}</section><p class="fx-muted" style="font-size:12px">Cortanha’s letter is from mean absolute finish error: ≤1.5 A, ≤2.5 B, ≤3.5 C, ≤4.5 D, else F. Projections use draft rosters only — no later waivers or trades.</p></main>${fxFooter()}`
+  return fantasyLayout(body, `UCSB Legacy — Grade Cortanha ${data.season}`, clerkKey)
 }
 
 export function fantasyPlayerNotFound(id: string, clerkKey?: string): string {

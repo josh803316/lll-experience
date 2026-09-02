@@ -14,6 +14,7 @@ import {
   fantasyPlayerPage,
   fantasyRankingsPage,
   fantasyRecordsPage,
+  fantasyReportCardPage,
   fantasySeasonPage,
   fantasyTimelineOverviewPage,
   fantasyTimelinePage,
@@ -87,6 +88,25 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
     const data = await FantasyScout.records()
     const seasons = await FantasyScout.listSeasons()
     return fantasyRecordsPage(data, seasons, CLERK_KEY)
+  })
+  .get('/reportcard/:year', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html'
+    const year = Number(ctx.params.year)
+    const seasons = await FantasyScout.listSeasons()
+    const data =
+      (await FantasyScout.reportCard(year)) ??
+      ({
+        season: year,
+        projectionsLoaded: 0,
+        cortanhaGrade: '—',
+        meanAbsFinishError: 0,
+        withinTwoSpots: 0,
+        teamCount: 0,
+        beatFinishCount: 0,
+        beatGradeCount: 0,
+        rows: [],
+      } as const)
+    return fantasyReportCardPage(data, seasons, CLERK_KEY)
   })
   .get('/manager/:slug/timeline', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'

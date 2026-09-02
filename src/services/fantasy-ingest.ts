@@ -489,6 +489,53 @@ async function insertProjectionRows(db: Db, rows: SourceProjRow[]): Promise<numb
   return rows.length
 }
 
+/** Backfill weekly projections for a past season so we can grade opening-day forecasts. */
+export async function ensureHistoricalProjections(season: number): Promise<number> {
+  const db = getDB()
+  const [existing] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(fantasyProjections)
+    .where(eq(fantasyProjections.season, season))
+  if (Number(existing?.n ?? 0) > 0) {
+    return 0
+  }
+  const leagues = await db.select().from(fantasyLeagues).where(eq(fantasyLeagues.season, season))
+  const league = leagues[0]
+  if (!league) {
+    return 0
+  }
+  const drafts = await db
+    .select()
+    .from(fantasyDrafts)
+    .where(eq(fantasyDrafts.sleeperLeagueId, league.sleeperLeagueId))
+  const draft = drafts[0]
+  if (!draft) {
+    return 0
+  }
+  const picks = await db
+    .select()
+    .from(fantasyDraftPicks)
+    .where(eq(fantasyDraftPicks.draftId, draft.draftId))
+  const playerIds = [...new Set(picks.map((pick) => pick.playerId))]
+  const sleeperIds = new Set(playerIds)
+  const scoring = (league.scoringSettings ?? null) as Record<string, unknown> | null
+  console.log(
+    `[sleeper-ingest] backfilling ${season} projections for ${playerIds.length} drafted players…`
+  )
+  let total = await ingestSeasonProjections(db, season, playerIds, scoring)
+  try {
+    const espn = await fetchEspnWeeklyProjections(season, scoring, sleeperIds)
+    console.log(`[sleeper-ingest] ${season} ESPN weekly rows ${espn.length}`)
+    total += await insertProjectionRows(db, espn)
+  } catch (err) {
+    console.log(
+      '[sleeper-ingest] ESPN historical projections failed',
+      err instanceof Error ? err.message : err
+    )
+  }
+  return total
+}
+
 export async function ingestSleeperLeague(
   startLeagueId: string = process.env.SLEEPER_LEAGUE_ID || UCSB_LEGACY_LEAGUE_ID,
   opts: { refreshPlayers?: boolean; refreshProjections?: boolean } = {}

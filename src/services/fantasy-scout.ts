@@ -223,6 +223,36 @@ export interface FantasyLiveScoringData {
   rows: FantasyLiveTeamScore[]
 }
 
+export interface FantasyReportCardRow {
+  slug: string
+  displayName: string
+  projectedFinish: number
+  actualFinish: number
+  finishDelta: number
+  projectedWinPct: number
+  actualWinPct: number
+  projectedPfPerWeek: number
+  actualPfPerWeek: number
+  projectedGrade: string
+  actualGrade: string
+  projectedSurplus: number
+  actualSurplus: number
+  beatProjectedFinish: boolean
+  beatProjectedGrade: boolean
+}
+
+export interface FantasyReportCardData {
+  season: number
+  projectionsLoaded: number
+  cortanhaGrade: string
+  meanAbsFinishError: number
+  withinTwoSpots: number
+  teamCount: number
+  beatFinishCount: number
+  beatGradeCount: number
+  rows: FantasyReportCardRow[]
+}
+
 export interface FantasyRecordRow {
   key: string
   label: string
@@ -1358,6 +1388,88 @@ function ordinalRecord(value: number): string {
   return `${value}${suffix}`
 }
 
+function gradeRank(letter: string): number {
+  const key = letter.charAt(0).toUpperCase()
+  const order = ['A', 'B', 'C', 'D', 'F']
+  const index = order.indexOf(key)
+  return index >= 0 ? index : 99
+}
+
+function cortanhaLetterFromMae(mae: number): string {
+  if (mae <= 1.5) return 'A'
+  if (mae <= 2.5) return 'B'
+  if (mae <= 3.5) return 'C'
+  if (mae <= 4.5) return 'D'
+  return 'F'
+}
+
+function buildProjectedSeasonRows(ctx: Ctx, year: number): GmSeasonRow[] {
+  const league = ctx.leagues.find((row) => row.season === year)
+  if (!league) return []
+  const draft = ctx.drafts.find((row) => row.sleeperLeagueId === league.sleeperLeagueId)
+  if (!draft) return []
+  const leagueRosters = ctx.rosters.filter((row) => row.sleeperLeagueId === league.sleeperLeagueId)
+  const drafted = ctx.picks
+    .filter((pick) => pick.draftId === draft.draftId)
+    .map((pick) => ({
+      rosterId: pick.rosterId,
+      playerId: pick.playerId,
+      position: pick.position,
+    }))
+  const weekly = blendWeeklyPts(ctx.projections, year)
+  if (weekly.length === 0 || drafted.length === 0) return []
+  const allPlay = allPlayFromMatchups(
+    projectedWeeklyScores(drafted, weekly, starterSlots(league.rosterPositions))
+  )
+  const ranked = finishRanks(
+    leagueRosters.map((roster) => {
+      const rec = allPlay.get(roster.rosterId)
+      return {
+        ...roster,
+        wins: rec?.wins ?? 0,
+        losses: rec?.losses ?? 0,
+        ties: rec?.ties ?? 0,
+        fpts: rec?.fpts ?? 0,
+        weeksPlayed: rec?.weeksPlayed ?? 0,
+      }
+    })
+  )
+  const projPts = projectedPtsMap(ctx, year)
+  const scored = scoredPicksForLeague(ctx, league.sleeperLeagueId, projPts)
+  const rows: GmSeasonRow[] = ranked.map((roster) => {
+    const id = ident(ctx, roster.sleeperUserId, roster.teamName)
+    const gmPicks = scored.filter((pick) => pick.rosterId === roster.rosterId)
+    const games = roster.wins + roster.losses + roster.ties
+    return {
+      slug: id.slug,
+      displayName: id.displayName,
+      sleeperUserId: roster.sleeperUserId,
+      teamName: roster.teamName,
+      season: year,
+      sleeperLeagueId: league.sleeperLeagueId,
+      rosterId: roster.rosterId,
+      wins: roster.wins,
+      losses: roster.losses,
+      ties: roster.ties,
+      winPct: winPct(roster.wins, roster.losses, roster.ties),
+      fpts: roster.fpts,
+      fptsAgainst: roster.fptsAgainst,
+      games,
+      weeksPlayed: roster.weeksPlayed,
+      pfPerWeek: roster.weeksPlayed ? roster.fpts / roster.weeksPlayed : 0,
+      finish: roster.finish,
+      waiverBudgetUsed: roster.waiverBudgetUsed,
+      draftSurplus: gmPicks.reduce((sum, pick) => sum + pick.surplus, 0),
+      draftGrade: gmPicks.length > 0 ? '' : '—',
+      draftProjected: true,
+      wireFpts: 0,
+      lateFpts: gmPicks.filter((pick) => pick.late).reduce((sum, pick) => sum + pick.fpts, 0),
+      projected: true,
+    }
+  })
+  return applyDraftLetters(rows)
+}
+
 function cohortSummary(rows: GmAllTimeRow[], scores: FantasyWeeklyScore[]): FantasyCohortRow[] {
   const cohortBySlug = new Map(CANONICAL_MANAGERS.map((manager) => [manager.slug, manager.cohort]))
   const cross = new Map<'dad' | 'kid', { wins: number; losses: number; ties: number }>([
@@ -1747,6 +1859,71 @@ export const FantasyScout = {
       standings,
       heatmap: buildHeatmap(ctx, year),
       extras: weeklyExtras(weeklyScores(ctx, year)),
+    }
+  },
+
+  async reportCard(year: number): Promise<FantasyReportCardData | null> {
+    const { ensureHistoricalProjections } = await import('./fantasy-ingest.js')
+    const projectionsLoaded = await ensureHistoricalProjections(year)
+    const ctx = await loadContext()
+    const league = ctx.leagues.find((row) => row.season === year)
+    if (!league) return null
+    const actualRows = buildSeasonRows(ctx)
+      .filter((row) => row.season === year && !row.projected)
+      .sort((a, b) => a.finish - b.finish)
+    if (actualRows.length === 0) return null
+    const projectedRows = buildProjectedSeasonRows(ctx, year)
+    if (projectedRows.length === 0) {
+      return {
+        season: year,
+        projectionsLoaded,
+        cortanhaGrade: '—',
+        meanAbsFinishError: 0,
+        withinTwoSpots: 0,
+        teamCount: actualRows.length,
+        beatFinishCount: 0,
+        beatGradeCount: 0,
+        rows: [],
+      }
+    }
+    const projectedBySlug = new Map(projectedRows.map((row) => [row.slug, row]))
+    const rows: FantasyReportCardRow[] = actualRows.map((actual) => {
+      const projected = projectedBySlug.get(actual.slug)
+      const projectedFinish = projected?.finish ?? actual.finish
+      const projectedGrade = projected?.draftGrade ?? '—'
+      const finishDelta = actual.finish - projectedFinish
+      return {
+        slug: actual.slug,
+        displayName: actual.displayName,
+        projectedFinish,
+        actualFinish: actual.finish,
+        finishDelta,
+        projectedWinPct: projected?.winPct ?? 0,
+        actualWinPct: actual.winPct,
+        projectedPfPerWeek: projected?.pfPerWeek ?? 0,
+        actualPfPerWeek: actual.pfPerWeek,
+        projectedGrade,
+        actualGrade: actual.draftGrade,
+        projectedSurplus: projected?.draftSurplus ?? 0,
+        actualSurplus: actual.draftSurplus,
+        beatProjectedFinish: actual.finish < projectedFinish,
+        beatProjectedGrade: gradeRank(actual.draftGrade) < gradeRank(projectedGrade),
+      }
+    })
+    const absErrors = rows.map((row) => Math.abs(row.finishDelta))
+    const meanAbsFinishError =
+      absErrors.length > 0 ? absErrors.reduce((sum, value) => sum + value, 0) / absErrors.length : 0
+    const withinTwoSpots = rows.filter((row) => Math.abs(row.finishDelta) <= 2).length
+    return {
+      season: year,
+      projectionsLoaded,
+      cortanhaGrade: cortanhaLetterFromMae(meanAbsFinishError),
+      meanAbsFinishError,
+      withinTwoSpots,
+      teamCount: rows.length,
+      beatFinishCount: rows.filter((row) => row.beatProjectedFinish).length,
+      beatGradeCount: rows.filter((row) => row.beatProjectedGrade).length,
+      rows: rows.sort((a, b) => a.actualFinish - b.actualFinish),
     }
   },
 
