@@ -7,6 +7,8 @@ import {
 } from '../config/fantasy-managers.js'
 import { getDB } from '../db/index.js'
 import {
+  type CortanhaBaselineGm,
+  fantasyCortanhaBaselines,
   fantasyDraftPicks,
   fantasyDrafts,
   fantasyLeagues,
@@ -244,6 +246,10 @@ export interface FantasyReportCardRow {
 export interface FantasyReportCardData {
   season: number
   projectionsLoaded: number
+  /** frozen = opening-day snapshot; reconstructed = API backfill; live = current projections */
+  baselineSource: 'frozen' | 'reconstructed' | 'live'
+  snappedAt: string | null
+  seasonComplete: boolean
   cortanhaGrade: string
   meanAbsFinishError: number
   withinTwoSpots: number
@@ -1862,31 +1868,148 @@ export const FantasyScout = {
     }
   },
 
+  async freezeBaseline(
+    year: number,
+    note = 'Opening-day projected standings freeze'
+  ): Promise<{ season: number; snappedAt: string; teamCount: number; projectionCount: number }> {
+    const ctx = await loadContext()
+    const league = ctx.leagues.find((row) => row.season === year)
+    if (!league) throw new Error(`No league for ${year}`)
+    const projectedRows = buildProjectedSeasonRows(ctx, year)
+    if (projectedRows.length === 0) {
+      throw new Error(`No projected standings for ${year} — ingest projections first`)
+    }
+    const [countRow] = await ctx.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(fantasyProjections)
+      .where(eq(fantasyProjections.season, year))
+    const projectionCount = Number(countRow?.n ?? 0)
+    const rows: CortanhaBaselineGm[] = projectedRows
+      .slice()
+      .sort((a, b) => a.finish - b.finish)
+      .map((row) => ({
+        slug: row.slug,
+        displayName: row.displayName,
+        finish: row.finish,
+        winPct: row.winPct,
+        pfPerWeek: row.pfPerWeek,
+        draftGrade: row.draftGrade,
+        draftSurplus: row.draftSurplus,
+      }))
+    const snappedAt = new Date()
+    await ctx.db
+      .insert(fantasyCortanhaBaselines)
+      .values({
+        season: year,
+        label: 'opening-day',
+        snappedAt,
+        projectionCount,
+        rows,
+        note,
+      })
+      .onConflictDoUpdate({
+        target: fantasyCortanhaBaselines.season,
+        set: {
+          label: 'opening-day',
+          snappedAt,
+          projectionCount,
+          rows,
+          note,
+        },
+      })
+    return {
+      season: year,
+      snappedAt: snappedAt.toISOString(),
+      teamCount: rows.length,
+      projectionCount,
+    }
+  },
+
   async reportCard(year: number): Promise<FantasyReportCardData | null> {
     const { ensureHistoricalProjections } = await import('./fantasy-ingest.js')
     const projectionsLoaded = await ensureHistoricalProjections(year)
     const ctx = await loadContext()
     const league = ctx.leagues.find((row) => row.season === year)
     if (!league) return null
+
+    const [baseline] = await ctx.db
+      .select()
+      .from(fantasyCortanhaBaselines)
+      .where(eq(fantasyCortanhaBaselines.season, year))
+
+    const liveProjected = buildProjectedSeasonRows(ctx, year)
+    const projectedGms: CortanhaBaselineGm[] =
+      baseline?.rows ??
+      liveProjected.map((row) => ({
+        slug: row.slug,
+        displayName: row.displayName,
+        finish: row.finish,
+        winPct: row.winPct,
+        pfPerWeek: row.pfPerWeek,
+        draftGrade: row.draftGrade,
+        draftSurplus: row.draftSurplus,
+      }))
+
+    const baselineSource: FantasyReportCardData['baselineSource'] = baseline
+      ? 'frozen'
+      : year < new Date().getFullYear()
+        ? 'reconstructed'
+        : 'live'
+
+    const snappedAtIso = baseline?.snappedAt ? new Date(baseline.snappedAt).toISOString() : null
+
+    const empty = (teamCount: number, seasonComplete: boolean): FantasyReportCardData => ({
+      season: year,
+      projectionsLoaded,
+      baselineSource,
+      snappedAt: snappedAtIso,
+      seasonComplete,
+      cortanhaGrade: '—',
+      meanAbsFinishError: 0,
+      withinTwoSpots: 0,
+      teamCount,
+      beatFinishCount: 0,
+      beatGradeCount: 0,
+      rows: [],
+    })
+
+    if (projectedGms.length === 0) {
+      return empty(0, false)
+    }
+
+    const projectedBySlug = new Map(projectedGms.map((row) => [row.slug, row]))
     const actualRows = buildSeasonRows(ctx)
       .filter((row) => row.season === year && !row.projected)
       .sort((a, b) => a.finish - b.finish)
-    if (actualRows.length === 0) return null
-    const projectedRows = buildProjectedSeasonRows(ctx, year)
-    if (projectedRows.length === 0) {
+    const seasonComplete = actualRows.length > 0
+
+    if (!seasonComplete) {
+      const rows: FantasyReportCardRow[] = projectedGms
+        .slice()
+        .sort((a, b) => a.finish - b.finish)
+        .map((projected) => ({
+          slug: projected.slug,
+          displayName: projected.displayName,
+          projectedFinish: projected.finish,
+          actualFinish: projected.finish,
+          finishDelta: 0,
+          projectedWinPct: projected.winPct,
+          actualWinPct: 0,
+          projectedPfPerWeek: projected.pfPerWeek,
+          actualPfPerWeek: 0,
+          projectedGrade: projected.draftGrade,
+          actualGrade: '—',
+          projectedSurplus: projected.draftSurplus,
+          actualSurplus: 0,
+          beatProjectedFinish: false,
+          beatProjectedGrade: false,
+        }))
       return {
-        season: year,
-        projectionsLoaded,
-        cortanhaGrade: '—',
-        meanAbsFinishError: 0,
-        withinTwoSpots: 0,
-        teamCount: actualRows.length,
-        beatFinishCount: 0,
-        beatGradeCount: 0,
-        rows: [],
+        ...empty(rows.length, false),
+        rows,
       }
     }
-    const projectedBySlug = new Map(projectedRows.map((row) => [row.slug, row]))
+
     const rows: FantasyReportCardRow[] = actualRows.map((actual) => {
       const projected = projectedBySlug.get(actual.slug)
       const projectedFinish = projected?.finish ?? actual.finish
@@ -1917,6 +2040,9 @@ export const FantasyScout = {
     return {
       season: year,
       projectionsLoaded,
+      baselineSource,
+      snappedAt: snappedAtIso,
+      seasonComplete: true,
       cortanhaGrade: cortanhaLetterFromMae(meanAbsFinishError),
       meanAbsFinishError,
       withinTwoSpots,

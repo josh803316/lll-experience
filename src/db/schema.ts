@@ -624,3 +624,23 @@ export const fantasyProjections = pgTable(
     idxFantasyProjPlayer: index('idx_fantasy_proj_player').on(t.season, t.playerId),
   })
 )
+
+/** Frozen opening-day projected standings for end-of-season Cortanha grading. */
+export interface CortanhaBaselineGm {
+  slug: string
+  displayName: string
+  finish: number
+  winPct: number
+  pfPerWeek: number
+  draftGrade: string
+  draftSurplus: number
+}
+
+export const fantasyCortanhaBaselines = pgTable('fantasy_cortanha_baselines', {
+  season: integer('season').primaryKey(),
+  label: text('label').notNull().default('opening-day'),
+  snappedAt: timestamp('snapped_at').defaultNow().notNull(),
+  projectionCount: integer('projection_count').notNull().default(0),
+  rows: jsonb('rows').$type<CortanhaBaselineGm[]>().notNull(),
+  note: text('note'),
+})

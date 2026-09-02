@@ -2051,18 +2051,42 @@ export function fantasyReportCardPage(
   clerkKey?: string
 ): string {
   const delta = (value: number) => (value === 0 ? '0' : value > 0 ? `+${value}` : String(value))
+  const baselineNote =
+    data.baselineSource === 'frozen' && data.snappedAt
+      ? `Opening-day baseline locked ${new Date(data.snappedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}.`
+      : data.baselineSource === 'reconstructed'
+        ? 'No opening-day freeze existed for this season — projections were reconstructed from APIs that still publish that year’s numbers (best-effort, not true point-in-time).'
+        : 'Using live projections (not frozen yet). Freeze opening day so end-of-season grading stays fair.'
+  const statusLine = data.seasonComplete
+    ? 'Draft-only projected all-play standings and draft grades versus how the season actually finished. Lower finish is better. Negative Δ means the GM finished ahead of the opening-day projection.'
+    : 'Season still in progress — showing the locked (or live) projected finishes. Actuals and Cortanha’s letter fill in after the season.'
   const rows = data.rows
-    .map(
-      (row) =>
-        `<div class="fx-ladder-row" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px" onclick="location.href='/fantasy/manager/${encodeURIComponent(row.slug)}?season=${data.season}'"><span class="fx-rank ${row.actualFinish <= 3 ? 'fx-rank-top' : ''}">${row.actualFinish}</span><div style="min-width:0"><div style="font-weight:700;font-size:14px">${escapeHtml(row.displayName)}</div><div class="fx-muted" style="font-size:10px">${row.beatProjectedFinish ? 'Beat projected finish' : 'Missed projected finish'}${row.beatProjectedGrade ? ' · beat grade' : ''}</div></div><span class="fx-number" style="text-align:right">${row.projectedFinish}</span><span class="fx-number" style="text-align:right;font-weight:700">${row.actualFinish}</span><span class="fx-number" style="text-align:right;color:${row.finishDelta < 0 ? '#3fe1a8' : row.finishDelta > 0 ? '#ff7a8a' : '#8b95a8'}">${delta(row.finishDelta)}</span><span style="text-align:center">${gradePill(row.projectedGrade, true)}</span><span style="text-align:center">${gradePill(row.actualGrade)}</span><span class="fx-number" style="text-align:right;color:#8b95a8">${row.projectedSurplus >= 0 ? '+' : ''}${fmt(row.projectedSurplus, 0)}</span><span class="fx-number" style="text-align:right;color:${row.actualSurplus >= row.projectedSurplus ? '#3fe1a8' : '#ff7a8a'}">${row.actualSurplus >= 0 ? '+' : ''}${fmt(row.actualSurplus, 0)}</span><span class="fx-number" style="text-align:right">${fmt(row.actualPfPerWeek)}</span></div>`
-    )
+    .map((row) => {
+      const actFinish = data.seasonComplete ? String(row.actualFinish) : '—'
+      const actGrade = data.seasonComplete ? gradePill(row.actualGrade) : '—'
+      const actSurplus = data.seasonComplete
+        ? `${row.actualSurplus >= 0 ? '+' : ''}${fmt(row.actualSurplus, 0)}`
+        : '—'
+      const actPf = data.seasonComplete ? fmt(row.actualPfPerWeek) : '—'
+      const deltaCell = data.seasonComplete
+        ? `<span class="fx-number" style="text-align:right;color:${row.finishDelta < 0 ? '#3fe1a8' : row.finishDelta > 0 ? '#ff7a8a' : '#8b95a8'}">${delta(row.finishDelta)}</span>`
+        : '<span class="fx-number" style="text-align:right;color:#8b95a8">—</span>'
+      const sub = data.seasonComplete
+        ? `${row.beatProjectedFinish ? 'Beat projected finish' : 'Missed projected finish'}${row.beatProjectedGrade ? ' · beat grade' : ''}`
+        : `Projected ${row.projectedGrade}`
+      return `<div class="fx-ladder-row" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px" onclick="location.href='/fantasy/manager/${encodeURIComponent(row.slug)}?season=${data.season}'"><span class="fx-rank ${data.seasonComplete && row.actualFinish <= 3 ? 'fx-rank-top' : row.projectedFinish <= 3 ? 'fx-rank-top' : ''}">${data.seasonComplete ? row.actualFinish : row.projectedFinish}</span><div style="min-width:0"><div style="font-weight:700;font-size:14px">${escapeHtml(row.displayName)}</div><div class="fx-muted" style="font-size:10px">${sub}</div></div><span class="fx-number" style="text-align:right">${row.projectedFinish}</span><span class="fx-number" style="text-align:right;font-weight:700">${actFinish}</span>${deltaCell}<span style="text-align:center">${gradePill(row.projectedGrade, true)}</span><span style="text-align:center">${actGrade}</span><span class="fx-number" style="text-align:right;color:#8b95a8">${row.projectedSurplus >= 0 ? '+' : ''}${fmt(row.projectedSurplus, 0)}</span><span class="fx-number" style="text-align:right;color:${data.seasonComplete && row.actualSurplus >= row.projectedSurplus ? '#3fe1a8' : '#ff7a8a'}">${actSurplus}</span><span class="fx-number" style="text-align:right">${actPf}</span></div>`
+    })
     .join('')
-  const body = `${nav('grade', seasons, data.season)}<main class="fx-main"><div><div class="fx-eyebrow" style="color:#7c6bff;margin-bottom:6px">OPENING DAY VS ACTUAL</div><h2 class="fx-h1">Grade Cortanha · ${data.season}</h2><p class="fx-section-copy">Draft-only projected all-play standings and draft grades (blended weekly projections × UCSB scoring) versus how the season actually finished. Lower finish is better. Negative Δ means the GM finished ahead of the opening-day projection.</p></div><section style="display:flex;gap:12px;flex-wrap:wrap">${[
-    ['CORTANHA', data.cortanhaGrade, '#7c6bff'],
-    ['AVG FINISH ERROR', fmt(data.meanAbsFinishError), '#f4f7fb'],
-    ['WITHIN 2 SPOTS', `${data.withinTwoSpots}/${data.teamCount}`, '#3fe1a8'],
-    ['BEAT PROJ FINISH', String(data.beatFinishCount), '#5aa9ff'],
-    ['BEAT PROJ GRADE', String(data.beatGradeCount), '#f0b429'],
+  const body = `${nav('grade', seasons, data.season)}<main class="fx-main"><div><div class="fx-eyebrow" style="color:#7c6bff;margin-bottom:6px">${data.baselineSource === 'frozen' ? 'FROZEN BASELINE' : data.baselineSource === 'reconstructed' ? 'RECONSTRUCTED' : 'LIVE PROJECTIONS'}</div><h2 class="fx-h1">Grade Cortanha · ${data.season}</h2><p class="fx-section-copy">${statusLine}</p><p class="fx-muted" style="font-size:12px;margin-top:8px">${baselineNote}</p></div><section style="display:flex;gap:12px;flex-wrap:wrap">${[
+    ['CORTANHA', data.seasonComplete ? data.cortanhaGrade : '…', '#7c6bff'],
+    ['AVG FINISH ERROR', data.seasonComplete ? fmt(data.meanAbsFinishError) : '—', '#f4f7fb'],
+    [
+      'WITHIN 2 SPOTS',
+      data.seasonComplete ? `${data.withinTwoSpots}/${data.teamCount}` : '—',
+      '#3fe1a8',
+    ],
+    ['BEAT PROJ FINISH', data.seasonComplete ? String(data.beatFinishCount) : '—', '#5aa9ff'],
+    ['BEAT PROJ GRADE', data.seasonComplete ? String(data.beatGradeCount) : '—', '#f0b429'],
   ]
     .map(
       ([label, value, color]) =>
@@ -2070,7 +2094,7 @@ export function fantasyReportCardPage(
     )
     .join(
       ''
-    )}</section><section class="fx-card fx-ladder"><div class="fx-ladder-head" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px"><span>#</span><span>GM</span><span style="text-align:right">PROJ</span><span style="text-align:right">ACT</span><span style="text-align:right">Δ</span><span style="text-align:center">PROJ G</span><span style="text-align:center">ACT G</span><span style="text-align:right">PROJ +/−</span><span style="text-align:right">ACT +/−</span><span style="text-align:right">PF/WK</span></div>${rows || '<div class="fx-panel fx-muted">Need historical projections for this season before Cortanha can be graded.</div>'}</section><p class="fx-muted" style="font-size:12px">Cortanha’s letter is from mean absolute finish error: ≤1.5 A, ≤2.5 B, ≤3.5 C, ≤4.5 D, else F. Projections use draft rosters only — no later waivers or trades.</p></main>${fxFooter()}`
+    )}</section><section class="fx-card fx-ladder"><div class="fx-ladder-head" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px"><span>#</span><span>GM</span><span style="text-align:right">PROJ</span><span style="text-align:right">ACT</span><span style="text-align:right">Δ</span><span style="text-align:center">PROJ G</span><span style="text-align:center">ACT G</span><span style="text-align:right">PROJ +/−</span><span style="text-align:right">ACT +/−</span><span style="text-align:right">PF/WK</span></div>${rows || '<div class="fx-panel fx-muted">Need projections for this season before Cortanha can be graded.</div>'}</section><p class="fx-muted" style="font-size:12px">Cortanha’s letter is from mean absolute finish error: ≤1.5 A, ≤2.5 B, ≤3.5 C, ≤4.5 D, else F. Projections use draft rosters only — no later waivers or trades.</p></main>${fxFooter()}`
   return fantasyLayout(body, `UCSB Legacy — Grade Cortanha ${data.season}`, clerkKey)
 }
 

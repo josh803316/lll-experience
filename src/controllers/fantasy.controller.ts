@@ -98,6 +98,9 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
       ({
         season: year,
         projectionsLoaded: 0,
+        baselineSource: 'live' as const,
+        snappedAt: null,
+        seasonComplete: false,
         cortanhaGrade: '—',
         meanAbsFinishError: 0,
         withinTwoSpots: 0,

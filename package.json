@@ -15,6 +15,7 @@
     "db:migrate": "bun run src/db/migrate.ts",
     "db:seed": "bun run src/db/seed.ts",
     "sleeper:ingest": "bun run scripts/ingest-sleeper.ts",
+    "cortanha:snapshot": "bun run scripts/freeze-cortanha-baseline.ts",
     "test:smoke": "playwright test tests/smoke.ts --reporter=line --retries=2"
   },
   "dependencies": {
