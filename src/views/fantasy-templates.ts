@@ -1,4 +1,5 @@
 import { CANONICAL_MANAGERS } from '../config/fantasy-managers.js'
+import type { CommissionerRankingData } from '../services/commissioner-ranking.js'
 import type {
   DraftPickRow,
   FantasyCohortRow,
@@ -803,7 +804,8 @@ function nav(active: string, seasons: SeasonSummary[], year?: number): string {
         ${tab(y ? `/fantasy/season/${y}` : '/fantasy', 'season', 'Season')}
         ${tab(y ? `/fantasy/manager/${CANONICAL_MANAGERS[0]?.slug ?? 'josh'}${y ? `?season=${y}` : ''}` : '/fantasy', 'gm', 'GM Lab')}
         ${tab('/fantasy/records', 'room', 'Trophy Room')}
-        ${tab(y && y < new Date().getFullYear() ? `/fantasy/reportcard/${y}` : '/fantasy/reportcard/2025', 'grade', 'Grade Cortanha')}
+        ${tab(y ? `/fantasy/reportcard/${y}` : `/fantasy/reportcard/${new Date().getFullYear() - 1}`, 'grade', 'Grade Cortanha')}
+        ${tab(y ? `/fantasy/commissioner/${y}` : '/fantasy/commissioner/2026', 'commissioner', 'Commissioner')}
       </nav>
       <div class="header-rule"></div>
     </header>`
@@ -2096,6 +2098,63 @@ export function fantasyReportCardPage(
       ''
     )}</section><section class="fx-card fx-ladder"><div class="fx-ladder-head" style="grid-template-columns:36px 1fr 70px 70px 56px 64px 64px 78px 78px 72px"><span>#</span><span>GM</span><span style="text-align:right">PROJ</span><span style="text-align:right">ACT</span><span style="text-align:right">Δ</span><span style="text-align:center">PROJ G</span><span style="text-align:center">ACT G</span><span style="text-align:right">PROJ +/−</span><span style="text-align:right">ACT +/−</span><span style="text-align:right">PF/WK</span></div>${rows || '<div class="fx-panel fx-muted">Need projections for this season before Cortanha can be graded.</div>'}</section><p class="fx-muted" style="font-size:12px">Cortanha’s letter is from mean absolute finish error: ≤1.5 A, ≤2.5 B, ≤3.5 C, ≤4.5 D, else F. Projections use draft rosters only — no later waivers or trades.</p></main>${fxFooter()}`
   return fantasyLayout(body, `UCSB Legacy — Grade Cortanha ${data.season}`, clerkKey)
+}
+
+function commissionerRankCell(rank: number | null, position: string): string {
+  if (rank == null) return '<span class="fx-muted">—</span>'
+  const tier = rank <= 12 ? '#3fe1a8' : rank <= 24 ? '#5aa9ff' : rank <= 36 ? '#f0b429' : '#8b95a8'
+  return `<span class="fx-number" style="color:${tier}" title="${escapeHtml(position)} #${rank} in Tim's board">#${rank}</span>`
+}
+
+export function fantasyCommissionerPage(
+  data: CommissionerRankingData,
+  seasons: SeasonSummary[],
+  clerkKey?: string
+): string {
+  const positions = ['QB', 'RB', 'WR', 'TE', 'DEF'] as const
+  const ladderRows = data.gms
+    .map((gm, index) => {
+      const posCells = positions
+        .map((pos) => {
+          const bucket = gm.byPosition[pos]
+          if (!bucket || bucket.picks === 0) {
+            return '<span class="fx-muted" style="font-size:10px">—</span>'
+          }
+          return `<span class="fx-number" style="font-size:11px" title="${bucket.picks} ${pos} · ${fmt(bucket.premium, 0)} prem">#${fmt(bucket.avgRank, 1)}</span>`
+        })
+        .map((cell) => `<span style="text-align:center">${cell}</span>`)
+        .join('')
+      return `<div class="fx-ladder-row" style="grid-template-columns:36px 1fr 88px 88px 72px 64px 52px 52px 52px 52px 52px" onclick="location.href='/fantasy/manager/${encodeURIComponent(gm.slug)}?season=${data.season}'"><span class="fx-rank ${index < 3 ? 'fx-rank-top' : ''}">${index + 1}</span><div style="min-width:0"><div style="font-weight:700;font-size:14px">${escapeHtml(gm.displayName)}</div><div class="fx-muted" style="font-size:10px">${gm.matchedPicks}/${gm.draftPicks} matched · avg pick #${fmt(gm.avgRank, 1)}</div></div><span class="fx-number" style="text-align:right;font-weight:700;color:#7c6bff">${fmt(gm.totalPremium, 0)}</span><span class="fx-number" style="text-align:right">${fmt(gm.totalProjectedPoints, 0)}</span><span style="text-align:center">${gradePill(gm.commissionerGrade)}</span>${posCells}</div>`
+    })
+    .join('')
+
+  const pickRows = data.gms
+    .flatMap((gm) =>
+      gm.picks.map(
+        (pick) =>
+          `<div class="fx-ladder-row" style="grid-template-columns:1fr 88px 56px 56px 72px 72px" onclick="location.href='/fantasy/manager/${encodeURIComponent(gm.slug)}?season=${data.season}'"><div style="min-width:0"><div style="font-weight:700;font-size:13px">${escapeHtml(gm.displayName)}</div><div class="fx-muted" style="font-size:10px">${escapeHtml(pick.playerName)}</div></div><span style="text-align:center">${posChip(pick.position)}</span><span style="text-align:center">${commissionerRankCell(pick.commissionerRank, pick.position)}</span><span class="fx-number" style="text-align:right">$${pick.amount}</span><span class="fx-number" style="text-align:right;color:${(pick.premium ?? 0) >= 0 ? '#3fe1a8' : '#ff7a8a'}">${pick.premium == null ? '—' : `${pick.premium >= 0 ? '+' : ''}${fmt(pick.premium, 1)}`}</span><span class="fx-number" style="text-align:right;color:#8b95a8">${pick.projectedPoints == null ? '—' : fmt(pick.projectedPoints, 0)}</span></div>`
+      )
+    )
+    .join('')
+
+  const imported = new Date(data.importedAt).toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+  const body = `${nav('commissioner', seasons, data.season)}<main class="fx-main"><div><div class="fx-eyebrow" style="color:#f0b429;margin-bottom:6px">${escapeHtml(data.commissionerName.toUpperCase())}'S BOARD</div><h2 class="fx-h1">Commissioner Ranking · ${data.season}</h2><p class="fx-section-copy">Draft value graded against ${escapeHtml(data.commissionerName)}'s custom projections and premium scores (${data.rankedPlayerCount} ranked players). Premium is projected value above replacement in his model — higher total premium means more draft capital captured on his board. Lower avg rank = earlier on his positional lists.</p><p class="fx-muted" style="font-size:12px;margin-top:8px">Imported ${imported}${data.sourceFile ? ` from ${escapeHtml(data.sourceFile)}` : ''}.</p></div><section style="display:flex;gap:12px;flex-wrap:wrap">${[
+    ['LEADER', data.gms[0]?.displayName ?? '—', '#3fe1a8'],
+    ['TOP PREMIUM', data.gms[0] ? fmt(data.gms[0].totalPremium, 0) : '—', '#7c6bff'],
+    ['TEAMS', String(data.gms.length), '#f4f7fb'],
+    ['RANKED POOL', String(data.rankedPlayerCount), '#5aa9ff'],
+  ]
+    .map(
+      ([label, value, color]) =>
+        `<div class="fx-card" style="padding:14px 16px;min-width:120px"><div class="fx-label fx-muted" style="font-size:9px">${label}</div><div class="fx-hero-value" style="font-size:28px;color:${color}">${escapeHtml(String(value))}</div></div>`
+    )
+    .join(
+      ''
+    )}</section><section class="fx-card fx-ladder"><div class="fx-ladder-head" style="grid-template-columns:36px 1fr 88px 88px 72px 64px 52px 52px 52px 52px 52px"><span>#</span><span>GM</span><span style="text-align:right">PREMIUM</span><span style="text-align:right">PROJ PTS</span><span style="text-align:center">GRADE</span><span style="text-align:center">QB</span><span style="text-align:center">RB</span><span style="text-align:center">WR</span><span style="text-align:center">TE</span><span style="text-align:center">DEF</span></div>${ladderRows}</section><section class="fx-card fx-ladder" style="margin-top:18px"><div class="fx-ladder-head" style="grid-template-columns:1fr 88px 56px 56px 72px 72px"><span>GM / Player</span><span style="text-align:center">Pos</span><span style="text-align:center">Tim #</span><span style="text-align:right">$</span><span style="text-align:right">Prem</span><span style="text-align:right">Proj</span></div>${pickRows}</section><p class="fx-muted" style="font-size:12px">Pos columns show average ${escapeHtml(data.commissionerName)} rank for that GM's picks. Unmatched players (rookies or off-board) count toward pick totals but not premium. Re-import with <code>bun run commissioner:ingest</code> when Tim updates his sheet.</p></main>${fxFooter()}`
+  return fantasyLayout(body, `UCSB Legacy — Commissioner ${data.season}`, clerkKey)
 }
 
 export function fantasyPlayerNotFound(id: string, clerkKey?: string): string {

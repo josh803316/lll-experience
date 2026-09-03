@@ -1,0 +1,1774 @@
+{
+  "season": 2026,
+  "commissioner": "tim",
+  "commissionerName": "Tim",
+  "label": "Commissioner rankings",
+  "sourceFile": "FF rankings 2026.xlsx",
+  "importedAt": "2026-09-03T15:35:59.007Z",
+  "players": [
+    {
+      "name": "Josh Allen",
+      "position": "QB",
+      "team": "BUF",
+      "rank": 1,
+      "projectedPoints": 415.82000000000005,
+      "premium": 55.68961038961041,
+      "norm": "josh allen"
+    },
+    {
+      "name": "Joe Burrow",
+      "position": "QB",
+      "team": "CIN",
+      "rank": 2,
+      "projectedPoints": 376.5,
+      "premium": 18.90844155844156,
+      "norm": "joe burrow"
+    },
+    {
+      "name": "Drake Maye",
+      "position": "QB",
+      "team": "NE",
+      "rank": 3,
+      "projectedPoints": 364,
+      "premium": 16.06753246753247,
+      "norm": "drake maye"
+    },
+    {
+      "name": "Lamar Jackson",
+      "position": "QB",
+      "team": "BAL",
+      "rank": 4,
+      "projectedPoints": 360,
+      "premium": 15.15844155844156,
+      "norm": "lamar jackson"
+    },
+    {
+      "name": "Caleb Williams",
+      "position": "QB",
+      "team": "CHI",
+      "rank": 5,
+      "projectedPoints": 354.44,
+      "premium": 13.894805194805194,
+      "norm": "caleb williams"
+    },
+    {
+      "name": "Matthew Stafford",
+      "position": "QB",
+      "team": "LAR",
+      "rank": 6,
+      "projectedPoints": 357.8,
+      "premium": 14.658441558441561,
+      "norm": "matthew stafford"
+    },
+    {
+      "name": "Dak Prescott",
+      "position": "QB",
+      "team": "DAL",
+      "rank": 7,
+      "projectedPoints": 351,
+      "premium": 13.112987012987013,
+      "norm": "dak prescott"
+    },
+    {
+      "name": "Jared Goff",
+      "position": "QB",
+      "team": "DET",
+      "rank": 8,
+      "projectedPoints": 350.08,
+      "premium": 12.9038961038961,
+      "norm": "jared goff"
+    },
+    {
+      "name": "Jalen Hurts",
+      "position": "QB",
+      "team": "PHI",
+      "rank": 9,
+      "projectedPoints": 350,
+      "premium": 12.885714285714286,
+      "norm": "jalen hurts"
+    },
+    {
+      "name": "Patrick Mahomes",
+      "position": "QB",
+      "team": "KC",
+      "rank": 10,
+      "projectedPoints": 348.4,
+      "premium": 12.522077922077917,
+      "norm": "patrick mahomes"
+    },
+    {
+      "name": "Trevor Lawrence",
+      "position": "QB",
+      "team": "JAC",
+      "rank": 11,
+      "projectedPoints": 343.8,
+      "premium": 11.47662337662338,
+      "norm": "trevor lawrence"
+    },
+    {
+      "name": "Brock Purdy",
+      "position": "QB",
+      "team": "SF",
+      "rank": 12,
+      "projectedPoints": 341.36,
+      "premium": 10.922077922077927,
+      "norm": "brock purdy"
+    },
+    {
+      "name": "Jayden Daniels",
+      "position": "QB",
+      "team": "WAS",
+      "rank": 13,
+      "projectedPoints": 336.96000000000004,
+      "premium": 9.922077922077932,
+      "norm": "jayden daniels"
+    },
+    {
+      "name": "Baker Mayfield",
+      "position": "QB",
+      "team": "TB",
+      "rank": 14,
+      "projectedPoints": 333.12,
+      "premium": 9.049350649350652,
+      "norm": "baker mayfield"
+    },
+    {
+      "name": "Sam Darnold",
+      "position": "QB",
+      "team": "SEA",
+      "rank": 15,
+      "projectedPoints": 331.65999999999997,
+      "premium": 8.717532467532461,
+      "norm": "sam darnold"
+    },
+    {
+      "name": "Justin Herbert",
+      "position": "QB",
+      "team": "LAC",
+      "rank": 16,
+      "projectedPoints": 330.88,
+      "premium": 8.54025974025974,
+      "norm": "justin herbert"
+    },
+    {
+      "name": "Kyler Murray",
+      "position": "QB",
+      "team": "MIN",
+      "rank": 17,
+      "projectedPoints": 330.08000000000004,
+      "premium": 1,
+      "norm": "kyler murray"
+    },
+    {
+      "name": "Bo Nix",
+      "position": "QB",
+      "team": "DEN",
+      "rank": 18,
+      "projectedPoints": 329.28,
+      "premium": 1,
+      "norm": "bo nix"
+    },
+    {
+      "name": "Tyler Shough",
+      "position": "QB",
+      "team": "NO",
+      "rank": 19,
+      "projectedPoints": 325.18,
+      "premium": 1,
+      "norm": "tyler shough"
+    },
+    {
+      "name": "Jaxson Dart",
+      "position": "QB",
+      "team": "NYG",
+      "rank": 20,
+      "projectedPoints": 315.1,
+      "premium": 1,
+      "norm": "jaxson dart"
+    },
+    {
+      "name": "Aaron Rodgers",
+      "position": "QB",
+      "team": "PIT",
+      "rank": 21,
+      "projectedPoints": 310.8,
+      "premium": 1,
+      "norm": "aaron rodgers"
+    },
+    {
+      "name": "Jordan Love",
+      "position": "QB",
+      "team": "GB",
+      "rank": 22,
+      "projectedPoints": 310.7,
+      "premium": 1,
+      "norm": "jordan love"
+    },
+    {
+      "name": "Daniel Jones",
+      "position": "QB",
+      "team": "IND",
+      "rank": 23,
+      "projectedPoints": 298,
+      "premium": 1.067532467532469,
+      "norm": "daniel jones"
+    },
+    {
+      "name": "Malik Willis",
+      "position": "QB",
+      "team": "MIA",
+      "rank": 24,
+      "projectedPoints": 290,
+      "premium": 1,
+      "norm": "malik willis"
+    },
+    {
+      "name": "Bryce Young",
+      "position": "QB",
+      "team": "CAR",
+      "rank": 25,
+      "projectedPoints": 286.08000000000004,
+      "premium": 1,
+      "norm": "bryce young"
+    },
+    {
+      "name": "C.J. Stroud",
+      "position": "QB",
+      "team": "HOU",
+      "rank": 26,
+      "projectedPoints": 283,
+      "premium": 1,
+      "norm": "cj stroud"
+    },
+    {
+      "name": "Cam Ward",
+      "position": "QB",
+      "team": "TEN",
+      "rank": 27,
+      "projectedPoints": 274.53999999999996,
+      "premium": 1,
+      "norm": "cam ward"
+    },
+    {
+      "name": "Geno Smith",
+      "position": "QB",
+      "team": "NYJ",
+      "rank": 28,
+      "projectedPoints": 265.18,
+      "premium": 1,
+      "norm": "geno smith"
+    },
+    {
+      "name": "Jacoby Brissett",
+      "position": "QB",
+      "team": "ARI",
+      "rank": 29,
+      "projectedPoints": 263.5,
+      "premium": 1,
+      "norm": "jacoby brissett"
+    },
+    {
+      "name": "Tua Tagovailoa",
+      "position": "QB",
+      "team": "ATL",
+      "rank": 30,
+      "projectedPoints": 235.39999999999998,
+      "premium": 1,
+      "norm": "tua tagovailoa"
+    },
+    {
+      "name": "Fernando Mendoza",
+      "position": "QB",
+      "team": "LV",
+      "rank": 31,
+      "projectedPoints": 227.7,
+      "premium": 1,
+      "norm": "fernando mendoza"
+    },
+    {
+      "name": "Deshaun Watson",
+      "position": "QB",
+      "team": "CLE",
+      "rank": 32,
+      "projectedPoints": 205.76,
+      "premium": 1,
+      "norm": "deshaun watson"
+    },
+    {
+      "name": "Bijan Robinson",
+      "position": "RB",
+      "team": "ATL",
+      "rank": 1,
+      "projectedPoints": 326,
+      "premium": 76.53571428571429,
+      "norm": "bijan robinson"
+    },
+    {
+      "name": "Jahmyr Gibbs",
+      "position": "RB",
+      "team": "DET",
+      "rank": 2,
+      "projectedPoints": 324.4,
+      "premium": 75.73571428571428,
+      "norm": "jahmyr gibbs"
+    },
+    {
+      "name": "Christian McCaffrey",
+      "position": "RB",
+      "team": "SF",
+      "rank": 3,
+      "projectedPoints": 290,
+      "premium": 58.53571428571429,
+      "norm": "christian mccaffrey"
+    },
+    {
+      "name": "James Cook",
+      "position": "RB",
+      "team": "BUF",
+      "rank": 4,
+      "projectedPoints": 270.7,
+      "premium": 48.885714285714286,
+      "norm": "james cook"
+    },
+    {
+      "name": "Jonathan Taylor",
+      "position": "RB",
+      "team": "IND",
+      "rank": 5,
+      "projectedPoints": 259.5,
+      "premium": 43.28571428571429,
+      "norm": "jonathan taylor"
+    },
+    {
+      "name": "Omarion Hampton",
+      "position": "RB",
+      "team": "LAC",
+      "rank": 6,
+      "projectedPoints": 259,
+      "premium": 43.03571428571429,
+      "norm": "omarion hampton"
+    },
+    {
+      "name": "De'Von Achane",
+      "position": "RB",
+      "team": "MIA",
+      "rank": 7,
+      "projectedPoints": 255,
+      "premium": 41.03571428571429,
+      "norm": "de'von achane"
+    },
+    {
+      "name": "Kyren Williams",
+      "position": "RB",
+      "team": "LAR",
+      "rank": 8,
+      "projectedPoints": 245,
+      "premium": 36.03571428571429,
+      "norm": "kyren williams"
+    },
+    {
+      "name": "Chase Brown",
+      "position": "RB",
+      "team": "CIN",
+      "rank": 9,
+      "projectedPoints": 238.6,
+      "premium": 32.83571428571429,
+      "norm": "chase brown"
+    },
+    {
+      "name": "Kenneth Walker III",
+      "position": "RB",
+      "team": "KC",
+      "rank": 10,
+      "projectedPoints": 239,
+      "premium": 33.03571428571429,
+      "norm": "kenneth walker"
+    },
+    {
+      "name": "Bucky Irving",
+      "position": "RB",
+      "team": "TB",
+      "rank": 11,
+      "projectedPoints": 230.3,
+      "premium": 28.685714285714297,
+      "norm": "bucky irving"
+    },
+    {
+      "name": "D'Andre Swift",
+      "position": "RB",
+      "team": "CHI",
+      "rank": 12,
+      "projectedPoints": 228.2,
+      "premium": 27.635714285714286,
+      "norm": "d'andre swift"
+    },
+    {
+      "name": "Breece Hall",
+      "position": "RB",
+      "team": "NYJ",
+      "rank": 13,
+      "projectedPoints": 226.4,
+      "premium": 26.735714285714295,
+      "norm": "breece hall"
+    },
+    {
+      "name": "Josh Jacobs",
+      "position": "RB",
+      "team": "GB",
+      "rank": 14,
+      "projectedPoints": 223.9,
+      "premium": 25.485714285714295,
+      "norm": "josh jacobs"
+    },
+    {
+      "name": "Derrick Henry",
+      "position": "RB",
+      "team": "BAL",
+      "rank": 15,
+      "projectedPoints": 220.1,
+      "premium": 23.58571428571429,
+      "norm": "derrick henry"
+    },
+    {
+      "name": "Jeremiyah Love",
+      "position": "RB",
+      "team": "ARI",
+      "rank": 16,
+      "projectedPoints": 217.4,
+      "premium": 22.235714285714295,
+      "norm": "jeremiyah love"
+    },
+    {
+      "name": "Quinshon Judkins",
+      "position": "RB",
+      "team": "CLE",
+      "rank": 17,
+      "projectedPoints": 214.3,
+      "premium": 20.685714285714297,
+      "norm": "quinshon judkins"
+    },
+    {
+      "name": "Travis Etienne",
+      "position": "RB",
+      "team": "NO",
+      "rank": 18,
+      "projectedPoints": 213.8,
+      "premium": 20.435714285714297,
+      "norm": "travis etienne"
+    },
+    {
+      "name": "Bhayshul Tuten",
+      "position": "RB",
+      "team": "JAC",
+      "rank": 19,
+      "projectedPoints": 213,
+      "premium": 20.035714285714292,
+      "norm": "bhayshul tuten"
+    },
+    {
+      "name": "Javonte Williams",
+      "position": "RB",
+      "team": "DAL",
+      "rank": 20,
+      "projectedPoints": 212,
+      "premium": 19.535714285714292,
+      "norm": "javonte williams"
+    },
+    {
+      "name": "Saquon Barkley",
+      "position": "RB",
+      "team": "PHI",
+      "rank": 21,
+      "projectedPoints": 207,
+      "premium": 17.035714285714292,
+      "norm": "saquon barkley"
+    },
+    {
+      "name": "Jaylen Warren",
+      "position": "RB",
+      "team": "PIT",
+      "rank": 22,
+      "projectedPoints": 202.7,
+      "premium": 14.885714285714286,
+      "norm": "jaylen warren"
+    },
+    {
+      "name": "Jadarian Price",
+      "position": "RB",
+      "team": "SEA",
+      "rank": 23,
+      "projectedPoints": 198,
+      "premium": 12.535714285714292,
+      "norm": "jadarian price"
+    },
+    {
+      "name": "Ashton Jeanty",
+      "position": "RB",
+      "team": "LV",
+      "rank": 24,
+      "projectedPoints": 195.6,
+      "premium": 11.335714285714289,
+      "norm": "ashton jeanty"
+    },
+    {
+      "name": "TreVeyon Henderson",
+      "position": "RB",
+      "team": "NE",
+      "rank": 25,
+      "projectedPoints": 190,
+      "premium": 8.535714285714292,
+      "norm": "treveyon henderson"
+    },
+    {
+      "name": "RJ Harvey",
+      "position": "RB",
+      "team": "DEN",
+      "rank": 26,
+      "projectedPoints": 184.2,
+      "premium": 5.635714285714286,
+      "norm": "rj harvey"
+    },
+    {
+      "name": "David Montgomery",
+      "position": "RB",
+      "team": "HOU",
+      "rank": 27,
+      "projectedPoints": 180.1,
+      "premium": 3.585714285714289,
+      "norm": "david montgomery"
+    },
+    {
+      "name": "Rhamondre Stevenson",
+      "position": "RB",
+      "team": "NE",
+      "rank": 28,
+      "projectedPoints": 177.60000000000002,
+      "premium": 2.335714285714303,
+      "norm": "rhamondre stevenson"
+    },
+    {
+      "name": "Tony Pollard",
+      "position": "RB",
+      "team": "TEN",
+      "rank": 29,
+      "projectedPoints": 172.5,
+      "premium": 1,
+      "norm": "tony pollard"
+    },
+    {
+      "name": "Cam Skattebo",
+      "position": "RB",
+      "team": "NYG",
+      "rank": 30,
+      "projectedPoints": 171.8,
+      "premium": 1,
+      "norm": "cam skattebo"
+    },
+    {
+      "name": "Aaron Jones",
+      "position": "RB",
+      "team": "MIN",
+      "rank": 31,
+      "projectedPoints": 163,
+      "premium": 1,
+      "norm": "aaron jones"
+    },
+    {
+      "name": "Jonathon Brooks",
+      "position": "RB",
+      "team": "CAR",
+      "rank": 32,
+      "projectedPoints": 161.3,
+      "premium": 1,
+      "norm": "jonathon brooks"
+    },
+    {
+      "name": "Kyle Monangai",
+      "position": "RB",
+      "team": "CHI",
+      "rank": 33,
+      "projectedPoints": 159,
+      "premium": 1,
+      "norm": "kyle monangai"
+    },
+    {
+      "name": "Chuba Hubbard",
+      "position": "RB",
+      "team": "CAR",
+      "rank": 34,
+      "projectedPoints": 154.9,
+      "premium": 1,
+      "norm": "chuba hubbard"
+    },
+    {
+      "name": "Kenneth Gainwell",
+      "position": "RB",
+      "team": "TB",
+      "rank": 35,
+      "projectedPoints": 149.3,
+      "premium": 1,
+      "norm": "kenneth gainwell"
+    },
+    {
+      "name": "Tyjae Spears",
+      "position": "RB",
+      "team": "TEN",
+      "rank": 36,
+      "projectedPoints": 147.60000000000002,
+      "premium": 1,
+      "norm": "tyjae spears"
+    },
+    {
+      "name": "Jordan Mason",
+      "position": "RB",
+      "team": "MIN",
+      "rank": 37,
+      "projectedPoints": 146.6,
+      "premium": 1,
+      "norm": "jordan mason"
+    },
+    {
+      "name": "J.K. Dobbins",
+      "position": "RB",
+      "team": "DEN",
+      "rank": 38,
+      "projectedPoints": 144.7,
+      "premium": 1,
+      "norm": "jk dobbins"
+    },
+    {
+      "name": "Rachaad White",
+      "position": "RB",
+      "team": "WAS",
+      "rank": 39,
+      "projectedPoints": 142.6,
+      "premium": 1,
+      "norm": "rachaad white"
+    },
+    {
+      "name": "Tyrone Tracy Jr.",
+      "position": "RB",
+      "team": "NYG",
+      "rank": 40,
+      "projectedPoints": 140.9,
+      "premium": 1,
+      "norm": "tyrone tracy"
+    },
+    {
+      "name": "Mike Washington Jr.",
+      "position": "RB",
+      "team": "LV",
+      "rank": 41,
+      "projectedPoints": 140.9,
+      "premium": 1,
+      "norm": "mike washington"
+    },
+    {
+      "name": "Dylan Sampson",
+      "position": "RB",
+      "team": "CLE",
+      "rank": 42,
+      "projectedPoints": 132.10000000000002,
+      "premium": 1,
+      "norm": "dylan sampson"
+    },
+    {
+      "name": "Jacory Croskey-Merritt",
+      "position": "RB",
+      "team": "WAS",
+      "rank": 43,
+      "projectedPoints": 131.9,
+      "premium": 0,
+      "norm": "jacory croskey-merritt"
+    },
+    {
+      "name": "Rico Dowdle",
+      "position": "RB",
+      "team": "PIT",
+      "rank": 44,
+      "projectedPoints": 129.3,
+      "premium": 1,
+      "norm": "rico dowdle"
+    },
+    {
+      "name": "Zach Charbonnet",
+      "position": "RB",
+      "team": "SEA",
+      "rank": 45,
+      "projectedPoints": 128.8,
+      "premium": 0,
+      "norm": "zach charbonnet"
+    },
+    {
+      "name": "Isiah Pacheco",
+      "position": "RB",
+      "team": "DET",
+      "rank": 46,
+      "projectedPoints": 127.19999999999999,
+      "premium": 0,
+      "norm": "isiah pacheco"
+    },
+    {
+      "name": "Jordan James",
+      "position": "RB",
+      "team": "SF",
+      "rank": 47,
+      "projectedPoints": 126.6,
+      "premium": 0,
+      "norm": "jordan james"
+    },
+    {
+      "name": "Alvin Kamara",
+      "position": "RB",
+      "team": "NO",
+      "rank": 48,
+      "projectedPoints": 126.19999999999999,
+      "premium": 0,
+      "norm": "alvin kamara"
+    },
+    {
+      "name": "Woody Marks",
+      "position": "RB",
+      "team": "HOU",
+      "rank": 49,
+      "projectedPoints": 124.7,
+      "premium": 0,
+      "norm": "woody marks"
+    },
+    {
+      "name": "James Conner",
+      "position": "RB",
+      "team": "ARI",
+      "rank": 50,
+      "projectedPoints": 123,
+      "premium": 0,
+      "norm": "james conner"
+    },
+    {
+      "name": "Blake Corum",
+      "position": "RB",
+      "team": "LAR",
+      "rank": 51,
+      "projectedPoints": 121.7,
+      "premium": 0,
+      "norm": "blake corum"
+    },
+    {
+      "name": "Ja'Marr Chase",
+      "position": "WR",
+      "team": "CIN",
+      "rank": 1,
+      "projectedPoints": 343,
+      "premium": 79.9388888888889,
+      "norm": "ja'marr chase"
+    },
+    {
+      "name": "Jaxon Smith-Njigba",
+      "position": "WR",
+      "team": "SEA",
+      "rank": 2,
+      "projectedPoints": 317,
+      "premium": 66.9388888888889,
+      "norm": "jaxon smith-njigba"
+    },
+    {
+      "name": "Amon-Ra St. Brown",
+      "position": "WR",
+      "team": "DET",
+      "rank": 3,
+      "projectedPoints": 300,
+      "premium": 58.4388888888889,
+      "norm": "amon-ra st brown"
+    },
+    {
+      "name": "Puka Nacua",
+      "position": "WR",
+      "team": "LAR",
+      "rank": 4,
+      "projectedPoints": 299,
+      "premium": 57.9388888888889,
+      "norm": "puka nacua"
+    },
+    {
+      "name": "CeeDee Lamb",
+      "position": "WR",
+      "team": "DAL",
+      "rank": 5,
+      "projectedPoints": 275,
+      "premium": 45.9388888888889,
+      "norm": "ceedee lamb"
+    },
+    {
+      "name": "Justin Jefferson",
+      "position": "WR",
+      "team": "MIN",
+      "rank": 6,
+      "projectedPoints": 275,
+      "premium": 45.9388888888889,
+      "norm": "justin jefferson"
+    },
+    {
+      "name": "Drake London",
+      "position": "WR",
+      "team": "ATL",
+      "rank": 7,
+      "projectedPoints": 269,
+      "premium": 42.9388888888889,
+      "norm": "drake london"
+    },
+    {
+      "name": "Zay Flowers",
+      "position": "WR",
+      "team": "BAL",
+      "rank": 8,
+      "projectedPoints": 268.4,
+      "premium": 42.638888888888886,
+      "norm": "zay flowers"
+    },
+    {
+      "name": "Tetairoa McMillan",
+      "position": "WR",
+      "team": "CAR",
+      "rank": 9,
+      "projectedPoints": 259.2,
+      "premium": 38.03888888888889,
+      "norm": "tetairoa mcmillan"
+    },
+    {
+      "name": "Garrett Wilson",
+      "position": "WR",
+      "team": "NYJ",
+      "rank": 10,
+      "projectedPoints": 259,
+      "premium": 37.9388888888889,
+      "norm": "garrett wilson"
+    },
+    {
+      "name": "A.J. Brown",
+      "position": "WR",
+      "team": "NE",
+      "rank": 11,
+      "projectedPoints": 254,
+      "premium": 35.4388888888889,
+      "norm": "aj brown"
+    },
+    {
+      "name": "DeVonta Smith",
+      "position": "WR",
+      "team": "PHI",
+      "rank": 12,
+      "projectedPoints": 253.3,
+      "premium": 35.0888888888889,
+      "norm": "devonta smith"
+    },
+    {
+      "name": "Chris Olave",
+      "position": "WR",
+      "team": "NO",
+      "rank": 13,
+      "projectedPoints": 251.2,
+      "premium": 34.03888888888889,
+      "norm": "chris olave"
+    },
+    {
+      "name": "George Pickens",
+      "position": "WR",
+      "team": "DAL",
+      "rank": 14,
+      "projectedPoints": 243,
+      "premium": 29.938888888888897,
+      "norm": "george pickens"
+    },
+    {
+      "name": "Nico Collins",
+      "position": "WR",
+      "team": "HOU",
+      "rank": 15,
+      "projectedPoints": 240,
+      "premium": 28.438888888888897,
+      "norm": "nico collins"
+    },
+    {
+      "name": "Malik Nabers",
+      "position": "WR",
+      "team": "NYG",
+      "rank": 16,
+      "projectedPoints": 231.9,
+      "premium": 24.3888888888889,
+      "norm": "malik nabers"
+    },
+    {
+      "name": "Emeka Egbuka",
+      "position": "WR",
+      "team": "TB",
+      "rank": 17,
+      "projectedPoints": 233,
+      "premium": 24.938888888888897,
+      "norm": "emeka egbuka"
+    },
+    {
+      "name": "Jaylen Waddle",
+      "position": "WR",
+      "team": "DEN",
+      "rank": 18,
+      "projectedPoints": 232,
+      "premium": 24.438888888888897,
+      "norm": "jaylen waddle"
+    },
+    {
+      "name": "Tee Higgins",
+      "position": "WR",
+      "team": "CIN",
+      "rank": 19,
+      "projectedPoints": 231.4,
+      "premium": 24.1388888888889,
+      "norm": "tee higgins"
+    },
+    {
+      "name": "Ladd McConkey",
+      "position": "WR",
+      "team": "LAC",
+      "rank": 20,
+      "projectedPoints": 229.5,
+      "premium": 23.188888888888897,
+      "norm": "ladd mcconkey"
+    },
+    {
+      "name": "Rashee Rice",
+      "position": "WR",
+      "team": "KC",
+      "rank": 21,
+      "projectedPoints": 225.6,
+      "premium": 21.238888888888894,
+      "norm": "rashee rice"
+    },
+    {
+      "name": "Alec Pierce",
+      "position": "WR",
+      "team": "IND",
+      "rank": 22,
+      "projectedPoints": 224,
+      "premium": 20.438888888888897,
+      "norm": "alec pierce"
+    },
+    {
+      "name": "Davante Adams",
+      "position": "WR",
+      "team": "LAR",
+      "rank": 23,
+      "projectedPoints": 221,
+      "premium": 18.938888888888897,
+      "norm": "davante adams"
+    },
+    {
+      "name": "DJ Moore",
+      "position": "WR",
+      "team": "BUF",
+      "rank": 24,
+      "projectedPoints": 218,
+      "premium": 17.438888888888897,
+      "norm": "dj moore"
+    },
+    {
+      "name": "Luther Burden III",
+      "position": "WR",
+      "team": "CHI",
+      "rank": 25,
+      "projectedPoints": 217.8,
+      "premium": 17.338888888888903,
+      "norm": "luther burden"
+    },
+    {
+      "name": "Mike Evans",
+      "position": "WR",
+      "team": "SF",
+      "rank": 26,
+      "projectedPoints": 216.9,
+      "premium": 16.8888888888889,
+      "norm": "mike evans"
+    },
+    {
+      "name": "DK Metcalf",
+      "position": "WR",
+      "team": "PIT",
+      "rank": 27,
+      "projectedPoints": 213,
+      "premium": 14.938888888888897,
+      "norm": "dk metcalf"
+    },
+    {
+      "name": "Terry McLaurin",
+      "position": "WR",
+      "team": "WAS",
+      "rank": 28,
+      "projectedPoints": 213,
+      "premium": 14.938888888888897,
+      "norm": "terry mclaurin"
+    },
+    {
+      "name": "Marvin Harrison Jr.",
+      "position": "WR",
+      "team": "ARI",
+      "rank": 29,
+      "projectedPoints": 211,
+      "premium": 13.938888888888897,
+      "norm": "marvin harrison"
+    },
+    {
+      "name": "Rome Odunze",
+      "position": "WR",
+      "team": "CHI",
+      "rank": 30,
+      "projectedPoints": 211,
+      "premium": 13.938888888888897,
+      "norm": "rome odunze"
+    },
+    {
+      "name": "Brian Thomas Jr.",
+      "position": "WR",
+      "team": "JAC",
+      "rank": 31,
+      "projectedPoints": 209,
+      "premium": 12.938888888888897,
+      "norm": "brian thomas"
+    },
+    {
+      "name": "Christian Watson",
+      "position": "WR",
+      "team": "GB",
+      "rank": 32,
+      "projectedPoints": 203.4,
+      "premium": 10.1388888888889,
+      "norm": "christian watson"
+    },
+    {
+      "name": "Courtland Sutton",
+      "position": "WR",
+      "team": "DEN",
+      "rank": 33,
+      "projectedPoints": 203.1,
+      "premium": 9.988888888888894,
+      "norm": "courtland sutton"
+    },
+    {
+      "name": "Jameson Williams",
+      "position": "WR",
+      "team": "DET",
+      "rank": 34,
+      "projectedPoints": 202,
+      "premium": 9.438888888888897,
+      "norm": "jameson williams"
+    },
+    {
+      "name": "Jerry Jeudy",
+      "position": "WR",
+      "team": "CLE",
+      "rank": 35,
+      "projectedPoints": 197,
+      "premium": 6.938888888888897,
+      "norm": "jerry jeudy"
+    },
+    {
+      "name": "Xavier Worthy",
+      "position": "WR",
+      "team": "KC",
+      "rank": 36,
+      "projectedPoints": 196,
+      "premium": 6.438888888888897,
+      "norm": "xavier worthy"
+    },
+    {
+      "name": "Jordan Addison",
+      "position": "WR",
+      "team": "MIN",
+      "rank": 37,
+      "projectedPoints": 192,
+      "premium": 4.438888888888897,
+      "norm": "jordan addison"
+    },
+    {
+      "name": "Deebo Samuel",
+      "position": "WR",
+      "team": "SF",
+      "rank": 38,
+      "projectedPoints": 191,
+      "premium": 3.938888888888897,
+      "norm": "deebo samuel"
+    },
+    {
+      "name": "Stefon Diggs",
+      "position": "WR",
+      "team": "WAS",
+      "rank": 39,
+      "projectedPoints": 189,
+      "premium": 2.938888888888897,
+      "norm": "stefon diggs"
+    },
+    {
+      "name": "Romeo Doubs",
+      "position": "WR",
+      "team": "NE",
+      "rank": 40,
+      "projectedPoints": 187,
+      "premium": 1.938888888888897,
+      "norm": "romeo doubs"
+    },
+    {
+      "name": "Chris Godwin",
+      "position": "WR",
+      "team": "TB",
+      "rank": 41,
+      "projectedPoints": 185.3,
+      "premium": 1.0888888888889028,
+      "norm": "chris godwin"
+    },
+    {
+      "name": "Rashid Shaheed",
+      "position": "WR",
+      "team": "SEA",
+      "rank": 42,
+      "projectedPoints": 184,
+      "premium": 1,
+      "norm": "rashid shaheed"
+    },
+    {
+      "name": "Michael Wilson",
+      "position": "WR",
+      "team": "ARI",
+      "rank": 43,
+      "projectedPoints": 181.9,
+      "premium": 1,
+      "norm": "michael wilson"
+    },
+    {
+      "name": "Jakobi Meyers",
+      "position": "WR",
+      "team": "JAC",
+      "rank": 44,
+      "projectedPoints": 181.1,
+      "premium": 1,
+      "norm": "jakobi meyers"
+    },
+    {
+      "name": "Michael Pittman",
+      "position": "WR",
+      "team": "PIT",
+      "rank": 45,
+      "projectedPoints": 180.8,
+      "premium": 1,
+      "norm": "michael pittman"
+    },
+    {
+      "name": "Jayden Reed",
+      "position": "WR",
+      "team": "GB",
+      "rank": 46,
+      "projectedPoints": 180,
+      "premium": 1,
+      "norm": "jayden reed"
+    },
+    {
+      "name": "Matthew Golden",
+      "position": "WR",
+      "team": "GB",
+      "rank": 47,
+      "projectedPoints": 179,
+      "premium": 1,
+      "norm": "matthew golden"
+    },
+    {
+      "name": "Parker Washington",
+      "position": "WR",
+      "team": "JAC",
+      "rank": 48,
+      "projectedPoints": 178,
+      "premium": 1,
+      "norm": "parker washington"
+    },
+    {
+      "name": "De'Zhaun Stribling",
+      "position": "WR",
+      "team": "SF",
+      "rank": 49,
+      "projectedPoints": 175.5,
+      "premium": 1,
+      "norm": "de'zhaun stribling"
+    },
+    {
+      "name": "Josh Downs",
+      "position": "WR",
+      "team": "IND",
+      "rank": 50,
+      "projectedPoints": 175.3,
+      "premium": 1,
+      "norm": "josh downs"
+    },
+    {
+      "name": "KC Concepcion",
+      "position": "WR",
+      "team": "CLE",
+      "rank": 51,
+      "projectedPoints": 173.1,
+      "premium": 1,
+      "norm": "kc concepcion"
+    },
+    {
+      "name": "Jalen Coker",
+      "position": "WR",
+      "team": "CAR",
+      "rank": 52,
+      "projectedPoints": 170.6,
+      "premium": 1,
+      "norm": "jalen coker"
+    },
+    {
+      "name": "Calvin Ridley",
+      "position": "WR",
+      "team": "TEN",
+      "rank": 53,
+      "projectedPoints": 161,
+      "premium": 1,
+      "norm": "calvin ridley"
+    },
+    {
+      "name": "Carnell Tate",
+      "position": "WR",
+      "team": "TEN",
+      "rank": 54,
+      "projectedPoints": 158.1,
+      "premium": 1,
+      "norm": "carnell tate"
+    },
+    {
+      "name": "Khalil Shakir",
+      "position": "WR",
+      "team": "BUF",
+      "rank": 55,
+      "projectedPoints": 156.2,
+      "premium": 1,
+      "norm": "khalil shakir"
+    },
+    {
+      "name": "Jauan Jennings",
+      "position": "WR",
+      "team": "MIN",
+      "rank": 56,
+      "projectedPoints": 155.9,
+      "premium": 1,
+      "norm": "jauan jennings"
+    },
+    {
+      "name": "Ja'Kobi Lane",
+      "position": "WR",
+      "team": "BAL",
+      "rank": 57,
+      "projectedPoints": 153.1,
+      "premium": 1,
+      "norm": "ja'kobi lane"
+    },
+    {
+      "name": "Makai Lemon",
+      "position": "WR",
+      "team": "PHI",
+      "rank": 58,
+      "projectedPoints": 151.8,
+      "premium": 1,
+      "norm": "makai lemon"
+    },
+    {
+      "name": "Cooper Kupp",
+      "position": "WR",
+      "team": "SEA",
+      "rank": 59,
+      "projectedPoints": 151.1,
+      "premium": 1,
+      "norm": "cooper kupp"
+    },
+    {
+      "name": "Tank Dell",
+      "position": "WR",
+      "team": "HOU",
+      "rank": 60,
+      "projectedPoints": 143.2,
+      "premium": 1,
+      "norm": "tank dell"
+    },
+    {
+      "name": "Tre Tucker",
+      "position": "WR",
+      "team": null,
+      "rank": 61,
+      "projectedPoints": 201,
+      "premium": 8.938888888888897,
+      "norm": "tre tucker"
+    },
+    {
+      "name": "Tre Harris",
+      "position": "WR",
+      "team": null,
+      "rank": 62,
+      "projectedPoints": 180,
+      "premium": 1,
+      "norm": "tre harris"
+    },
+    {
+      "name": "Trey McBride",
+      "position": "TE",
+      "team": "ARI",
+      "rank": 1,
+      "projectedPoints": 261,
+      "premium": 38.54545454545453,
+      "norm": "trey mcbride"
+    },
+    {
+      "name": "Brock Bowers",
+      "position": "TE",
+      "team": "LV",
+      "rank": 2,
+      "projectedPoints": 254,
+      "premium": 35.36363636363635,
+      "norm": "brock bowers"
+    },
+    {
+      "name": "Colston Loveland",
+      "position": "TE",
+      "team": "CHI",
+      "rank": 3,
+      "projectedPoints": 212,
+      "premium": 16.272727272727263,
+      "norm": "colston loveland"
+    },
+    {
+      "name": "Travis Kelce",
+      "position": "TE",
+      "team": "KC",
+      "rank": 4,
+      "projectedPoints": 207.5,
+      "premium": 14.227272727272718,
+      "norm": "travis kelce"
+    },
+    {
+      "name": "Tyler Warren",
+      "position": "TE",
+      "team": "IND",
+      "rank": 5,
+      "projectedPoints": 201,
+      "premium": 11.272727272727264,
+      "norm": "tyler warren"
+    },
+    {
+      "name": "Harold Fannin Jr.",
+      "position": "TE",
+      "team": "CLE",
+      "rank": 6,
+      "projectedPoints": 198,
+      "premium": 9.909090909090901,
+      "norm": "harold fannin"
+    },
+    {
+      "name": "Sam LaPorta",
+      "position": "TE",
+      "team": "DET",
+      "rank": 7,
+      "projectedPoints": 188,
+      "premium": 5.363636363636355,
+      "norm": "sam laporta"
+    },
+    {
+      "name": "Dallas Goedert",
+      "position": "TE",
+      "team": "PHI",
+      "rank": 8,
+      "projectedPoints": 187.6,
+      "premium": 5.181818181818171,
+      "norm": "dallas goedert"
+    },
+    {
+      "name": "George Kittle",
+      "position": "TE",
+      "team": "SF",
+      "rank": 9,
+      "projectedPoints": 192,
+      "premium": 7.181818181818174,
+      "norm": "george kittle"
+    },
+    {
+      "name": "Brenton Strange",
+      "position": "TE",
+      "team": "JAC",
+      "rank": 10,
+      "projectedPoints": 181,
+      "premium": 2.181818181818174,
+      "norm": "brenton strange"
+    },
+    {
+      "name": "Kyle Pitts",
+      "position": "TE",
+      "team": "ATL",
+      "rank": 11,
+      "projectedPoints": 179,
+      "premium": 1.272727272727265,
+      "norm": "kyle pitts"
+    },
+    {
+      "name": "Jake Ferguson",
+      "position": "TE",
+      "team": "DAL",
+      "rank": 12,
+      "projectedPoints": 175.6,
+      "premium": 1,
+      "norm": "jake ferguson"
+    },
+    {
+      "name": "Isaiah Likely",
+      "position": "TE",
+      "team": "NYG",
+      "rank": 13,
+      "projectedPoints": 174,
+      "premium": 1,
+      "norm": "isaiah likely"
+    },
+    {
+      "name": "Dalton Kincaid",
+      "position": "TE",
+      "team": "BUF",
+      "rank": 14,
+      "projectedPoints": 173.9,
+      "premium": 1,
+      "norm": "dalton kincaid"
+    },
+    {
+      "name": "TJ Hockenson",
+      "position": "TE",
+      "team": null,
+      "rank": 15,
+      "projectedPoints": 171,
+      "premium": 1,
+      "norm": "tj hockenson"
+    },
+    {
+      "name": "Tucker Kraft",
+      "position": "TE",
+      "team": "GB",
+      "rank": 16,
+      "projectedPoints": 183.5,
+      "premium": 3.3181818181818103,
+      "norm": "tucker kraft"
+    },
+    {
+      "name": "Dalton Schultz",
+      "position": "TE",
+      "team": "HOU",
+      "rank": 17,
+      "projectedPoints": 163.3,
+      "premium": 1,
+      "norm": "dalton schultz"
+    },
+    {
+      "name": "Juwan Johnson",
+      "position": "TE",
+      "team": "NO",
+      "rank": 18,
+      "projectedPoints": 169,
+      "premium": 1,
+      "norm": "juwan johnson"
+    },
+    {
+      "name": "Mark Andrews",
+      "position": "TE",
+      "team": "BAL",
+      "rank": 19,
+      "projectedPoints": 149.4,
+      "premium": 1,
+      "norm": "mark andrews"
+    },
+    {
+      "name": "Denver",
+      "position": "DEF",
+      "team": "Denver",
+      "rank": 1,
+      "projectedPoints": 2.508,
+      "premium": 2,
+      "norm": "denver"
+    },
+    {
+      "name": "Houston",
+      "position": "DEF",
+      "team": "Houston",
+      "rank": 2,
+      "projectedPoints": 2.176,
+      "premium": 2,
+      "norm": "houston"
+    },
+    {
+      "name": "L.A. Chargers",
+      "position": "DEF",
+      "team": "L.A. Chargers",
+      "rank": 3,
+      "projectedPoints": 2.172,
+      "premium": 2,
+      "norm": "la chargers"
+    },
+    {
+      "name": "Minnesota",
+      "position": "DEF",
+      "team": "Minnesota",
+      "rank": 4,
+      "projectedPoints": 2.1210000000000004,
+      "premium": 2,
+      "norm": "minnesota"
+    },
+    {
+      "name": "Seattle",
+      "position": "DEF",
+      "team": "Seattle",
+      "rank": 5,
+      "projectedPoints": 2.057,
+      "premium": 2,
+      "norm": "seattle"
+    },
+    {
+      "name": "Detroit",
+      "position": "DEF",
+      "team": "Detroit",
+      "rank": 6,
+      "projectedPoints": 2.042,
+      "premium": 2,
+      "norm": "detroit"
+    },
+    {
+      "name": "L.A. Rams",
+      "position": "DEF",
+      "team": "L.A. Rams",
+      "rank": 7,
+      "projectedPoints": 2.033,
+      "premium": 2,
+      "norm": "la rams"
+    },
+    {
+      "name": "Atlanta",
+      "position": "DEF",
+      "team": "Atlanta",
+      "rank": 8,
+      "projectedPoints": 1.977,
+      "premium": 2,
+      "norm": "atlanta"
+    },
+    {
+      "name": "Philadelphia",
+      "position": "DEF",
+      "team": "Philadelphia",
+      "rank": 9,
+      "projectedPoints": 1.9610000000000003,
+      "premium": 2,
+      "norm": "philadelphia"
+    },
+    {
+      "name": "Baltimore",
+      "position": "DEF",
+      "team": "Baltimore",
+      "rank": 10,
+      "projectedPoints": 1.865,
+      "premium": 1,
+      "norm": "baltimore"
+    },
+    {
+      "name": "New Orleans",
+      "position": "DEF",
+      "team": "New Orleans",
+      "rank": 11,
+      "projectedPoints": 1.857,
+      "premium": 1,
+      "norm": "new orleans"
+    },
+    {
+      "name": "Cleveland",
+      "position": "DEF",
+      "team": "Cleveland",
+      "rank": 12,
+      "projectedPoints": 1.855,
+      "premium": 1,
+      "norm": "cleveland"
+    },
+    {
+      "name": "Pittsburgh",
+      "position": "DEF",
+      "team": "Pittsburgh",
+      "rank": 13,
+      "projectedPoints": 1.848,
+      "premium": 1,
+      "norm": "pittsburgh"
+    },
+    {
+      "name": "Buffalo",
+      "position": "DEF",
+      "team": "Buffalo",
+      "rank": 14,
+      "projectedPoints": 1.844,
+      "premium": 1,
+      "norm": "buffalo"
+    },
+    {
+      "name": "New England",
+      "position": "DEF",
+      "team": "New England",
+      "rank": 15,
+      "projectedPoints": 1.8179999999999998,
+      "premium": 1,
+      "norm": "new england"
+    },
+    {
+      "name": "Chicago",
+      "position": "DEF",
+      "team": "Chicago",
+      "rank": 16,
+      "projectedPoints": 1.756,
+      "premium": 1,
+      "norm": "chicago"
+    },
+    {
+      "name": "Kansas City",
+      "position": "DEF",
+      "team": "Kansas City",
+      "rank": 17,
+      "projectedPoints": 1.726,
+      "premium": 1,
+      "norm": "kansas city"
+    },
+    {
+      "name": "Cincinnati",
+      "position": "DEF",
+      "team": "Cincinnati",
+      "rank": 18,
+      "projectedPoints": 1.6939999999999997,
+      "premium": 1,
+      "norm": "cincinnati"
+    },
+    {
+      "name": "Green Bay",
+      "position": "DEF",
+      "team": "Green Bay",
+      "rank": 19,
+      "projectedPoints": 1.641,
+      "premium": 1,
+      "norm": "green bay"
+    },
+    {
+      "name": "Carolina",
+      "position": "DEF",
+      "team": "Carolina",
+      "rank": 20,
+      "projectedPoints": 1.62,
+      "premium": 1,
+      "norm": "carolina"
+    },
+    {
+      "name": "Miami",
+      "position": "DEF",
+      "team": "Miami",
+      "rank": 21,
+      "projectedPoints": 1.6130000000000002,
+      "premium": 1,
+      "norm": "miami"
+    },
+    {
+      "name": "Indianapolis",
+      "position": "DEF",
+      "team": "Indianapolis",
+      "rank": 22,
+      "projectedPoints": 1.5939999999999999,
+      "premium": 1,
+      "norm": "indianapolis"
+    },
+    {
+      "name": "Washington",
+      "position": "DEF",
+      "team": "Washington",
+      "rank": 23,
+      "projectedPoints": 1.58,
+      "premium": 1,
+      "norm": "washington"
+    },
+    {
+      "name": "Tennessee",
+      "position": "DEF",
+      "team": "Tennessee",
+      "rank": 24,
+      "projectedPoints": 1.5539999999999998,
+      "premium": 1,
+      "norm": "tennessee"
+    },
+    {
+      "name": "Tampa Bay",
+      "position": "DEF",
+      "team": "Tampa Bay",
+      "rank": 25,
+      "projectedPoints": 1.544,
+      "premium": 1,
+      "norm": "tampa bay"
+    },
+    {
+      "name": "Las Vegas",
+      "position": "DEF",
+      "team": "Las Vegas",
+      "rank": 26,
+      "projectedPoints": 1.5419999999999998,
+      "premium": 1,
+      "norm": "las vegas"
+    },
+    {
+      "name": "Jacksonville",
+      "position": "DEF",
+      "team": "Jacksonville",
+      "rank": 27,
+      "projectedPoints": 1.5019999999999998,
+      "premium": 1,
+      "norm": "jacksonville"
+    },
+    {
+      "name": "N.Y. Giants",
+      "position": "DEF",
+      "team": "N.Y. Giants",
+      "rank": 28,
+      "projectedPoints": 1.4040000000000001,
+      "premium": 1,
+      "norm": "ny giants"
+    },
+    {
+      "name": "Dallas",
+      "position": "DEF",
+      "team": "Dallas",
+      "rank": 29,
+      "projectedPoints": 1.4029999999999998,
+      "premium": 1,
+      "norm": "dallas"
+    },
+    {
+      "name": "San Francisco",
+      "position": "DEF",
+      "team": "San Francisco",
+      "rank": 30,
+      "projectedPoints": 1.3659999999999999,
+      "premium": 1,
+      "norm": "san francisco"
+    },
+    {
+      "name": "N.Y. Jets",
+      "position": "DEF",
+      "team": "N.Y. Jets",
+      "rank": 31,
+      "projectedPoints": 1.286,
+      "premium": 0,
+      "norm": "ny jets"
+    },
+    {
+      "name": "Arizona",
+      "position": "DEF",
+      "team": "Arizona",
+      "rank": 32,
+      "projectedPoints": 1.2760000000000002,
+      "premium": 0,
+      "norm": "arizona"
+    }
+  ]
+}

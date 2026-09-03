@@ -1,8 +1,10 @@
 import { Elysia } from 'elysia'
 import { authGuard } from '../guards/auth-guard.js'
+import { CommissionerRanking } from '../services/commissioner-ranking.js'
 import { FantasyScout } from '../services/fantasy-scout.js'
 import {
   fantasyBargainsPage,
+  fantasyCommissionerPage,
   fantasyDashboard,
   fantasyDraftPage,
   fantasyEvolutionPage,
@@ -88,6 +90,28 @@ export const fantasyController = new Elysia({ prefix: '/fantasy' })
     const data = await FantasyScout.records()
     const seasons = await FantasyScout.listSeasons()
     return fantasyRecordsPage(data, seasons, CLERK_KEY)
+  })
+  .get('/commissioner/:year', async (ctx) => {
+    ctx.set.headers['Content-Type'] = 'text/html'
+    const year = Number(ctx.params.year)
+    const seasons = await FantasyScout.listSeasons()
+    const data = await CommissionerRanking.forSeason(year)
+    if (!data) {
+      return fantasyCommissionerPage(
+        {
+          season: year,
+          commissionerName: 'Tim',
+          label: 'Commissioner rankings',
+          importedAt: new Date().toISOString(),
+          rankedPlayerCount: 0,
+          replacementPremium: {},
+          gms: [],
+        },
+        seasons,
+        CLERK_KEY
+      )
+    }
+    return fantasyCommissionerPage(data, seasons, CLERK_KEY)
   })
   .get('/reportcard/:year', async (ctx) => {
     ctx.set.headers['Content-Type'] = 'text/html'
