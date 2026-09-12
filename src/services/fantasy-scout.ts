@@ -35,6 +35,7 @@ import {
   wireStints,
 } from './fantasy-metrics.js'
 import {
+  bestBallLineup,
   blendWeeklyPts,
   blendWeeklyStats,
   type CountingStat,
@@ -207,14 +208,33 @@ export interface FantasyLivePlayerScore {
   playerId: string
   playerName: string
   points: number
+  counts: boolean
 }
 
 export interface FantasyLiveTeamScore {
+  rosterId: number
+  matchupId: number | null
   slug: string
   displayName: string
   teamName: string | null
   points: number
   players: FantasyLivePlayerScore[]
+}
+
+export interface FantasyLiveMatchup {
+  matchupId: number
+  teams: FantasyLiveTeamScore[]
+}
+
+export interface FantasyLiveStanding {
+  rank: number
+  slug: string
+  displayName: string
+  teamName: string | null
+  wins: number
+  losses: number
+  ties: number
+  points: number
 }
 
 export interface FantasyLiveScoringData {
@@ -223,6 +243,8 @@ export interface FantasyLiveScoringData {
   seasonType: string
   fetchedAt: string
   rows: FantasyLiveTeamScore[]
+  matchups: FantasyLiveMatchup[]
+  standings: FantasyLiveStanding[]
 }
 
 export interface FantasyReportCardRow {
@@ -1764,12 +1786,50 @@ export const FantasyScout = {
         .filter((roster) => roster.sleeperLeagueId === league.sleeperLeagueId)
         .map((roster) => [roster.rosterId, roster])
     )
+    const slots = starterSlots(league.rosterPositions)
+    const rows = matchups.map((matchup) => {
+      const roster = rosterById.get(matchup.roster_id)
+      const identity = ident(ctx, roster?.sleeperUserId ?? null, roster?.teamName)
+      const rawPlayers = Object.entries(matchup.players_points ?? {}).map(([playerId, points]) => ({
+        playerId,
+        playerName: ctx.playerById.get(playerId)?.fullName ?? playerId,
+        position: ctx.playerById.get(playerId)?.position ?? 'UNK',
+        points: typeof points === 'number' ? points : Number(points) || 0,
+      }))
+      const bestBall = bestBallLineup(
+        rawPlayers.map((player) => ({
+          playerId: player.playerId,
+          position: player.position,
+          pts: player.points,
+        })),
+        slots
+      )
+      const bestBallSelected = new Set(bestBall.players.map((player) => player.playerId))
+      const players = rawPlayers
+        .map((player) => ({
+          playerId: player.playerId,
+          playerName: player.playerName,
+          points: player.points,
+          counts: bestBallSelected.has(player.playerId),
+        }))
+        .sort((a, b) => Number(b.counts) - Number(a.counts) || b.points - a.points)
+      return {
+        rosterId: matchup.roster_id,
+        matchupId: matchup.matchup_id,
+        slug: identity.slug,
+        displayName: identity.displayName,
+        teamName: roster?.teamName ?? null,
+        points: bestBall.total,
+        players,
+      }
+    })
+    const pointsByRoster = new Map(rows.map((row) => [row.rosterId, row.points]))
     const matchupRows = matchups.map((matchup) => ({
       sleeperLeagueId: league.sleeperLeagueId,
       week,
       rosterId: matchup.roster_id,
       matchupId: matchup.matchup_id,
-      points: matchup.custom_points ?? matchup.points ?? 0,
+      points: pointsByRoster.get(matchup.roster_id) ?? 0,
       starters: matchup.starters ?? [],
     }))
     const playerWeekRows = matchups.flatMap((matchup) =>
@@ -1808,32 +1868,86 @@ export const FantasyScout = {
           set: { points: sql`excluded.points` },
         })
     }
-    const rows = matchups
-      .map((matchup) => {
-        const roster = rosterById.get(matchup.roster_id)
-        const identity = ident(ctx, roster?.sleeperUserId ?? null, roster?.teamName)
-        const players = Object.entries(matchup.players_points ?? {})
-          .map(([playerId, points]) => ({
-            playerId,
-            playerName: ctx.playerById.get(playerId)?.fullName ?? playerId,
-            points: typeof points === 'number' ? points : Number(points) || 0,
-          }))
-          .sort((a, b) => b.points - a.points)
+    rows.sort((a, b) => b.points - a.points)
+    const matchupsById = new Map<number, FantasyLiveTeamScore[]>()
+    for (const row of rows) {
+      if (row.matchupId === null) continue
+      const teams = matchupsById.get(row.matchupId) ?? []
+      teams.push(row)
+      matchupsById.set(row.matchupId, teams)
+    }
+    const liveMatchups = [...matchupsById.entries()]
+      .map(([matchupId, teams]) => ({
+        matchupId,
+        teams: teams.sort((a, b) => b.points - a.points),
+      }))
+      .sort((a, b) => a.matchupId - b.matchupId)
+    const historicalPlayers = new Map<
+      string,
+      { playerId: string; position: string; pts: number }[]
+    >()
+    for (const playerWeek of ctx.playerWeeks) {
+      if (playerWeek.sleeperLeagueId !== league.sleeperLeagueId || playerWeek.week === week) {
+        continue
+      }
+      const key = `${playerWeek.week}|${playerWeek.rosterId}`
+      const players = historicalPlayers.get(key) ?? []
+      players.push({
+        playerId: playerWeek.playerId,
+        position: ctx.playerById.get(playerWeek.playerId)?.position ?? 'UNK',
+        pts: playerWeek.points,
+      })
+      historicalPlayers.set(key, players)
+    }
+    const seasonMatchups = [
+      ...[...historicalPlayers.entries()].map(([key, players]) => {
+        const [historicalWeek, rosterId] = key.split('|').map(Number)
+        const savedMatchup = ctx.matchups.find(
+          (matchup) =>
+            matchup.sleeperLeagueId === league.sleeperLeagueId &&
+            matchup.week === historicalWeek &&
+            matchup.rosterId === rosterId
+        )
         return {
+          week: historicalWeek,
+          rosterId,
+          matchupId: savedMatchup?.matchupId ?? null,
+          points: bestBallLineup(players, slots).total,
+        }
+      }),
+      ...matchupRows.map((matchup) => ({
+        week,
+        rosterId: matchup.rosterId,
+        matchupId: matchup.matchupId,
+        points: matchup.points,
+      })),
+    ]
+    const records = allPlayFromMatchups(seasonMatchups)
+    const standings = [...rosterById.values()]
+      .map((roster) => {
+        const identity = ident(ctx, roster.sleeperUserId, roster.teamName)
+        const record = records.get(roster.rosterId)
+        return {
+          rank: 0,
           slug: identity.slug,
           displayName: identity.displayName,
-          teamName: roster?.teamName ?? null,
-          points: matchup.custom_points ?? matchup.points ?? 0,
-          players,
+          teamName: roster.teamName,
+          wins: record?.wins ?? 0,
+          losses: record?.losses ?? 0,
+          ties: record?.ties ?? 0,
+          points: record?.fpts ?? 0,
         }
       })
-      .sort((a, b) => b.points - a.points)
+      .sort((a, b) => b.wins - a.wins || b.points - a.points)
+      .map((standing, index) => ({ ...standing, rank: index + 1 }))
     return {
       season: stateSeason || league.season,
       week,
       seasonType: state.season_type ?? 'regular',
       fetchedAt: new Date().toISOString(),
       rows,
+      matchups: liveMatchups,
+      standings,
     }
   },
 
