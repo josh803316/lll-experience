@@ -12,6 +12,7 @@ import {
   wireStints,
 } from './fantasy-metrics.js'
 import {
+  bestBallLineup,
   bestBallScore,
   blendWeeklyStats,
   countingStatsForPosition,
@@ -299,6 +300,19 @@ describe('best-ball lineup', () => {
     // Sorted: wr1 22, qb 20, rb1 18, wr2 15, wr4 12, rb2 10, te 9, wr3 8, def 5
     // QB: 20, RB: 18+10, WR: 22+15+12, TE: 9, DEF: 5, REC_FLEX: wr3 8
     expect(pts).toBe(20 + 18 + 10 + 22 + 15 + 12 + 9 + 8 + 5)
+  })
+  test('returns exactly the players whose points count toward the best-ball total', () => {
+    const lineup = bestBallLineup(
+      [
+        { playerId: 'qb1', position: 'QB', pts: 16.9 },
+        { playerId: 'qb2', position: 'QB', pts: 18 },
+        { playerId: 'rb', position: 'RB', pts: 12 },
+      ],
+      ['QB', 'RB']
+    )
+
+    expect(lineup.total).toBe(30)
+    expect(lineup.players.map((player) => player.playerId)).toEqual(['qb2', 'rb'])
   })
   test('projected weeks emit one score per roster', () => {
     const rows = projectedWeeklyScores(

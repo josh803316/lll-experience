@@ -55,12 +55,15 @@ export interface LineupPlayer {
 }
 
 /** Greedy: fill positional slots first (highest pts), then flex. */
-export function bestBallScore(players: LineupPlayer[], slots: string[]): number {
+export function bestBallLineup(
+  players: LineupPlayer[],
+  slots: string[]
+): { total: number; players: LineupPlayer[] } {
   const remaining = players
     .map((p) => ({ ...p, position: normalizePosition(p.position) }))
     .sort((a, b) => b.pts - a.pts)
   const used = new Set<string>()
-  let total = 0
+  const selected: LineupPlayer[] = []
   const fill = (slot: string) => {
     const eligible = slotEligible(slot)
     const pick = remaining.find((p) => !used.has(p.playerId) && eligible.includes(p.position))
@@ -68,7 +71,7 @@ export function bestBallScore(players: LineupPlayer[], slots: string[]): number 
       return
     }
     used.add(pick.playerId)
-    total += pick.pts
+    selected.push(pick)
   }
   for (const slot of slots.filter((s) => !s.includes('FLEX'))) {
     fill(slot)
@@ -76,7 +79,14 @@ export function bestBallScore(players: LineupPlayer[], slots: string[]): number 
   for (const slot of slots.filter((s) => s.includes('FLEX'))) {
     fill(slot)
   }
-  return total
+  return {
+    total: selected.reduce((sum, player) => sum + player.pts, 0),
+    players: selected.sort((a, b) => b.pts - a.pts),
+  }
+}
+
+export function bestBallScore(players: LineupPlayer[], slots: string[]): number {
+  return bestBallLineup(players, slots).total
 }
 
 export interface ProjWeekPts {
@@ -384,7 +394,11 @@ export function positionalHeatmap(
   return heatRowsFromBuilt(
     rosters.map((r) => {
       const pos = positionalTotals(r.players, slots)
-      return { rosterId: r.rosterId, pos, ovr: pos.qb + pos.rb + pos.wr + pos.te + pos.flex + pos.def }
+      return {
+        rosterId: r.rosterId,
+        pos,
+        ovr: pos.qb + pos.rb + pos.wr + pos.te + pos.flex + pos.def,
+      }
     })
   )
 }

@@ -1633,13 +1633,30 @@ export function fantasyLiveScoringPanel(data?: FantasyLiveScoringData, error?: s
       (row, index) =>
         `<div class="fx-live-row" style="display:grid;grid-template-columns:32px minmax(130px,1fr) 90px minmax(180px,1.4fr);gap:12px;align-items:center;padding:11px 13px;border-top:1px solid rgba(255,255,255,.05)"><span class="fx-rank ${index < 3 ? 'fx-rank-top' : ''}">${index + 1}</span><div style="min-width:0"><div style="font-weight:700;font-size:13px">${escapeHtml(row.displayName)}</div><div class="fx-muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(row.teamName ?? '')}</div></div><strong class="fx-hero-value" style="font-size:23px;color:#3fe1a8;text-align:right">${fmt(row.points)} <small class="fx-label fx-muted" style="font-size:9px;letter-spacing:.08em">FPTS</small></strong><div class="fx-muted" style="font-size:11px;display:flex;gap:9px;flex-wrap:wrap">${
           row.players
-            .slice(0, 3)
+            .filter((player) => player.counts)
             .map(
               (player) =>
                 `${playerLink(player.playerId, player.playerName, null, data?.season)} <span class="fx-number">${fmt(player.points)}</span>`
             )
-            .join(' · ') || 'Player scoring not available yet.'
+            .join(' · ') || 'No best-ball players are scoring yet.'
         }</div></div>`
+    )
+    .join('')
+  const weeklyMatchups = (data?.matchups ?? [])
+    .map(
+      (matchup) =>
+        `<div style="padding:12px 14px;border:1px solid rgba(255,255,255,.06);border-radius:11px;background:rgba(255,255,255,.018)"><div class="fx-label fx-muted" style="font-size:9px;margin-bottom:8px">MATCHUP ${matchup.matchupId}</div>${matchup.teams
+          .map(
+            (team, index) =>
+              `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;${index > 0 ? 'border-top:1px solid rgba(255,255,255,.05);margin-top:7px;padding-top:7px' : ''}"><span style="font-size:12px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(team.displayName)}</span><strong class="fx-number" style="color:#3fe1a8">${fmt(team.points)}</strong></div>`
+          )
+          .join('')}</div>`
+    )
+    .join('')
+  const standings = (data?.standings ?? [])
+    .map(
+      (standing) =>
+        `<div style="display:grid;grid-template-columns:28px minmax(110px,1fr) 78px 74px;gap:10px;align-items:center;padding:9px 12px;border-top:1px solid rgba(255,255,255,.05);font-size:11px"><span class="fx-rank ${standing.rank <= 3 ? 'fx-rank-top' : ''}">${standing.rank}</span><span style="font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(standing.displayName)}</span><span class="fx-number fx-muted">${standing.wins}-${standing.losses}${standing.ties ? `-${standing.ties}` : ''}</span><strong class="fx-number" style="text-align:right">${fmt(standing.points)}</strong></div>`
     )
     .join('')
   const message = error
@@ -1649,7 +1666,7 @@ export function fantasyLiveScoringPanel(data?: FantasyLiveScoringData, error?: s
       : data
         ? ''
         : '<p class="fx-muted" style="margin-top:14px">Click Refresh scores to pull the latest available totals from Sleeper.</p>'
-  return `<section id="live-scoring-panel" class="fx-card fx-panel" aria-live="polite"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><div class="fx-eyebrow" style="color:#3fe1a8;margin-bottom:6px">LIVE SCORING</div><h2 class="fx-h2" style="font-size:20px">Refresh from Sleeper</h2><p class="fx-section-copy">Current best-ball totals for Week ${data?.week ?? '—'} · ${data?.seasonType ?? 'waiting for sync'}.</p></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="fx-muted fx-number" style="font-size:10px">${escapeHtml(timestamp)}</span><button type="button" class="fx-sort fx-sort-active" hx-post="/fantasy/live-sync" hx-target="#live-scoring-panel" hx-swap="outerHTML" hx-indicator="#live-scoring-spinner">Refresh scores</button><span id="live-scoring-spinner" class="htmx-indicator fx-number fx-muted" style="font-size:10px">Syncing…</span></div></div>${rows ? `<div style="margin-top:18px;border:1px solid rgba(255,255,255,.06);border-radius:13px;overflow:hidden">${rows}</div>` : ''}${message}</section>`
+  return `<section id="live-scoring-panel" class="fx-card fx-panel" aria-live="polite"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><div class="fx-eyebrow" style="color:#3fe1a8;margin-bottom:6px">LIVE SCORING</div><h2 class="fx-h2" style="font-size:20px">Refresh from Sleeper</h2><p class="fx-section-copy">Optimized best-ball totals for Week ${data?.week ?? '—'} · ${data?.seasonType ?? 'waiting for sync'}.</p></div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="fx-muted fx-number" style="font-size:10px">${escapeHtml(timestamp)}</span><button type="button" class="fx-sort fx-sort-active" hx-post="/fantasy/live-sync" hx-target="#live-scoring-panel" hx-swap="outerHTML" hx-indicator="#live-scoring-spinner">Refresh scores</button><span id="live-scoring-spinner" class="htmx-indicator fx-number fx-muted" style="font-size:10px">Syncing…</span></div></div>${rows ? `<div style="margin-top:18px;border:1px solid rgba(255,255,255,.06);border-radius:13px;overflow:hidden">${rows}</div>` : ''}${data && weeklyMatchups ? `<div style="margin-top:22px"><div class="fx-eyebrow" style="margin-bottom:10px">WEEK ${data.week} MATCHUPS</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">${weeklyMatchups}</div></div>` : ''}${data && standings ? `<div style="margin-top:22px"><div class="fx-eyebrow" style="margin-bottom:10px">LIVE ALL-PLAY STANDINGS</div><div style="border:1px solid rgba(255,255,255,.06);border-radius:13px;overflow:hidden"><div class="fx-label fx-muted" style="display:grid;grid-template-columns:28px minmax(110px,1fr) 78px 74px;gap:10px;padding:9px 12px;font-size:9px"><span>#</span><span>GM</span><span>W-L-T</span><span style="text-align:right">PF</span></div>${standings}</div></div>` : ''}${message}</section>`
 }
 
 function fxFocusScript(): string {
