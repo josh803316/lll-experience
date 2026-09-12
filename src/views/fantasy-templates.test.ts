@@ -3,6 +3,14 @@ import type { FantasyLiveScoringData } from '../services/fantasy-scout.js'
 import { fantasyLiveScoringPanel } from './fantasy-templates.js'
 
 describe('fantasyLiveScoringPanel', () => {
+  test('loads scores once when the empty panel first appears', () => {
+    const html = fantasyLiveScoringPanel()
+
+    expect(html).toContain('hx-post="/fantasy/live-sync"')
+    expect(html).toContain('hx-trigger="load"')
+    expect(html).toContain('hx-target="this"')
+  })
+
   test('shows counting players, weekly matchups, and live standings', () => {
     const team = {
       rosterId: 1,
@@ -39,6 +47,7 @@ describe('fantasyLiveScoringPanel', () => {
     }
 
     const html = fantasyLiveScoringPanel(data)
+    expect(html).not.toContain('hx-trigger="load"')
     expect(html).toContain('Optimized best-ball totals')
     expect(html).toContain('Deebo Samuel')
     expect(html).toContain('Mike Evans')
