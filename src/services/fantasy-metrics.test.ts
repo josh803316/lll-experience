@@ -16,6 +16,8 @@ import {
   bestBallScore,
   blendWeeklyStats,
   countingStatsForPosition,
+  flexEligibilityLabel,
+  flexLineupNote,
   positionalHeatmap,
   positionalHeatmapWeekly,
   positionalTotals,
@@ -333,7 +335,7 @@ describe('best-ball lineup', () => {
 
 describe('positional heat map', () => {
   const slots = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'REC_FLEX', 'DEF']
-  test('FLEX is the leftover WR/RB/TE after starters', () => {
+  test('REC_FLEX is the leftover WR/TE after starters', () => {
     const tot = positionalTotals(
       [
         { playerId: 'qb', position: 'QB', pts: 20 },
@@ -354,6 +356,29 @@ describe('positional heat map', () => {
     expect(tot.te).toBe(9)
     expect(tot.flex).toBe(8)
     expect(tot.def).toBe(5)
+  })
+  test('REC_FLEX starts the next WR when a benched RB scored more', () => {
+    const slots = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'REC_FLEX', 'DEF']
+    const players = [
+      { playerId: 'rb1', position: 'RB', pts: 40 },
+      { playerId: 'rb2', position: 'RB', pts: 30 },
+      { playerId: 'rb3', position: 'RB', pts: 18 },
+      { playerId: 'wr1', position: 'WR', pts: 22 },
+      { playerId: 'wr2', position: 'WR', pts: 15 },
+      { playerId: 'wr3', position: 'WR', pts: 12 },
+      { playerId: 'wr4', position: 'WR', pts: 4 },
+    ]
+    const tot = positionalTotals(players, slots)
+    expect(tot.rb).toBe(70)
+    expect(tot.wr).toBe(49)
+    expect(tot.flex).toBe(4)
+    expect(flexEligibilityLabel(slots)).toBe('WR/TE')
+    expect(flexLineupNote(slots)).toBe('FLEX is the leftover WR/TE after 2 RB / 3 WR / 1 TE.')
+    const open = positionalTotals(players, ['RB', 'RB', 'WR', 'WR', 'WR', 'FLEX'])
+    expect(open.flex).toBe(18)
+    expect(flexLineupNote(['RB', 'RB', 'WR', 'WR', 'WR', 'FLEX'])).toBe(
+      'FLEX is the leftover RB/WR/TE after 2 RB / 3 WR.'
+    )
   })
   test('OVR ranks by starter-slot total; 1 is best', () => {
     const heat = positionalHeatmap(

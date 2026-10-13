@@ -37,6 +37,12 @@ const FLEX_ELIGIBLE: Record<string, string[]> = {
   IDP_FLEX: ['DL', 'LB', 'DB'],
 }
 
+/** UCSB LEGACY: 1 QB, 2 RB, 3 WR, 1 TE, WR/TE flex, DEF. */
+const UCSB_STARTER_SLOTS = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'REC_FLEX', 'DEF']
+
+const FLEX_LABEL_ORDER = ['QB', 'RB', 'WR', 'TE', 'DL', 'LB', 'DB']
+const FLEX_CONTEXT_ORDER = ['RB', 'WR', 'TE']
+
 function slotEligible(slot: string): string[] {
   if (FLEX_ELIGIBLE[slot]) {
     return FLEX_ELIGIBLE[slot]
@@ -46,6 +52,38 @@ function slotEligible(slot: string): string[] {
 
 export function starterSlots(rosterPositions: string[] | null | undefined): string[] {
   return (rosterPositions ?? []).filter((s) => s !== 'BN' && s !== 'IR' && s !== 'TAXI')
+}
+
+/** Who can fill the flex slots, in lineup order. REC_FLEX is WR/TE. */
+export function flexEligibilityLabel(slots: string[] | null | undefined): string {
+  const flexes = starterSlots(slots).filter((slot) => slot.includes('FLEX'))
+  const allowed = new Set<string>()
+  for (const slot of flexes) {
+    for (const pos of slotEligible(slot)) {
+      allowed.add(pos)
+    }
+  }
+  return FLEX_LABEL_ORDER.filter((pos) => allowed.has(pos)).join('/')
+}
+
+/** Heat-map sentence for whoever the flex slot actually allows. */
+export function flexLineupNote(slots?: string[] | null): string {
+  const starters = starterSlots(slots && slots.length > 0 ? slots : UCSB_STARTER_SLOTS)
+  const label = flexEligibilityLabel(starters)
+  if (!label) {
+    return 'No flex slot.'
+  }
+  const counts = new Map<string, number>()
+  for (const slot of starters) {
+    if (slot.includes('FLEX') || !FLEX_CONTEXT_ORDER.includes(slot)) {
+      continue
+    }
+    counts.set(slot, (counts.get(slot) ?? 0) + 1)
+  }
+  const after = FLEX_CONTEXT_ORDER.filter((pos) => counts.has(pos))
+    .map((pos) => `${counts.get(pos)} ${pos}`)
+    .join(' / ')
+  return after ? `FLEX is the leftover ${label} after ${after}.` : `FLEX is the leftover ${label}.`
 }
 
 export interface LineupPlayer {
@@ -304,7 +342,7 @@ function slotGroup(slot: string): Exclude<HeatPos, 'ovr'> | null {
   return null
 }
 
-/** Fill starters like best-ball; return slot-group totals (FLEX = leftover WR/RB/TE). */
+/** Fill starters like best-ball; return slot-group totals (flex = whoever that slot allows). */
 export function positionalTotals(
   players: LineupPlayer[],
   slots: string[]

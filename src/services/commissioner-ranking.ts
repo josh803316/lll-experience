@@ -68,11 +68,11 @@ export interface CommissionerRankingData {
 const DEF_CITY_TO_KEYWORDS: Record<string, string[]> = {
   denver: ['denver', 'broncos'],
   houston: ['houston', 'texans'],
-  'l.a. chargers': ['chargers'],
+  'la chargers': ['chargers'],
   minnesota: ['minnesota', 'vikings'],
   seattle: ['seattle', 'seahawks'],
   detroit: ['detroit', 'lions'],
-  'l.a. rams': ['rams'],
+  'la rams': ['rams'],
   atlanta: ['atlanta', 'falcons'],
   philadelphia: ['philadelphia', 'eagles'],
   baltimore: ['baltimore', 'ravens'],
@@ -93,10 +93,10 @@ const DEF_CITY_TO_KEYWORDS: Record<string, string[]> = {
   'tampa bay': ['tampa bay', 'buccaneers'],
   'las vegas': ['las vegas', 'raiders'],
   jacksonville: ['jacksonville', 'jaguars'],
-  'n.y. giants': ['giants'],
+  'ny giants': ['giants'],
   dallas: ['dallas', 'cowboys'],
   'san francisco': ['san francisco', '49ers'],
-  'n.y. jets': ['jets'],
+  'ny jets': ['jets'],
   arizona: ['arizona', 'cardinals'],
 }
 
@@ -128,6 +128,11 @@ interface RankingLookup {
   matchDef(sleeperName: string): CommissionerPlayerRow | undefined
 }
 
+/** Sleeper display names that Tim's sheet spells differently. */
+const SKILL_ALIASES: Record<string, string[]> = {
+  'kenneth gainwell|RB': ['kenny gainwell|RB'],
+}
+
 function buildLookup(players: CommissionerPlayerRow[]): RankingLookup {
   const skill = new Map<string, CommissionerPlayerRow>()
   const defs: CommissionerPlayerRow[] = []
@@ -136,7 +141,11 @@ function buildLookup(players: CommissionerPlayerRow[]): RankingLookup {
       defs.push(row)
       continue
     }
-    skill.set(`${row.norm}|${row.position}`, row)
+    const key = `${row.norm}|${row.position}`
+    skill.set(key, row)
+    for (const alias of SKILL_ALIASES[key] ?? []) {
+      skill.set(alias, row)
+    }
   }
 
   return {

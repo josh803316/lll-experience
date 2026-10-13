@@ -46,4 +46,38 @@ describe('commissioner ranking', () => {
     const row = CommissionerRanking._matchPick(pick, lookup)
     expect(row?.rank).toBe(1)
   })
+
+  test('matches L.A. Rams to the Los Angeles Rams', () => {
+    const lookup = CommissionerRanking._buildLookup([
+      {
+        name: 'L.A. Rams',
+        position: 'DEF',
+        team: 'L.A. Rams',
+        rank: 7,
+        projectedPoints: 2,
+        premium: 2,
+        norm: normPlayerName('L.A. Rams'),
+      },
+    ])
+    expect(lookup.matchDef('Los Angeles Rams')?.rank).toBe(7)
+  })
+
+  test('matches Kenny Gainwell to Kenneth Gainwell', () => {
+    const lookup = CommissionerRanking._buildLookup([
+      {
+        name: 'Kenneth Gainwell',
+        position: 'RB',
+        team: 'TB',
+        rank: 35,
+        projectedPoints: 149,
+        premium: 1,
+        norm: normPlayerName('Kenneth Gainwell'),
+      },
+    ])
+    const pick = {
+      playerName: 'Kenny Gainwell',
+      position: 'RB',
+    } as DraftPickRow
+    expect(CommissionerRanking._matchPick(pick, lookup)?.rank).toBe(35)
+  })
 })
