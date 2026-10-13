@@ -40,6 +40,7 @@ import {
   blendWeeklyStats,
   type CountingStat,
   countingStatsForPosition,
+  flexLineupNote,
   type HeatCell,
   positionalHeatmapWeekly,
   projectedWeeklyScores,
@@ -317,6 +318,7 @@ export interface FantasySeasonExtras {
   highWeek: number
   leagueAverage: number
   leagueMedian: number
+  flexNote?: string
 }
 
 export interface FantasyManagerExtras {
@@ -1978,7 +1980,12 @@ export const FantasyScout = {
       summary: seasons[0] ?? null,
       standings,
       heatmap: buildHeatmap(ctx, year),
-      extras: weeklyExtras(weeklyScores(ctx, year)),
+      extras: {
+        ...weeklyExtras(weeklyScores(ctx, year)),
+        flexNote: flexLineupNote(
+          starterSlots(ctx.leagues.find((league) => league.season === year)?.rosterPositions)
+        ),
+      },
     }
   },
 
